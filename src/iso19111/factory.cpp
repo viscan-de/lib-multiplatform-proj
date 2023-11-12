@@ -31,6 +31,8 @@
 #endif
 
 #include "proj/common.hpp"
+#undef SQLLITE_ENABLED
+#ifdef SQLLITE_ENABLED
 #include "proj/coordinateoperation.hpp"
 #include "proj/coordinates.hpp"
 #include "proj/coordinatesystem.hpp"
@@ -40,7 +42,9 @@
 #include "proj/metadata.hpp"
 #include "proj/util.hpp"
 
+#endif
 #include "proj/internal/internal.hpp"
+#ifdef SQLLITE_ENABLED
 #include "proj/internal/io_internal.hpp"
 #include "proj/internal/lru_cache.hpp"
 #include "proj/internal/tracing.hpp"
@@ -94,11 +98,15 @@
 #define REOPEN_SQLITE_DB_AFTER_FORK
 #endif
 
+#endif
+
 using namespace NS_PROJ::internal;
 using namespace NS_PROJ::common;
 
 NS_PROJ_START
 namespace io {
+
+#ifdef SQLLITE_ENABLED
 
 //! @cond Doxygen_Suppress
 
@@ -655,7 +663,9 @@ void SQLiteHandleCache::invalidateHandles() {
 #endif
 
 // ---------------------------------------------------------------------------
+#endif
 
+#ifdef SQLLITE_ENABLED
 struct DatabaseContext::Private {
     Private();
     ~Private();
@@ -1024,7 +1034,7 @@ void DatabaseContext::Private::getFromCache(LRUCacheOfObjects &cache,
 
 bool DatabaseContext::Private::getCRSToCRSCoordOpFromCache(
     const std::string &code,
-    std::vector<operation::CoordinateOperationNNPtr> &list) {
+        std::vector<operation::CoordinateOperationNNPtr> &list) {
     return cacheCRSToCrsCoordOp_.tryGet(code, list);
 }
 
@@ -2831,8 +2841,15 @@ std::vector<std::string> DatabaseContext::Private::getInsertStatementsFor(
 
 //! @endcond
 
+#else
+struct DatabaseContext::Private {
+    Private() = default;
+};
+#endif
+
 // ---------------------------------------------------------------------------
 
+#ifdef SQLLITE_ENABLED
 //! @cond Doxygen_Suppress
 DatabaseContext::~DatabaseContext() {
     try {
@@ -3801,10 +3818,145 @@ DatabaseContext::getTransformationsForGridName(
     return res;
 }
 
+
+#else
+
+DatabaseContext::DatabaseContext() {
+    throw std::runtime_error("Databse support removed.");
+};
+DatabaseContext::~DatabaseContext() = default;
+DatabaseContextNNPtr
+DatabaseContext::create(const std::string &databasePath,
+                        const std::vector<std::string> &auxiliaryDatabasePaths,
+                        PJ_CONTEXT *ctx) {
+    throw std::runtime_error("DatabaseContext support has been removed");
+}
+
+std::set<std::string> DatabaseContext::getAuthorities() const {
+    throw std::runtime_error("db support removed");
+}
+std::vector<std::string> DatabaseContext::getDatabaseStructure() const {
+    throw std::runtime_error("db support removed");
+}
+const std::string &DatabaseContext::getPath() const {
+    throw std::runtime_error("db support removed");
+}
+const char *DatabaseContext::getMetadata(const char *key) const {
+    throw std::runtime_error("db support removed");
+}
+void DatabaseContext::startInsertStatementsSession() {
+    throw std::runtime_error("db support removed");
+}
+std::string
+DatabaseContext::suggestsCodeFor(const common::IdentifiedObjectNNPtr &object,
+                                 const std::string &authName,
+                                 bool numericCode) {
+    throw std::runtime_error("db support removed");
+}
+std::vector<std::string> DatabaseContext::getInsertStatementsFor(
+    const common::IdentifiedObjectNNPtr &object, const std::string &authName,
+    const std::string &code, bool numericCode,
+    const std::vector<std::string> &allowedAuthorities) {
+    throw std::runtime_error("db support removed");
+}
+void DatabaseContext::stopInsertStatementsSession() {
+    throw std::runtime_error("db support removed");
+}
+DatabaseContextNNPtr DatabaseContext::create(void *sqlite_handle) {
+    throw std::runtime_error("DatabaseContext support has been removed");
+}
+void *DatabaseContext::getSqliteHandle() const {
+    throw std::runtime_error("db support removed");
+}
+bool DatabaseContext::lookForGridAlternative(const std::string &officialName,
+                                             std::string &projFilename,
+                                             std::string &projFormat,
+                                             bool &inverse) const {
+    throw std::runtime_error("db support removed");
+}
+bool DatabaseContext::lookForGridInfo(
+    const std::string &projFilename, bool considerKnownGridsAsAvailable,
+    std::string &fullFilename, std::string &packageName, std::string &url,
+    bool &directDownload, bool &openLicense, bool &gridAvailable) const {
+    throw std::runtime_error("db support removed");
+}
+bool DatabaseContext::isKnownName(const std::string &name,
+                                  const std::string &tableName) const {
+    throw std::runtime_error("db support removed");
+}
+std::string
+DatabaseContext::getProjGridName(const std::string &oldProjGridName) {
+    throw std::runtime_error("db support removed");
+}
+std::string DatabaseContext::getOldProjGridName(const std::string &gridName) {
+    throw std::runtime_error("db support removed");
+}
+std::string
+DatabaseContext::getAliasFromOfficialName(const std::string &officialName,
+                                          const std::string &tableName,
+                                          const std::string &source) const {
+    throw std::runtime_error("db support removed");
+}
+std::list<std::string> DatabaseContext::getAliases(
+    const std::string &authName, const std::string &code,
+    const std::string &officialName, const std::string &tableName,
+    const std::string &source) const {
+    throw std::runtime_error("db support removed");
+}
+std::string DatabaseContext::getName(const std::string &tableName,
+                                     const std::string &authName,
+                                     const std::string &code) const {
+    throw std::runtime_error("db support removed");
+}
+std::string DatabaseContext::getTextDefinition(const std::string &tableName,
+                                               const std::string &authName,
+                                               const std::string &code) const {
+    throw std::runtime_error("db support removed");
+}
+
+std::vector<std::string> DatabaseContext::getAllowedAuthorities(
+    const std::string &sourceAuthName,
+    const std::string &targetAuthName) const {
+
+    throw std::runtime_error("db support removed");
+}
+
+std::list<std::pair<std::string, std::string>>
+DatabaseContext::getNonDeprecated(const std::string &tableName,
+                                  const std::string &authName,
+                                  const std::string &code) const {
+    throw std::runtime_error("db support removed");
+}
+
+bool DatabaseContext::getAuthorityAndVersion(
+    const std::string &versionedAuthName, std::string &authNameOut,
+    std::string &versionOut) {
+
+    throw std::runtime_error("db support removed");
+}
+
+bool DatabaseContext::getVersionedAuthority(const std::string &authName,
+                                            const std::string &version,
+                                            std::string &versionedAuthNameOut) {
+    throw std::runtime_error("db support removed");
+}
+
+std::vector<std::string>
+DatabaseContext::getVersionedAuthoritiesFromName(const std::string &authName) {
+    throw std::runtime_error("db support removed");
+}
+
+std::vector<operation::CoordinateOperationNNPtr>
+DatabaseContext::getTransformationsForGridName(
+    const DatabaseContextNNPtr &databaseContext, const std::string &gridName) {
+    throw std::runtime_error("db support removed");
+}
+#endif
 //! @endcond
 
 // ---------------------------------------------------------------------------
 
+#ifdef SQLLITE_ENABLED
 //! @cond Doxygen_Suppress
 struct AuthorityFactory::Private {
     Private(const DatabaseContextNNPtr &contextIn,
@@ -4069,6 +4221,11 @@ bool AuthorityFactory::Private::rejectOpDueToMissingGrid(
     return false;
 }
 
+#else
+struct AuthorityFactory::Private {
+    Private() = default;
+};
+#endif
 //! @endcond
 
 // ---------------------------------------------------------------------------
@@ -4079,6 +4236,7 @@ AuthorityFactory::~AuthorityFactory() = default;
 
 // ---------------------------------------------------------------------------
 
+#ifdef SQLLITE_ENABLED
 AuthorityFactory::AuthorityFactory(const DatabaseContextNNPtr &context,
                                    const std::string &authorityName)
     : d(internal::make_unique<Private>(context, authorityName)) {}
@@ -9752,8 +9910,328 @@ AuthorityFactory::getPointMotionOperationsFor(
     return res;
 }
 
+#else
+
+AuthorityFactory::AuthorityFactory(const DatabaseContextNNPtr &context,
+                                   const std::string &authorityName)
+
+{
+    throw std::runtime_error("Authority Factory has been removed.");
+}
+
+AuthorityFactoryNNPtr
+AuthorityFactory::create(const DatabaseContextNNPtr &context,
+                         const std::string &authorityName) {
+    throw std::runtime_error("Authority Factory has been removed.");
+}
+
+const DatabaseContextNNPtr &AuthorityFactory::databaseContext() const {
+    throw std::runtime_error("db support removed");
+}
+AuthorityFactory::CRSInfo::CRSInfo()
+    : authName{}, code{}, name{}, type{ObjectType::CRS}, deprecated{},
+      bbox_valid{}, west_lon_degree{}, south_lat_degree{}, east_lon_degree{},
+      north_lat_degree{}, areaName{}, projectionMethodName{},
+      celestialBodyName{} {
+    throw std::runtime_error("Authority Factory has been removed.");
+}
+
+util::BaseObjectNNPtr
+AuthorityFactory::createObject(const std::string &code) const {
+    throw std::runtime_error("db support removed");
+}
+metadata::ExtentNNPtr
+AuthorityFactory::createExtent(const std::string &code) const {
+    throw std::runtime_error("db support removed");
+}
+
+UnitOfMeasureNNPtr
+AuthorityFactory::createUnitOfMeasure(const std::string &code) const {
+    throw std::runtime_error("db support removed");
+}
+
+datum::PrimeMeridianNNPtr
+AuthorityFactory::createPrimeMeridian(const std::string &code) const {
+    throw std::runtime_error("db support removed");
+}
+std::string
+AuthorityFactory::identifyBodyFromSemiMajorAxis(double semi_major_axis,
+                                                double tolerance) const {
+    throw std::runtime_error("db support removed");
+}
+datum::EllipsoidNNPtr
+AuthorityFactory::createEllipsoid(const std::string &code) const {
+    throw std::runtime_error("db support removed");
+}
+
+datum::GeodeticReferenceFrameNNPtr
+AuthorityFactory::createGeodeticDatum(const std::string &code) const {
+    throw std::runtime_error("db support removed");
+}
+void AuthorityFactory::createGeodeticDatumOrEnsemble(
+    const std::string &code, datum::GeodeticReferenceFramePtr &outDatum,
+    datum::DatumEnsemblePtr &outDatumEnsemble, bool turnEnsembleAsDatum) const {
+    throw std::runtime_error("db support removed");
+}
+datum::VerticalReferenceFrameNNPtr
+AuthorityFactory::createVerticalDatum(const std::string &code) const {
+    throw std::runtime_error("db support removed");
+}
+
+void AuthorityFactory::createVerticalDatumOrEnsemble(
+    const std::string &code, datum::VerticalReferenceFramePtr &outDatum,
+    datum::DatumEnsemblePtr &outDatumEnsemble, bool turnEnsembleAsDatum) const {
+    throw std::runtime_error("db support removed");
+}
+
+datum::DatumEnsembleNNPtr
+AuthorityFactory::createDatumEnsemble(const std::string &code,
+                                      const std::string &type) const {
+    throw std::runtime_error("db support removed");
+}
+datum::DatumNNPtr AuthorityFactory::createDatum(const std::string &code) const {
+    throw std::runtime_error("db support removed");
+}
+cs::CoordinateSystemNNPtr
+AuthorityFactory::createCoordinateSystem(const std::string &code) const {
+    throw std::runtime_error("db support removed");
+}
+crs::GeodeticCRSNNPtr
+AuthorityFactory::createGeodeticCRS(const std::string &code) const {
+    throw std::runtime_error("db support removed");
+}
+crs::GeographicCRSNNPtr
+AuthorityFactory::createGeographicCRS(const std::string &code) const {
+    throw std::runtime_error("db support removed");
+}
+crs::GeodeticCRSNNPtr
+AuthorityFactory::createGeodeticCRS(const std::string &code,
+                                    bool geographicOnly) const {
+    throw std::runtime_error("db support removed");
+}
+
+crs::VerticalCRSNNPtr
+AuthorityFactory::createVerticalCRS(const std::string &code) const {
+    throw std::runtime_error("db support removed");
+}
+
+operation::ConversionNNPtr
+AuthorityFactory::createConversion(const std::string &code) const {
+
+    throw std::runtime_error("db support removed");
+}
+
+crs::ProjectedCRSNNPtr
+AuthorityFactory::createProjectedCRS(const std::string &code) const {
+    throw std::runtime_error("db support removed");
+}
+
+crs::CompoundCRSNNPtr
+AuthorityFactory::createCompoundCRS(const std::string &code) const {
+    throw std::runtime_error("db support removed");
+}
+
+crs::CRSNNPtr AuthorityFactory::createCoordinateReferenceSystem(
+    const std::string &code) const {
+    throw std::runtime_error("db support removed");
+}
+
+crs::CRSNNPtr
+AuthorityFactory::createCoordinateReferenceSystem(const std::string &code,
+                                                  bool allowCompound) const {
+    throw std::runtime_error("db support removed");
+}
+coordinates::CoordinateMetadataNNPtr
+AuthorityFactory::createCoordinateMetadata(const std::string &code) const {
+    throw std::runtime_error("db support removed");
+}
+operation::CoordinateOperationNNPtr AuthorityFactory::createCoordinateOperation(
+    const std::string &code, bool usePROJAlternativeGridNames) const {
+    return createCoordinateOperation(code, true, usePROJAlternativeGridNames,
+                                     std::string());
+}
+
+operation::CoordinateOperationNNPtr AuthorityFactory::createCoordinateOperation(
+    const std::string &code, bool allowConcatenated,
+    bool usePROJAlternativeGridNames, const std::string &typeIn) const {
+    throw std::runtime_error("db support removed");
+}
+std::vector<operation::CoordinateOperationNNPtr>
+AuthorityFactory::createFromCoordinateReferenceSystemCodes(
+    const std::string &sourceCRSCode, const std::string &targetCRSCode) const {
+    throw std::runtime_error("db support removed");
+}
+std::list<std::string>
+AuthorityFactory::getGeoidModels(const std::string &code) const {
+    throw std::runtime_error("db support removed");
+}
+std::vector<operation::CoordinateOperationNNPtr>
+AuthorityFactory::createFromCoordinateReferenceSystemCodes(
+    const std::string &sourceCRSAuthName, const std::string &sourceCRSCode,
+    const std::string &targetCRSAuthName, const std::string &targetCRSCode,
+    bool usePROJAlternativeGridNames, bool discardIfMissingGrid,
+    bool considerKnownGridsAsAvailable, bool discardSuperseded,
+    bool tryReverseOrder, bool reportOnlyIntersectingTransformations,
+    const metadata::ExtentPtr &intersectingExtent1,
+    const metadata::ExtentPtr &intersectingExtent2) const {
+
+    throw std::runtime_error("db support removed");
+}
+
+std::vector<operation::CoordinateOperationNNPtr>
+AuthorityFactory::createFromCRSCodesWithIntermediates(
+    const std::string &sourceCRSAuthName, const std::string &sourceCRSCode,
+    const std::string &targetCRSAuthName, const std::string &targetCRSCode,
+    bool usePROJAlternativeGridNames, bool discardIfMissingGrid,
+    bool considerKnownGridsAsAvailable, bool discardSuperseded,
+    const std::vector<std::pair<std::string, std::string>>
+        &intermediateCRSAuthCodes,
+    ObjectType allowedIntermediateObjectType,
+    const std::vector<std::string> &allowedAuthorities,
+    const metadata::ExtentPtr &intersectingExtent1,
+    const metadata::ExtentPtr &intersectingExtent2) const {
+
+    throw std::runtime_error("db support removed");
+}
+
+std::vector<operation::CoordinateOperationNNPtr>
+AuthorityFactory::createBetweenGeodeticCRSWithDatumBasedIntermediates(
+    const crs::CRSNNPtr &sourceCRS, const std::string &sourceCRSAuthName,
+    const std::string &sourceCRSCode, const crs::CRSNNPtr &targetCRS,
+    const std::string &targetCRSAuthName, const std::string &targetCRSCode,
+    bool usePROJAlternativeGridNames, bool discardIfMissingGrid,
+    bool considerKnownGridsAsAvailable, bool discardSuperseded,
+    const std::vector<std::string> &allowedAuthorities,
+    const metadata::ExtentPtr &intersectingExtent1,
+    const metadata::ExtentPtr &intersectingExtent2) const {
+
+    throw std::runtime_error("db support removed");
+}
+
+const std::string &AuthorityFactory::getAuthority() const {
+    throw std::runtime_error("db support removed");
+}
+
+std::set<std::string>
+AuthorityFactory::getAuthorityCodes(const ObjectType &type,
+                                    bool allowDeprecated) const {
+    throw std::runtime_error("db support removed");
+}
+
+std::string
+AuthorityFactory::getDescriptionText(const std::string &code) const {
+    throw std::runtime_error("db support removed");
+}
+
+std::list<AuthorityFactory::CRSInfo> AuthorityFactory::getCRSInfoList() const {
+    throw std::runtime_error("db support removed");
+}
+
+AuthorityFactory::UnitInfo::UnitInfo()
+    : authName{}, code{}, name{}, category{}, convFactor{}, projShortName{},
+      deprecated{} {
+    throw std::runtime_error("db support removed");
+}
+AuthorityFactory::CelestialBodyInfo::CelestialBodyInfo() : authName{}, name{} {
+    throw std::runtime_error("db support removed");
+}
+
+std::list<AuthorityFactory::UnitInfo> AuthorityFactory::getUnitList() const {
+    throw std::runtime_error("db support removed");
+}
+std::list<AuthorityFactory::CelestialBodyInfo>
+AuthorityFactory::getCelestialBodyList() const {
+    throw std::runtime_error("db support removed");
+}
+
+std::string AuthorityFactory::getOfficialNameFromAlias(
+    const std::string &aliasedName, const std::string &tableName,
+    const std::string &source, bool tryEquivalentNameSpelling,
+    std::string &outTableName, std::string &outAuthName,
+    std::string &outCode) const {
+    throw std::runtime_error("db support removed");
+}
+
+std::list<common::IdentifiedObjectNNPtr>
+AuthorityFactory::createObjectsFromName(
+    const std::string &searchedName,
+    const std::vector<ObjectType> &allowedObjectTypes, bool approximateMatch,
+    size_t limitResultCount) const {
+    throw std::runtime_error("db support removed");
+}
+
+std::list<AuthorityFactory::PairObjectName>
+AuthorityFactory::createObjectsFromNameEx(
+    const std::string &searchedName,
+    const std::vector<ObjectType> &allowedObjectTypes, bool approximateMatch,
+    size_t limitResultCount) const {
+    throw std::runtime_error("db support removed");
+}
+
+std::list<std::pair<std::string, std::string>>
+AuthorityFactory::listAreaOfUseFromName(const std::string &name,
+                                        bool approximateMatch) const {
+    throw std::runtime_error("db support removed");
+}
+
+std::list<datum::EllipsoidNNPtr> AuthorityFactory::createEllipsoidFromExisting(
+    const datum::EllipsoidNNPtr &ellipsoid) const {
+    throw std::runtime_error("db support removed");
+}
+
+std::list<crs::GeodeticCRSNNPtr> AuthorityFactory::createGeodeticCRSFromDatum(
+    const std::string &datum_auth_name, const std::string &datum_code,
+    const std::string &geodetic_crs_type) const {
+    throw std::runtime_error("db support removed");
+}
+
+std::list<crs::GeodeticCRSNNPtr> AuthorityFactory::createGeodeticCRSFromDatum(
+    const datum::GeodeticReferenceFrameNNPtr &datum,
+    const std::string &preferredAuthName,
+    const std::string &geodetic_crs_type) const {
+    throw std::runtime_error("db support removed");
+}
+
+std::list<crs::VerticalCRSNNPtr> AuthorityFactory::createVerticalCRSFromDatum(
+    const std::string &datum_auth_name, const std::string &datum_code) const {
+    throw std::runtime_error("db support removed");
+}
+
+std::list<crs::GeodeticCRSNNPtr>
+AuthorityFactory::createGeodeticCRSFromEllipsoid(
+    const std::string &ellipsoid_auth_name, const std::string &ellipsoid_code,
+    const std::string &geodetic_crs_type) const {
+    throw std::runtime_error("db support removed");
+}
+
+std::list<crs::ProjectedCRSNNPtr>
+AuthorityFactory::createProjectedCRSFromExisting(
+    const crs::ProjectedCRSNNPtr &crs) const {
+    throw std::runtime_error("db support removed");
+}
+
+std::list<crs::CompoundCRSNNPtr>
+AuthorityFactory::createCompoundCRSFromExisting(
+    const crs::CompoundCRSNNPtr &crs) const {
+    throw std::runtime_error("db support removed");
+}
+std::vector<operation::CoordinateOperationNNPtr>
+AuthorityFactory::getTransformationsForGeoid(
+    const std::string &geoidName, bool usePROJAlternativeGridNames) const {
+    throw std::runtime_error("db support removed");
+}
+std::vector<operation::PointMotionOperationNNPtr>
+AuthorityFactory::getPointMotionOperationsFor(
+    const crs::GeodeticCRSNNPtr &crs, bool usePROJAlternativeGridNames) const {
+    throw std::runtime_error("db support removed");
+}
+
+#endif
+
 //! @endcond
 
+// ---------------------------------------------------------------------------
+#ifdef SQLLITE_ENABLED
 // ---------------------------------------------------------------------------
 
 //! @cond Doxygen_Suppress
@@ -9818,6 +10296,33 @@ const std::string &NoSuchAuthorityCodeException::getAuthorityCode() const {
     return d->code_;
 }
 
+
+#else
+
+FactoryException::FactoryException(const char *message) : Exception(message) {}
+FactoryException::FactoryException(const std::string &message)
+    : Exception(message) {}
+FactoryException::~FactoryException() = default;
+FactoryException::FactoryException(const FactoryException &) = default;
+
+struct NoSuchAuthorityCodeException::Private {};
+NoSuchAuthorityCodeException::NoSuchAuthorityCodeException(
+    const std::string &message, const std::string &authority,
+    const std::string &code)
+    : FactoryException(message) {
+    throw std::runtime_error("db support removed");
+}
+NoSuchAuthorityCodeException::~NoSuchAuthorityCodeException() = default;
+NoSuchAuthorityCodeException::NoSuchAuthorityCodeException(
+    const NoSuchAuthorityCodeException &other)
+    : FactoryException(other), d(nullptr) {}
+const std::string &NoSuchAuthorityCodeException::getAuthority() const {
+    throw std::runtime_error("db support removed");
+}
+const std::string &NoSuchAuthorityCodeException::getAuthorityCode() const {
+    throw std::runtime_error("db support removed");
+}
+#endif
 // ---------------------------------------------------------------------------
 
 } // namespace io
@@ -9825,4 +10330,10 @@ NS_PROJ_END
 
 // ---------------------------------------------------------------------------
 
+#ifdef SQLLITE_ENABLED
 void pj_clear_sqlite_cache() { NS_PROJ::io::SQLiteHandleCache::get().clear(); }
+#else
+void pj_clear_sqlite_cache() {
+    throw std::runtime_error("db support has been removed");
+}
+#endif

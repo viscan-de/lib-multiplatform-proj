@@ -212,7 +212,7 @@ endif()
 # Check for curl
 ################################################################################
 
-option(ENABLE_CURL "Enable Curl support" ON)
+#option(ENABLE_CURL "Enable Curl support" ON)
 set(CURL_ENABLED FALSE)
 if(ENABLE_CURL)
   find_package(CURL REQUIRED)
@@ -332,6 +332,8 @@ add_subdirectory(include)
 add_subdirectory(src)
 add_subdirectory(man)
 add_subdirectory(cmake)
+add_subdirectory(examples)
+
 if(BUILD_TESTING)
   add_subdirectory(test)
 endif()

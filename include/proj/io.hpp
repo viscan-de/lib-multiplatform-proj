@@ -29,6 +29,8 @@
 #ifndef IO_HH_INCLUDED
 #define IO_HH_INCLUDED
 
+#undef SQLLITE_ENABLED
+
 #include <list>
 #include <memory>
 #include <set>
@@ -1061,7 +1063,11 @@ class PROJ_GCC_DLL AuthorityFactory {
     PROJ_DLL std::list<std::string>
     getGeoidModels(const std::string &code) const;
 
+#ifdef SQLLITE_ENABLED
     PROJ_DLL const std::string &getAuthority() PROJ_PURE_DECL;
+#else
+    PROJ_DLL const std::string &getAuthority() const;
+#endif
 
     /** Object type. */
     enum class ObjectType {

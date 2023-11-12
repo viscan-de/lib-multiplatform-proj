@@ -47,6 +47,8 @@
 #include "proj/internal/internal.hpp"
 #include "proj/internal/lru_cache.hpp"
 #include "proj_internal.h"
+#undef SQLLITE_ENABLED
+#ifdef SQLLITE_ENABLED 
 #include "sqlite3_utils.hpp"
 
 #ifdef CURL_ENABLED
@@ -73,17 +75,22 @@
 #endif
 
 #include <time.h>
+#endif
 
+
+#ifdef SQLLITE_ENABLED
 //! @cond Doxygen_Suppress
 
 #define STR_HELPER(x) #x
 #define STR(x) STR_HELPER(x)
+#endif
 
 using namespace NS_PROJ::internal;
 
 NS_PROJ_START
 
 // ---------------------------------------------------------------------------
+#ifdef SQLLITE_ENABLED
 
 static void sleep_ms(int ms) {
 #ifdef _WIN32
@@ -212,21 +219,21 @@ class DiskChunkCache {
     void closeAndUnlink();
 };
 
-// ---------------------------------------------------------------------------
+ // ---------------------------------------------------------------------------
 
 static bool pj_context_get_grid_cache_is_enabled(PJ_CONTEXT *ctx) {
     pj_load_ini(ctx);
     return ctx->gridChunkCache.enabled;
 }
 
-// ---------------------------------------------------------------------------
+ // ---------------------------------------------------------------------------
 
 static long long pj_context_get_grid_cache_max_size(PJ_CONTEXT *ctx) {
     pj_load_ini(ctx);
     return ctx->gridChunkCache.max_size;
 }
 
-// ---------------------------------------------------------------------------
+ // ---------------------------------------------------------------------------
 
 static int pj_context_get_grid_cache_ttl(PJ_CONTEXT *ctx) {
     pj_load_ini(ctx);
@@ -1948,11 +1955,22 @@ void FileManager::clearMemoryCache() {
     gNetworkFileProperties.clearMemoryCache();
 }
 
+#else
+std::unique_ptr<File> pj_network_file_open(PJ_CONTEXT *ctx,
+                                           const char *filename) {
+    throw std::runtime_error("Network file support removed.");
+}
+void FileManager::fillDefaultNetworkInterface(PJ_CONTEXT *ctx) {}
+
+void FileManager::clearMemoryCache() {}
+#endif
+
 NS_PROJ_END
 
 //! @endcond
 
 // ---------------------------------------------------------------------------
+#ifdef SQLLITE_ENABLED
 
 #ifdef WIN32
 static const char dir_chars[] = "/\\";
@@ -2362,7 +2380,7 @@ int proj_download_file(PJ_CONTEXT *ctx, const char *url_or_filename,
         return true;
     }
 
-    const auto url(build_url(ctx, url_or_filename));
+        const auto url(build_url(ctx, url_or_filename));
     const char *filename = strrchr(url.c_str(), '/');
     if (filename == nullptr)
         return false;
@@ -2558,4 +2576,30 @@ std::string pj_context_get_grid_cache_filename(PJ_CONTEXT *ctx) {
     return ctx->gridChunkCache.filename;
 }
 
+#else
+std::string pj_context_get_grid_cache_filename(PJ_CONTEXT *ctx) {
+    throw std::runtime_error("Network file support removed.");
+}
+
+int proj_context_set_enable_network(PJ_CONTEXT *ctx, int enable) {
+    throw std::runtime_error("Network file support removed.");
+}
+
+int proj_context_is_network_enabled(PJ_CONTEXT *ctx) { return false; }
+
+int proj_is_download_needed(PJ_CONTEXT *ctx, const char *url_or_filename,
+                            int ignore_ttl_setting) {
+    pj_log(ctx, PJ_LOG_ERROR, "Network file support removed.");
+    return false;
+}
+
+int proj_download_file(PJ_CONTEXT *ctx, const char *url_or_filename,
+                       int ignore_ttl_setting,
+                       int (*progress_cbk)(PJ_CONTEXT *, double pct,
+                                           void *user_data),
+                       void *user_data) {
+    throw std::runtime_error("Network file support removed.");
+}
+
+#endif
 //! @endcond
