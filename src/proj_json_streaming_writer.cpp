@@ -35,7 +35,9 @@
 #include "proj_json_streaming_writer.hpp"
 
 #include <cmath>
+#ifdef SQLLITE_ENABLED
 #include <sqlite3.h>
+#endif
 #include <stdarg.h>
 #include <string.h>
 #define CPLAssert(x)                                                           \
@@ -52,7 +54,11 @@ static std::string CPLSPrintf(const char *fmt, ...) {
     res.resize(256);
     va_list list;
     va_start(list, fmt);
+#ifdef SQLLITE_ENABLED
     sqlite3_vsnprintf(256, &res[0], fmt, list);
+#else
+    snprintf(&res[0], 256, fmt, list);
+#endif
     va_end(list);
     res.resize(strlen(&res[0]));
     return res;

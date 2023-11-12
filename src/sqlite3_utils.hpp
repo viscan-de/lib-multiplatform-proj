@@ -28,6 +28,8 @@
 #ifndef SQLITE3_HPP_INCLUDED
 #define SQLITE3_HPP_INCLUDED
 
+#ifdef SQLLITE_ENABLED
+
 #include <memory>
 
 #include <sqlite3.h>
@@ -133,5 +135,7 @@ class SQLiteStatement {
 //! @endcond Doxygen_Suppress
 
 NS_PROJ_END
+
+#endif
 
 #endif // SQLITE3_HPP_INCLUDED

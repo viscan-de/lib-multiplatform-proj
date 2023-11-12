@@ -36,6 +36,8 @@
 #pragma GCC diagnostic pop
 #endif
 
+#ifdef SQLLITE_ENABLED
+
 #include <cstdlib>
 #include <cstring>
 #include <sstream> // std::ostringstream
@@ -202,3 +204,5 @@ SQLiteStatement::SQLiteStatement(sqlite3_stmt *hStmtIn) : hStmt(hStmtIn) {}
 // ---------------------------------------------------------------------------
 
 NS_PROJ_END
+
+#endif
