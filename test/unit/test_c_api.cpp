@@ -1614,7 +1614,7 @@ TEST_F(CApi, transformation_from_boundCRS) {
 }
 
 // ---------------------------------------------------------------------------
-
+#ifdef SQLLITE_ENABLED
 TEST_F(CApi, proj_coordoperation_get_grid_used) {
     auto op = proj_create_from_database(m_ctxt, "EPSG", "1312",
                                         PJ_CATEGORY_COORDINATE_OPERATION, true,
@@ -1658,7 +1658,7 @@ TEST_F(CApi, proj_coordoperation_get_grid_used) {
 
     proj_context_set_url_endpoint(m_ctxt, old_endpoint.c_str());
 }
-
+#endif
 // ---------------------------------------------------------------------------
 
 #ifdef TIFF_ENABLED

@@ -31,6 +31,7 @@
 #endif
 
 #include "proj/common.hpp"
+
 #undef SQLLITE_ENABLED
 #ifdef SQLLITE_ENABLED
 #include "proj/coordinateoperation.hpp"
@@ -41,9 +42,10 @@
 #include "proj/io.hpp"
 #include "proj/metadata.hpp"
 #include "proj/util.hpp"
-
 #endif
+
 #include "proj/internal/internal.hpp"
+
 #ifdef SQLLITE_ENABLED
 #include "proj/internal/io_internal.hpp"
 #include "proj/internal/lru_cache.hpp"
