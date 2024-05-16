@@ -255,6 +255,7 @@ if [ "$BUILD_NAME" != "linux_gcc8" -a "$BUILD_NAME" != "linux_gcc_32bit" ]; then
               -D PROJ_DB_CACHE_DIR=$HOME/.ccache \
               -D CMAKE_C_FLAGS="--coverage" \
               -D CMAKE_CXX_FLAGS="--coverage" \
+              -D BUILD_PROJSYNC=OFF \
               . ;
         else
             LDFLAGS="$LDFLAGS -lgcov" cmake \
@@ -263,6 +264,7 @@ if [ "$BUILD_NAME" != "linux_gcc8" -a "$BUILD_NAME" != "linux_gcc_32bit" ]; then
               -D PROJ_DB_CACHE_DIR=$HOME/.ccache \
               -D CMAKE_C_FLAGS="$CFLAGS --coverage" \
               -D CMAKE_CXX_FLAGS="$CXXFLAGS --coverage" \
+              -D BUILD_PROJSYNC=OFF \
               . ;
         fi
     else
@@ -270,6 +272,7 @@ if [ "$BUILD_NAME" != "linux_gcc8" -a "$BUILD_NAME" != "linux_gcc_32bit" ]; then
           -D CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} \
           -D USE_CCACHE=${USE_CCACHE} \
           -D PROJ_DB_CACHE_DIR=$HOME/.ccache \
+          -D BUILD_PROJSYNC=OFF \
           . ;
     fi
     make
