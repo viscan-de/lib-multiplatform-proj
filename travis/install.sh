@@ -60,6 +60,7 @@ cmake \
   -D PROJ_DB_CACHE_DIR=$HOME/.ccache \
   -D BUILD_SHARED_LIBS=ON \
   -D BUILD_EXAMPLES=ON \
+  -D BUILD_PROJSYNC=OFF \
   -D CMAKE_INSTALL_PREFIX=/tmp/proj_shared_install_from_dist \
   ..
 make
@@ -99,6 +100,7 @@ cmake \
   -D USE_CCACHE=${USE_CCACHE} \
   -D PROJ_DB_CACHE_DIR=$HOME/.ccache \
   -D BUILD_SHARED_LIBS=OFF \
+  -D BUILD_PROJSYNC=OFF \
   -D INSTALL_LEGACY_CMAKE_FILES=OFF \
   -D CMAKE_INSTALL_PREFIX=/tmp/proj_static_install_from_dist \
   -D CMAKE_INSTALL_INCLUDEDIR=/tmp/proj_static_install_from_dist/include \
