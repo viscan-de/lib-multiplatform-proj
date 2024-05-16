@@ -59,7 +59,7 @@ cmake \
   ${PROJ_CMAKE_BUILD_OPTIONS:-} \
   -D PROJ_DB_CACHE_DIR=$HOME/.ccache \
   -D BUILD_SHARED_LIBS=ON \
-  -D BUILD_EXAMPLES=ON \
+  -D BUILD_EXAMPLES=OFF \
   -D BUILD_PROJSYNC=OFF \
   -D CMAKE_INSTALL_PREFIX=/tmp/proj_shared_install_from_dist \
   ..
