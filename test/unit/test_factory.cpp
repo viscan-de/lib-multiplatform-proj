@@ -63,7 +63,7 @@ using namespace osgeo::proj::util;
 namespace {
 
 // ---------------------------------------------------------------------------
-
+#ifdef SQLLITE_ENABLED
 TEST(factory, databasecontext_create) {
     DatabaseContext::create();
 #ifndef _WIN32
@@ -4811,5 +4811,5 @@ TEST(factory, getPointMotionOperationsFor) {
 }
 
 // ---------------------------------------------------------------------------
-
+#endif
 } // namespace

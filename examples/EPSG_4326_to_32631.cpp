@@ -109,7 +109,7 @@ int main(void) {
         "+step +proj=helmert +x=-0.0471 +y=-0.0574 +z=0.001 +rx=0.0016 +ry=-0.00227 +rz=-0.01372 +s=0.02258 +convention=position_vector " //applying ETRS89-->WGS84 Shift
         "+step +inv +proj=cart +ellps=WGS84 " //Go back to ellipsoidal system of WGS84
         "+step +proj=pop +v_3 " //Restoring Z (ellipsoidal height)
-        "+step +proj=utm +zone=32 +ellps=WGS84 "; //Project to UTM32N
+        "+step +proj=utm +zone=32 +ellps=WGS84"; //Project to UTM32N
         //"+step +inv +proj=utm +zone=32 +ellps=WGS84 "     // Project to UTM32N
         //"+step +inv +proj=pop +v_3 " // Restoring Z (ellipsoidal height)
         //"+step +proj=cart +ellps=WGS84 " // Go back to ellipsoidal system of

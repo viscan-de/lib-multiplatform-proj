@@ -198,7 +198,7 @@ TEST(coordinateMetadata, dynamic_crs) {
 }
 
 // ---------------------------------------------------------------------------
-
+#ifdef SQLLITE_ENABLED
 TEST(coordinateMetadata, crs_with_point_motion_operation_and_promote_to_3D) {
     auto dbContext = DatabaseContext::create();
     auto factory = AuthorityFactory::create(dbContext, "EPSG");
@@ -225,3 +225,4 @@ TEST(coordinateMetadata, crs_with_point_motion_operation_and_promote_to_3D) {
         EXPECT_TRUE(!cm->coordinateEpoch().has_value());
     }
 }
+#endif

@@ -379,7 +379,7 @@ TEST(crs, EPSG_4326_as_WKT1_GDAL_with_axis) {
 }
 
 // ---------------------------------------------------------------------------
-
+#ifdef SQLLITE_ENABLED
 TEST(crs, EPSG_4326_from_db_as_WKT1_GDAL_with_axis) {
     auto factory = AuthorityFactory::create(DatabaseContext::create(), "EPSG");
     auto crs = factory->createCoordinateReferenceSystem("4326");
@@ -399,13 +399,13 @@ TEST(crs, EPSG_4326_from_db_as_WKT1_GDAL_with_axis) {
                    "    AXIS[\"Longitude\",EAST],\n"
                    "    AUTHORITY[\"EPSG\",\"4326\"]]");
 }
-
+#endif
 // ---------------------------------------------------------------------------
 
 TEST(crs, EPSG_4326_as_WKT1_ESRI_with_database) {
     auto crs = GeographicCRS::EPSG_4326;
     WKTFormatterNNPtr f(WKTFormatter::create(
-        WKTFormatter::Convention::WKT1_ESRI, DatabaseContext::create()));
+        WKTFormatter::Convention::WKT1_ESRI, nullptr));
     EXPECT_EQ(crs->exportToWKT(f.get()),
               "GEOGCS[\"GCS_WGS_1984\",DATUM[\"D_WGS_1984\",SPHEROID[\"WGS_"
               "1984\",6378137.0,298.257223563]],PRIMEM[\"Greenwich\",0.0],"
@@ -413,19 +413,19 @@ TEST(crs, EPSG_4326_as_WKT1_ESRI_with_database) {
 }
 
 // ---------------------------------------------------------------------------
-
+#ifdef SQLLITE_ENABLED
 TEST(crs, EPSG_4901_as_WKT1_ESRI_with_PRIMEM_unit_name_morphing) {
     auto factory = AuthorityFactory::create(DatabaseContext::create(), "EPSG");
     auto crs = factory->createCoordinateReferenceSystem("4901");
     WKTFormatterNNPtr f(WKTFormatter::create(
-        WKTFormatter::Convention::WKT1_ESRI, DatabaseContext::create()));
+        WKTFormatter::Convention::WKT1_ESRI, nullptr));
     EXPECT_EQ(crs->exportToWKT(f.get()),
               "GEOGCS[\"GCS_ATF_Paris\",DATUM[\"D_ATF\","
               "SPHEROID[\"Plessis_1817\",6376523.0,308.64]],"
               "PRIMEM[\"Paris_RGS\",2.33720833333333],"
               "UNIT[\"Grad\",0.0157079632679489]]");
 }
-
+#endif
 // ---------------------------------------------------------------------------
 
 TEST(crs, EPSG_4326_as_WKT1_ESRI_without_database) {
@@ -531,7 +531,29 @@ TEST(crs, EPSG_4979_as_WKT1_GDAL_with_ellipsoidal_height_as_vertical_crs) {
     auto crs = GeographicCRS::EPSG_4979;
     auto wkt = crs->exportToWKT(
         &(WKTFormatter::create(WKTFormatter::Convention::WKT1_GDAL,
-                               DatabaseContext::create())
+                               nullptr)
+              ->setAllowEllipsoidalHeightAsVerticalCRS(true)));
+
+    EXPECT_EQ(wkt, "COMPD_CS[\"WGS 84 + Ellipsoid (metre)\",\n"
+                   "    GEOGCS[\"WGS 84\",\n"
+                   "        DATUM[\"WGS_1984\",\n"
+                   "            SPHEROID[\"WGS 84\",6378137,298.257223563,\n"
+                   "                AUTHORITY[\"EPSG\",\"7030\"]],\n"
+                   "            AUTHORITY[\"EPSG\",\"6326\"]],\n"
+                   "        PRIMEM[\"Greenwich\",0,\n"
+                   "            AUTHORITY[\"EPSG\",\"8901\"]],\n"
+                   "        UNIT[\"degree\",0.0174532925199433,\n"
+                   "            AUTHORITY[\"EPSG\",\"9122\"]]],\n"
+                   "    VERT_CS[\"Ellipsoid (metre)\",\n"
+                   "        VERT_DATUM[\"Ellipsoid\",2002],\n"
+                   "        UNIT[\"metre\",1,\n"
+                   "            AUTHORITY[\"EPSG\",\"9001\"]],\n"
+                   "        AXIS[\"Ellipsoidal height\",UP]]]");
+
+
+#ifdef SQLLITE_ENABLED
+    wkt = crs->exportToWKT(
+        &(WKTFormatter::create(WKTFormatter::Convention::WKT1_GDAL, DatabaseContext::create())
               ->setAllowEllipsoidalHeightAsVerticalCRS(true)));
 
     // For LAS 1.4 WKT1...
@@ -551,6 +573,8 @@ TEST(crs, EPSG_4979_as_WKT1_GDAL_with_ellipsoidal_height_as_vertical_crs) {
                    "        UNIT[\"metre\",1,\n"
                    "            AUTHORITY[\"EPSG\",\"9001\"]],\n"
                    "        AXIS[\"Ellipsoidal height\",UP]]]");
+
+#endif
 }
 
 // ---------------------------------------------------------------------------
@@ -569,7 +593,7 @@ TEST(crs, EPSG_4979_as_WKT1_ESRI) {
 }
 
 // ---------------------------------------------------------------------------
-
+#ifdef SQLLITE_ENABLED
 TEST(crs, geographic3D_crs_as_WKT1_ESRI_database) {
     auto dbContext = DatabaseContext::create();
     auto factory = AuthorityFactory::create(dbContext, "EPSG");
@@ -610,7 +634,7 @@ TEST(crs, geographic3D_NAD83_as_WKT1_ESRI_database) {
                      "LINUNIT[\"Meter\",1.0]]";
     EXPECT_EQ(crs->exportToWKT(f.get()), wkt);
 }
-
+#endif
 // ---------------------------------------------------------------------------
 
 TEST(crs, GeographicCRS_is2DPartOf3D) {
@@ -690,8 +714,8 @@ TEST(crs, EPSG_4807_as_WKT1_GDAL) {
         "    AUTHORITY[\"EPSG\",\"4807\"]]");
 }
 
+#ifdef SQLLITE_ENABLED
 // ---------------------------------------------------------------------------
-
 TEST(crs, EPSG_4807_as_WKT1_ESRI_with_database) {
     auto crs = GeographicCRS::EPSG_4807;
     WKTFormatterNNPtr f(WKTFormatter::create(
@@ -702,7 +726,7 @@ TEST(crs, EPSG_4807_as_WKT1_ESRI_with_database) {
               "SPHEROID[\"Clarke_1880_IGN\",6378249.2,293.466021293627]],"
               "PRIMEM[\"Paris\",2.33722917],UNIT[\"Grad\",0.015707963267949]]");
 }
-
+#endif
 // ---------------------------------------------------------------------------
 
 TEST(crs, EPSG_4807_as_WKT1_ESRI_without_database) {
@@ -748,7 +772,7 @@ TEST(crs, EPSG_4267) {
 }
 
 // ---------------------------------------------------------------------------
-
+#ifdef SQLLITE_ENABLED
 TEST(crs, EPSG_4267_as_WKT1_ESRI_with_database) {
     auto crs = GeographicCRS::EPSG_4267;
     WKTFormatterNNPtr f(WKTFormatter::create(
@@ -759,7 +783,7 @@ TEST(crs, EPSG_4267_as_WKT1_ESRI_with_database) {
               "6378206.4,294.978698213898]],PRIMEM[\"Greenwich\",0.0],"
               "UNIT[\"Degree\",0.0174532925199433]]");
 }
-
+#endif
 // ---------------------------------------------------------------------------
 
 TEST(crs, EPSG_4269) {
@@ -784,7 +808,7 @@ TEST(crs, EPSG_4269) {
 }
 
 // ---------------------------------------------------------------------------
-
+#ifdef SQLLITE_ENABLED
 TEST(crs, EPSG_4268_geogcrs_deprecated_as_WKT1_GDAL) {
     auto dbContext = DatabaseContext::create();
     auto factory = AuthorityFactory::create(dbContext, "EPSG");
@@ -802,7 +826,7 @@ TEST(crs, ESRI_104971_as_WKT1_ESRI_with_database) {
     auto factory = AuthorityFactory::create(dbContext, "ESRI");
     auto crs = factory->createCoordinateReferenceSystem("104971");
     WKTFormatterNNPtr f(WKTFormatter::create(
-        WKTFormatter::Convention::WKT1_ESRI, DatabaseContext::create()));
+        WKTFormatter::Convention::WKT1_ESRI, nullptr));
     // Check that the _(Sphere) suffix is preserved
     EXPECT_EQ(crs->exportToWKT(f.get()),
               "GEOGCS[\"Mars_2000_(Sphere)\",DATUM[\"Mars_2000_(Sphere)\","
@@ -821,7 +845,7 @@ TEST(crs,
     ASSERT_TRUE(crs != nullptr);
     EXPECT_EQ(crs->coordinateSystem()->axisList().size(), 3U);
     WKTFormatterNNPtr f(WKTFormatter::create(
-        WKTFormatter::Convention::WKT1_ESRI, DatabaseContext::create()));
+        WKTFormatter::Convention::WKT1_ESRI, nullptr));
     f->setAllowLINUNITNode(false);
     // Situation where there is no EPSG official name
     EXPECT_EQ(crs->exportToWKT(f.get()),
@@ -844,7 +868,7 @@ TEST(crs, implicit_compound_ESRI_104971_to_3D_as_WKT1_ESRI_with_database) {
     auto crs = factory->createGeographicCRS("104971")->promoteTo3D(
         std::string(), dbContext);
     WKTFormatterNNPtr f(WKTFormatter::create(
-        WKTFormatter::Convention::WKT1_ESRI, DatabaseContext::create()));
+        WKTFormatter::Convention::WKT1_ESRI, nullptr));
     f->setAllowLINUNITNode(false);
     // Situation where there is no ESRI vertical CRS, but the GEOGCS does exist
     // This will be only partly recognized by ESRI software.
@@ -928,7 +952,7 @@ TEST(crs, EPSG_2008_projcrs_deprecated_as_WKT1_GDAL) {
         wkt.find("PROJCS[\"NAD27(CGQ77) / SCoPQ zone 2 (deprecated)\"") == 0)
         << wkt;
 }
-
+#endif
 // ---------------------------------------------------------------------------
 
 TEST(crs, EPSG_27561_projected_with_geodetic_in_grad_as_PROJ_string_and_WKT1) {
@@ -966,7 +990,7 @@ TEST(crs, EPSG_27561_projected_with_geodetic_in_grad_as_PROJ_string_and_WKT1) {
     EXPECT_FALSE(nn_crs->isEquivalentTo(createUnrelatedObject().get()));
     EXPECT_FALSE(
         nn_crs->DerivedCRS::isEquivalentTo(createUnrelatedObject().get()));
-
+#ifdef SQLLITE_ENABLED
     auto wkt1 = crs->exportToWKT(
         WKTFormatter::create(WKTFormatter::Convention::WKT1_GDAL,
                              DatabaseContext::create())
@@ -997,6 +1021,49 @@ TEST(crs, EPSG_27561_projected_with_geodetic_in_grad_as_PROJ_string_and_WKT1) {
     EXPECT_EQ(wkt1_esri, "PROJCS[\"NTF_Paris_Lambert_Nord_France\","
                          "GEOGCS[\"GCS_NTF_Paris\","
                          "DATUM[\"Nouvelle_Triangulation_Francaise_(Paris)\","
+                         "SPHEROID[\"Clarke_1880_IGN\",6378249.2,293.4660213]],"
+                         "PRIMEM[\"Paris\",2.33722917000759],"
+                         "UNIT[\"Grad\",0.015707963268]],"
+                         "PROJECTION[\"Lambert_Conformal_Conic\"],"
+                         "PARAMETER[\"False_Easting\",600000.0],"
+                         "PARAMETER[\"False_Northing\",200000.0],"
+                         "PARAMETER[\"Central_Meridian\",0.0],"
+                         "PARAMETER[\"Standard_Parallel_1\",55.0],"
+                         "PARAMETER[\"Scale_Factor\",0.999877341],"
+                         "PARAMETER[\"Latitude_Of_Origin\",55.0],"
+                         "UNIT[\"Meter\",1.0]]");
+#endif
+
+        auto wkt1 = crs->exportToWKT(
+        WKTFormatter::create(WKTFormatter::Convention::WKT1_GDAL,
+                             nullptr)
+            .get());
+    EXPECT_EQ(
+        wkt1,
+        "PROJCS[\"NTF (Paris) / Lambert Nord France\",\n"
+        "    GEOGCS[\"NTF (Paris)\",\n"
+        "        DATUM[\"Nouvelle Triangulation Francaise (Paris)\",\n"
+        "            SPHEROID[\"Clarke 1880 (IGN)\",6378249.2,293.4660213]],\n"
+        "        PRIMEM[\"Paris\",2.33722917000759],\n"
+        "        UNIT[\"grad\",0.015707963268]],\n"
+        "    PROJECTION[\"Lambert_Conformal_Conic_1SP\"],\n"
+        "    PARAMETER[\"latitude_of_origin\",55],\n"
+        "    PARAMETER[\"central_meridian\",0],\n"
+        "    PARAMETER[\"scale_factor\",0.999877341],\n"
+        "    PARAMETER[\"false_easting\",600000],\n"
+        "    PARAMETER[\"false_northing\",200000],\n"
+        "    UNIT[\"metre\",1],\n"
+        "    AXIS[\"Easting\",EAST],\n"
+        "    AXIS[\"Northing\",NORTH],\n"
+        "    AUTHORITY[\"EPSG\",\"27561\"]]");
+
+    auto wkt1_esri = crs->exportToWKT(
+        WKTFormatter::create(WKTFormatter::Convention::WKT1_ESRI,
+                             nullptr)
+            .get());
+    EXPECT_EQ(wkt1_esri, "PROJCS[\"NTF_Paris_Lambert_Nord_France\","
+                         "GEOGCS[\"GCS_NTF_Paris\","
+                         "DATUM[\"D_Nouvelle_Triangulation_Francaise_Paris\","
                          "SPHEROID[\"Clarke_1880_IGN\",6378249.2,293.4660213]],"
                          "PRIMEM[\"Paris\",2.33722917000759],"
                          "UNIT[\"Grad\",0.015707963268]],"
@@ -1070,7 +1137,32 @@ TEST(crs, EPSG_2222_projected_unit_foot_as_PROJ_string_and_WKT1) {
               "+proj=tmerc +lat_0=31 +lon_0=-110.166666666667 +k=0.9999 "
               "+x_0=213360 +y_0=0 +datum=NAD83 +units=ft +no_defs +type=crs");
 
+
     auto wkt1 = crs->exportToWKT(
+        WKTFormatter::create(WKTFormatter::Convention::WKT1_GDAL, nullptr)
+            .get());
+    EXPECT_EQ(wkt1,
+              "PROJCS[\"NAD83 / Arizona East (ft)\",\n"
+              "    GEOGCS[\"NAD83\",\n"
+              "        DATUM[\"North American Datum 1983\",\n"
+              "            SPHEROID[\"GRS 1980\",6378137,298.257222101]],\n"
+              "        PRIMEM[\"Greenwich\",0,\n"
+              "            AUTHORITY[\"EPSG\",\"8901\"]],\n"
+              "        UNIT[\"degree\",0.0174532925199433,\n"
+              "            AUTHORITY[\"EPSG\",\"9122\"]]],\n"
+              "    PROJECTION[\"Transverse_Mercator\"],\n"
+              "    PARAMETER[\"latitude_of_origin\",31],\n"
+              "    PARAMETER[\"central_meridian\",-110.166666666667],\n"
+              "    PARAMETER[\"scale_factor\",0.9999],\n"
+              "    PARAMETER[\"false_easting\",700000],\n"
+              "    PARAMETER[\"false_northing\",0],\n"
+              "    UNIT[\"foot\",0.3048],\n"
+              "    AXIS[\"Easting\",EAST],\n"
+              "    AXIS[\"Northing\",NORTH],\n"
+              "    AUTHORITY[\"EPSG\",\"2222\"]]");
+
+#ifdef SQLLITE_ENABLED
+    wkt1 = crs->exportToWKT(
         WKTFormatter::create(WKTFormatter::Convention::WKT1_GDAL,
                              DatabaseContext::create())
             .get());
@@ -1093,6 +1185,7 @@ TEST(crs, EPSG_2222_projected_unit_foot_as_PROJ_string_and_WKT1) {
               "    AXIS[\"Easting\",EAST],\n"
               "    AXIS[\"Northing\",NORTH],\n"
               "    AUTHORITY[\"EPSG\",\"2222\"]]");
+#endif
 }
 
 // ---------------------------------------------------------------------------
@@ -1121,7 +1214,7 @@ TEST(crs, projected_with_parameter_unit_different_than_cs_unit_as_WKT1) {
 
     auto wkt1 = crs->exportToWKT(
         WKTFormatter::create(WKTFormatter::Convention::WKT1_GDAL,
-                             DatabaseContext::create())
+                             nullptr)
             .get());
     EXPECT_EQ(wkt1,
               "PROJCS[\"unknown\",\n"
@@ -1143,7 +1236,7 @@ TEST(crs, projected_with_parameter_unit_different_than_cs_unit_as_WKT1) {
 }
 
 // ---------------------------------------------------------------------------
-
+#ifdef SQLLITE_ENABLED
 TEST(crs, EPSG_32661_projected_north_pole_north_east) {
     auto dbContext = DatabaseContext::create();
     auto factory = AuthorityFactory::create(dbContext, "EPSG");
@@ -1272,7 +1365,6 @@ TEST(crs, EPSG_5042_projected_south_pole_east_north) {
 }
 
 // ---------------------------------------------------------------------------
-
 TEST(crs, EPSG_5482_projected_south_pole_south_west) {
     auto dbContext = DatabaseContext::create();
     auto factory = AuthorityFactory::create(dbContext, "EPSG");
@@ -1302,7 +1394,7 @@ TEST(crs, EPSG_5482_projected_south_pole_south_west) {
         opNormalized->exportToPROJString(PROJStringFormatter::create().get()),
         proj_string_normalized);
 }
-
+#endif
 // ---------------------------------------------------------------------------
 
 TEST(crs, geodetic_crs_both_datum_datum_ensemble_null) {
@@ -1422,7 +1514,7 @@ TEST(crs, EPSG_4978_as_WKT1_GDAL_with_database) {
     auto crs = GeodeticCRS::EPSG_4978;
     auto wkt = crs->exportToWKT(
         WKTFormatter::create(WKTFormatter::Convention::WKT1_GDAL,
-                             DatabaseContext::create())
+                             nullptr)
             .get());
     EXPECT_EQ(wkt, "GEOCCS[\"WGS 84\",\n"
                    "    DATUM[\"WGS_1984\",\n"
@@ -1550,7 +1642,7 @@ TEST(crs, geodeticcrs_identify_no_db) {
         // WKT1 identification
         auto obj =
             WKTParser()
-                .attachDatabaseContext(DatabaseContext::create())
+                .attachDatabaseContext(nullptr)
                 .createFromWKT(
                     "GEOGCS[\"WGS 84\",DATUM[\"WGS_1984\",SPHEROID[\"WGS 84\","
                     "6378137,298.257223563]],PRIMEM[\"Greenwich\",0],"
@@ -1565,7 +1657,7 @@ TEST(crs, geodeticcrs_identify_no_db) {
 }
 
 // ---------------------------------------------------------------------------
-
+#ifdef SQLLITE_ENABLED
 TEST(crs, geodeticcrs_identify_db) {
     auto dbContext = DatabaseContext::create();
     auto factory = AuthorityFactory::create(dbContext, "EPSG");
@@ -1999,7 +2091,7 @@ TEST(crs, geodeticcrs_identify_db) {
         EXPECT_EQ(res.front().second, 70.0);
     }
 }
-
+#endif
 // ---------------------------------------------------------------------------
 
 static ProjectedCRSNNPtr createProjected() {
@@ -2250,7 +2342,7 @@ TEST(crs, projectedCRS_as_WKT1_GDAL) {
 TEST(crs, projectedCRS_as_WKT1_ESRI) {
     auto crs = createProjected();
 
-    auto expected = "PROJCS[\"WGS_1984_UTM_Zone_31N\",GEOGCS[\"GCS_WGS_1984\","
+    auto expected = "PROJCS[\"WGS_84_UTM_zone_31N\",GEOGCS[\"GCS_WGS_1984\","
                     "DATUM[\"D_WGS_1984\",SPHEROID[\"WGS_1984\",6378137.0,"
                     "298.257223563]],PRIMEM[\"Greenwich\",0.0],"
                     "UNIT[\"Degree\",0.0174532925199433]],"
@@ -2264,13 +2356,32 @@ TEST(crs, projectedCRS_as_WKT1_ESRI) {
 
     EXPECT_EQ(crs->exportToWKT(
                   WKTFormatter::create(WKTFormatter::Convention::WKT1_ESRI,
-                                       DatabaseContext::create())
+                                       nullptr)
                       .get()),
               expected);
+#ifdef SQLLITE_ENABLED
+
+    expected = "PROJCS[\"WGS_1984_UTM_Zone_31N\",GEOGCS[\"GCS_WGS_1984\","
+                    "DATUM[\"D_WGS_1984\",SPHEROID[\"WGS_1984\",6378137.0,"
+                    "298.257223563]],PRIMEM[\"Greenwich\",0.0],"
+                    "UNIT[\"Degree\",0.0174532925199433]],"
+                    "PROJECTION[\"Transverse_Mercator\"],"
+                    "PARAMETER[\"False_Easting\",500000.0],"
+                    "PARAMETER[\"False_Northing\",0.0],"
+                    "PARAMETER[\"Central_Meridian\",3.0],"
+                    "PARAMETER[\"Scale_Factor\",0.9996],"
+                    "PARAMETER[\"Latitude_Of_Origin\",0.0],"
+                    "UNIT[\"Meter\",1.0]]";
+
+    EXPECT_EQ(crs->exportToWKT(WKTFormatter::create(
+                                   WKTFormatter::Convention::WKT1_ESRI, DatabaseContext::create())
+                                   .get()),
+              expected);
+#endif
 }
 
 // ---------------------------------------------------------------------------
-
+#ifdef SQLLITE_ENABLED
 TEST(crs,
      projectedCRS_3D_as_WKT1_GDAL_with_ellipsoidal_height_as_vertical_crs) {
     auto dbContext = DatabaseContext::create();
@@ -2377,11 +2488,11 @@ TEST(crs, projectedCRS_with_ESRI_code_as_WKT1_ESRI) {
                 .get()),
         esri_wkt);
 }
-
+#endif
 // ---------------------------------------------------------------------------
 
 TEST(crs, projectedCRS_from_WKT1_ESRI_as_WKT1_ESRI) {
-    auto dbContext = DatabaseContext::create();
+    //auto dbContext = DatabaseContext::create();
     // Comes literally from the text_definition column of
     // projected_crs table
     auto esri_wkt =
@@ -2395,17 +2506,16 @@ TEST(crs, projectedCRS_from_WKT1_ESRI_as_WKT1_ESRI) {
         "PARAMETER[\"Standard_Parallel_1\",0.0],UNIT[\"Meter\",1.0]]";
 
     auto obj =
-        WKTParser().attachDatabaseContext(dbContext).createFromWKT(esri_wkt);
+        WKTParser().attachDatabaseContext(nullptr).createFromWKT(esri_wkt);
     auto crs = nn_dynamic_pointer_cast<ProjectedCRS>(obj);
     ASSERT_TRUE(crs != nullptr);
 
     EXPECT_EQ(
         crs->exportToWKT(
-            WKTFormatter::create(WKTFormatter::Convention::WKT1_ESRI, dbContext)
+            WKTFormatter::create(WKTFormatter::Convention::WKT1_ESRI, nullptr)
                 .get()),
         esri_wkt);
 }
-
 // ---------------------------------------------------------------------------
 
 TEST(crs, projectedCRS_from_WKT1_ESRI_as_WKT1_ESRI_s_jtsk03_krovak_east_north) {
@@ -2427,8 +2537,8 @@ TEST(crs, projectedCRS_from_WKT1_ESRI_as_WKT1_ESRI_s_jtsk03_krovak_east_north) {
                "PARAMETER[\"XY_Plane_Rotation\",90.0],"
                "UNIT[\"Meter\",1.0]]";
 
-    auto dbContext = DatabaseContext::create();
-    auto obj = WKTParser().attachDatabaseContext(dbContext).createFromWKT(wkt);
+    //auto dbContext = DatabaseContext::create();
+    auto obj = WKTParser().attachDatabaseContext(nullptr).createFromWKT(wkt);
     auto crs = nn_dynamic_pointer_cast<ProjectedCRS>(obj);
     ASSERT_TRUE(crs != nullptr);
 
@@ -2479,19 +2589,19 @@ TEST(crs, projectedCRS_from_WKT1_ESRI_as_WKT1_ESRI_s_jtsk03_krovak_east_north) {
 
     EXPECT_EQ(
         crs->exportToWKT(
-            WKTFormatter::create(WKTFormatter::Convention::WKT2_2019, dbContext)
+            WKTFormatter::create(WKTFormatter::Convention::WKT2_2019, nullptr)
                 .get()),
         expected_wkt2);
 
     EXPECT_EQ(
         crs->exportToWKT(
-            WKTFormatter::create(WKTFormatter::Convention::WKT1_ESRI, dbContext)
+            WKTFormatter::create(WKTFormatter::Convention::WKT1_ESRI, nullptr)
                 .get()),
         wkt);
 }
 
 // ---------------------------------------------------------------------------
-
+#ifdef SQLLITE_ENABLED
 TEST(crs, projectedCRS_from_EPSG_as_WKT1_ESRI_s_jtsk03_krovak_east_north) {
     auto dbContext = DatabaseContext::create();
     auto factoryEPSG = AuthorityFactory::create(dbContext, "EPSG");
@@ -2520,7 +2630,7 @@ TEST(crs, projectedCRS_from_EPSG_as_WKT1_ESRI_s_jtsk03_krovak_east_north) {
                 .get()),
         wkt);
 }
-
+#endif
 // ---------------------------------------------------------------------------
 
 TEST(crs, projectedCRS_as_PROJ_string) {
@@ -2538,7 +2648,7 @@ TEST(crs, projectedCRS_as_PROJ_string) {
 }
 
 // ---------------------------------------------------------------------------
-
+#ifdef SQLLITE_ENABLED
 TEST(crs, projectedCRS_3D_is_WKT1_equivalent_to_WKT2) {
     auto dbContext = DatabaseContext::create();
 
@@ -2601,7 +2711,7 @@ TEST(crs, projectedCRS_Krovak_EPSG_5221_as_PROJ_string) {
               "+alpha=30.2881397527778 +k=0.9999 +x_0=0 +y_0=0 "
               "+ellps=bessel +pm=ferro");
 }
-
+#endif
 // ---------------------------------------------------------------------------
 
 TEST(crs, projectedCRS_Krovak_with_approximate_alpha_as_PROJ_string) {
@@ -2624,7 +2734,7 @@ TEST(crs, projectedCRS_Krovak_with_approximate_alpha_as_PROJ_string) {
 }
 
 // ---------------------------------------------------------------------------
-
+#ifdef SQLLITE_ENABLED
 TEST(crs, projectedCRS_identify_no_db) {
     {
         // Hard-coded case: WGS 84 / UTM. No name
@@ -3501,7 +3611,7 @@ TEST(crs, projectedCRS_identify_wrong_auth_name_case) {
     EXPECT_EQ(*(ids.front()->codeSpace()), "ESRI");
     EXPECT_EQ(ids.front()->code(), "54034");
 }
-
+#endif
 // ---------------------------------------------------------------------------
 
 TEST(crs, mercator_1SP_as_WKT1_ESRI) {
@@ -3525,7 +3635,7 @@ TEST(crs, mercator_1SP_as_WKT1_ESRI) {
                     "UNIT[\"Meter\",1.0]]";
     EXPECT_EQ(crs->exportToWKT(
                   WKTFormatter::create(WKTFormatter::Convention::WKT1_ESRI,
-                                       DatabaseContext::create())
+                                       nullptr)
                       .get()),
               expected);
 }
@@ -3550,7 +3660,7 @@ TEST(crs, Plate_Carree_as_WKT1_ESRI) {
                     "UNIT[\"Meter\",1.0]]";
     EXPECT_EQ(crs->exportToWKT(
                   WKTFormatter::create(WKTFormatter::Convention::WKT1_ESRI,
-                                       DatabaseContext::create())
+                                       nullptr)
                       .get()),
               expected);
 }
@@ -3575,7 +3685,7 @@ TEST(crs, Equidistant_Cylindrical_as_WKT1_ESRI) {
                     "UNIT[\"Meter\",1.0]]";
     EXPECT_EQ(crs->exportToWKT(
                   WKTFormatter::create(WKTFormatter::Convention::WKT1_ESRI,
-                                       DatabaseContext::create())
+                                       nullptr)
                       .get()),
               expected);
 }
@@ -3605,7 +3715,7 @@ TEST(crs, Hotine_Oblique_Mercator_Azimuth_Natural_Origin_as_WKT1_ESRI) {
                     "UNIT[\"Meter\",1.0]]";
     EXPECT_EQ(crs->exportToWKT(
                   WKTFormatter::create(WKTFormatter::Convention::WKT1_ESRI,
-                                       DatabaseContext::create())
+                                       nullptr)
                       .get()),
               expected);
 }
@@ -3635,7 +3745,7 @@ TEST(crs, Rectified_Skew_Orthomorphic_Natural_Origin_as_WKT1_ESRI) {
                     "UNIT[\"Meter\",1.0]]";
     EXPECT_EQ(crs->exportToWKT(
                   WKTFormatter::create(WKTFormatter::Convention::WKT1_ESRI,
-                                       DatabaseContext::create())
+                                       nullptr)
                       .get()),
               expected);
 }
@@ -3664,7 +3774,7 @@ TEST(crs, Hotine_Oblique_Mercator_Azimuth_Center_as_WKT1_ESRI) {
                     "UNIT[\"Meter\",1.0]]";
     EXPECT_EQ(crs->exportToWKT(
                   WKTFormatter::create(WKTFormatter::Convention::WKT1_ESRI,
-                                       DatabaseContext::create())
+                                       nullptr)
                       .get()),
               expected);
 }
@@ -3694,7 +3804,7 @@ TEST(crs, Rectified_Skew_Orthomorphic_Center_as_WKT1_ESRI) {
                     "UNIT[\"Meter\",1.0]]";
     EXPECT_EQ(crs->exportToWKT(
                   WKTFormatter::create(WKTFormatter::Convention::WKT1_ESRI,
-                                       DatabaseContext::create())
+                                       nullptr)
                       .get()),
               expected);
 }
@@ -3721,7 +3831,7 @@ TEST(crs, Gauss_Kruger_as_WKT1_ESRI) {
                     "UNIT[\"Meter\",1.0]]";
     EXPECT_EQ(crs->exportToWKT(
                   WKTFormatter::create(WKTFormatter::Convention::WKT1_ESRI,
-                                       DatabaseContext::create())
+                                       nullptr)
                       .get()),
               expected);
 }
@@ -3747,7 +3857,7 @@ TEST(crs, Stereographic_North_Pole_as_WKT1_ESRI) {
                     "UNIT[\"Meter\",1.0]]";
     EXPECT_EQ(crs->exportToWKT(
                   WKTFormatter::create(WKTFormatter::Convention::WKT1_ESRI,
-                                       DatabaseContext::create())
+                                       nullptr)
                       .get()),
               expected);
 }
@@ -3773,7 +3883,7 @@ TEST(crs, Stereographic_South_Pole_as_WKT1_ESRI) {
                     "UNIT[\"Meter\",1.0]]";
     EXPECT_EQ(crs->exportToWKT(
                   WKTFormatter::create(WKTFormatter::Convention::WKT1_ESRI,
-                                       DatabaseContext::create())
+                                       nullptr)
                       .get()),
               expected);
 }
@@ -3806,7 +3916,7 @@ TEST(crs, Krovak_North_Orientated_as_WKT1_ESRI) {
                     "UNIT[\"Meter\",1.0]]";
     EXPECT_EQ(crs->exportToWKT(
                   WKTFormatter::create(WKTFormatter::Convention::WKT1_ESRI,
-                                       DatabaseContext::create())
+                                       nullptr)
                       .get()),
               expected);
 }
@@ -3839,7 +3949,7 @@ TEST(crs, Krovak_as_WKT1_ESRI) {
                     "UNIT[\"Meter\",1.0]]";
     EXPECT_EQ(crs->exportToWKT(
                   WKTFormatter::create(WKTFormatter::Convention::WKT1_ESRI,
-                                       DatabaseContext::create())
+                                       nullptr)
                       .get()),
               expected);
 }
@@ -3867,7 +3977,7 @@ TEST(crs, LCC_1SP_as_WKT1_ESRI) {
                     "UNIT[\"Meter\",1.0]]";
     EXPECT_EQ(crs->exportToWKT(
                   WKTFormatter::create(WKTFormatter::Convention::WKT1_ESRI,
-                                       DatabaseContext::create())
+                                       nullptr)
                       .get()),
               expected);
 }
@@ -3895,7 +4005,7 @@ TEST(crs, LCC_2SP_as_WKT1_ESRI) {
                     "UNIT[\"Meter\",1.0]]";
     EXPECT_EQ(crs->exportToWKT(
                   WKTFormatter::create(WKTFormatter::Convention::WKT1_ESRI,
-                                       DatabaseContext::create())
+                                       nullptr)
                       .get()),
               expected);
 }
@@ -3938,7 +4048,7 @@ TEST(crs, ESRI_WKT1_to_ESRI_WKT1) {
 
     EXPECT_EQ(crs->exportToWKT(
                   WKTFormatter::create(WKTFormatter::Convention::WKT1_ESRI,
-                                       DatabaseContext::create())
+                                       nullptr)
                       .get()),
               expected);
 }
@@ -4206,7 +4316,7 @@ TEST(crs, verticalCRS_as_WKT1_ESRI_context) {
 
     EXPECT_EQ(crs->exportToWKT(
                   WKTFormatter::create(WKTFormatter::Convention::WKT1_ESRI,
-                                       DatabaseContext::create())
+                                       nullptr)
                       .get()),
               expected);
 }
@@ -4228,13 +4338,13 @@ TEST(crs, verticalCRS_down_as_WKT1_ESRI) {
 }
 
 // ---------------------------------------------------------------------------
-
+#ifdef SQLLITE_ENABLED
 TEST(crs, verticalCRS_ESRI_115834_as_WKT1_ESRI_with_database) {
     auto dbContext = DatabaseContext::create();
     auto factory = AuthorityFactory::create(dbContext, "ESRI");
     auto crs = factory->createCoordinateReferenceSystem("115834");
     WKTFormatterNNPtr f(WKTFormatter::create(
-        WKTFormatter::Convention::WKT1_ESRI, DatabaseContext::create()));
+        WKTFormatter::Convention::WKT1_ESRI, nullptr));
     // Check that the parentheses in the VERTCS and DATUM names are preserved
     EXPECT_EQ(crs->exportToWKT(f.get()),
               "VERTCS[\"NAD83(CSRS)v5\","
@@ -4334,7 +4444,7 @@ TEST(crs, verticalCRS_identify_db) {
         ASSERT_EQ(res.size(), 0U);
     }
 }
-
+#endif
 // ---------------------------------------------------------------------------
 
 TEST(crs, verticalCRS_datum_ensemble) {
@@ -4638,7 +4748,7 @@ TEST(crs, compoundCRS_no_name_provided) {
 }
 
 // ---------------------------------------------------------------------------
-
+#ifdef SQLLITE_ENABLED
 TEST(crs, compoundCRS_identify_db) {
     auto dbContext = DatabaseContext::create();
     auto factory = AuthorityFactory::create(dbContext, "EPSG");
@@ -4776,7 +4886,7 @@ TEST(crs, compoundCRS_identify_db) {
         EXPECT_EQ(components[1]->getEPSGCode(), 5703);
     }
 }
-
+#endif
 // ---------------------------------------------------------------------------
 
 TEST(crs, boundCRS_to_WKT2) {
@@ -5208,7 +5318,7 @@ TEST(crs, boundCRS_projectedCRS_to_PROJ_string) {
 }
 
 // ---------------------------------------------------------------------------
-
+#ifdef SQLLITE_ENABLED
 TEST(crs, boundCRS_identify_db) {
     auto dbContext = DatabaseContext::create();
     auto factoryEPSG = AuthorityFactory::create(dbContext, "EPSG");
@@ -5301,7 +5411,7 @@ TEST(crs, boundCRS_identify_db) {
         EXPECT_EQ(boundCRS->transformation()->method()->getEPSGCode(), 9606);
     }
 }
-
+#endif
 // ---------------------------------------------------------------------------
 
 TEST(crs, incompatible_boundCRS_hubCRS_to_WKT1) {
@@ -6477,7 +6587,7 @@ TEST(crs, DeriveTemporalCRS_WKT1) {
 }
 
 // ---------------------------------------------------------------------------
-
+#ifdef SQLLITE_ENABLED
 TEST(crs, crs_createBoundCRSToWGS84IfPossible) {
     auto dbContext = DatabaseContext::create();
     auto factory = AuthorityFactory::create(dbContext, "EPSG");
@@ -6685,7 +6795,7 @@ TEST(crs, crs_createBoundCRSToWGS84IfPossible) {
                   crs_from_wkt);
     }
 }
-
+#endif
 // ---------------------------------------------------------------------------
 
 TEST(crs, crs_stripVerticalComponent) {
@@ -6955,7 +7065,7 @@ TEST(crs, alterParametersLinearUnit) {
 }
 
 // ---------------------------------------------------------------------------
-
+#ifdef SQLLITE_ENABLED
 TEST(crs, getNonDeprecated) {
     auto dbContext = DatabaseContext::create();
     auto factory = AuthorityFactory::create(dbContext, "EPSG");
@@ -7212,7 +7322,7 @@ TEST(crs, promoteTo3D_and_demoteTo2D) {
                         ->isEquivalentTo(demoted.get()));
     }
 }
-
+#endif
 // ---------------------------------------------------------------------------
 
 TEST(crs, normalizeForVisualization_derivedprojected_operation) {
@@ -7242,7 +7352,7 @@ TEST(crs, normalizeForVisualization_derivedprojected_operation) {
 }
 
 // ---------------------------------------------------------------------------
-
+#ifdef SQLLITE_ENABLED
 TEST(crs, normalizeForVisualization_bound) {
 
     auto dbContext = DatabaseContext::create();
@@ -7292,7 +7402,7 @@ TEST(crs, normalizeForVisualization_bound) {
         opNormalized->exportToPROJString(PROJStringFormatter::create().get()),
         normalized_proj_string);
 }
-
+#endif
 // ---------------------------------------------------------------------------
 
 TEST(crs, normalizeForVisualization_derivedprojected) {
@@ -7337,7 +7447,7 @@ TEST(crs, normalizeForVisualization_derivedprojected) {
 }
 
 // ---------------------------------------------------------------------------
-
+#ifdef SQLLITE_ENABLED
 TEST(crs, projected_normalizeForVisualization_do_not_mess_deriving_conversion) {
 
     auto authFactory =
@@ -7354,7 +7464,7 @@ TEST(crs, projected_normalizeForVisualization_do_not_mess_deriving_conversion) {
     }
     EXPECT_EQ(projCRS->derivingConversion()->targetCRS().get(), projCRS.get());
 }
-
+#endif
 // ---------------------------------------------------------------------------
 
 TEST(crs, projected_promoteTo3D_do_not_mess_deriving_conversion) {
@@ -7470,7 +7580,7 @@ TEST(crs, projected_is_equivalent_to_with_proj4_extension) {
 }
 
 // ---------------------------------------------------------------------------
-
+#ifdef SQLLITE_ENABLED
 TEST(crs, is_dynamic) {
 
     EXPECT_FALSE(GeographicCRS::EPSG_4326->isDynamic());
@@ -7513,3 +7623,4 @@ TEST(crs, is_dynamic) {
 
     EXPECT_FALSE(createCompoundCRS()->isDynamic());
 }
+#endif

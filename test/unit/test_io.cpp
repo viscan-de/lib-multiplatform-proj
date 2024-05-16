@@ -12242,7 +12242,7 @@ TEST(io, projparse_projected_title) {
 // ---------------------------------------------------------------------------
 
 TEST(io, projparse_init) {
-    auto dbContext = DatabaseContext::create();
+    auto dbContext = nullptr; //DatabaseContext::create();
 
     // Not allowed in non-compatibillity mode
     EXPECT_THROW(

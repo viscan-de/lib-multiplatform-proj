@@ -57,7 +57,7 @@ static std::string CPLSPrintf(const char *fmt, ...) {
 #ifdef SQLLITE_ENABLED
     sqlite3_vsnprintf(256, &res[0], fmt, list);
 #else
-    snprintf(&res[0], 256, fmt, list);
+    vsnprintf(&res[0], 256, fmt, list);
 #endif
     va_end(list);
     res.resize(strlen(&res[0]));
