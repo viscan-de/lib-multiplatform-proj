@@ -1,7 +1,7 @@
 # Configure executable builds
 option(BUILD_APPS
   "Build PROJ applications (default value for BUILD_CCT, BUILD_CS2CS, etc.)"
-  ON)
+  OFF)
 
 option(BUILD_CCT
   "Build cct (coordinate conversion and transformation tool)"
@@ -21,6 +21,7 @@ option(BUILD_PROJ
 option(BUILD_PROJINFO
   "Build projinfo (SRS and coordinate operation metadata/query tool)"
   "${BUILD_APPS}")
+
 option(BUILD_PROJSYNC
   "Build projsync (synchronize transformation support data)"
   "${BUILD_APPS}")
@@ -76,6 +77,7 @@ if(BUILD_GIE OR BUILD_TESTING)
   include(bin_gie.cmake)
   list(APPEND BIN_TARGETS gie)
 endif()
+
 
 if(BUILD_PROJSYNC)
   if(NOT ENABLE_CURL)
