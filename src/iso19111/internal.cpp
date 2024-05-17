@@ -46,8 +46,7 @@
 #include <sstream> // std::istringstream and std::ostringstream
 #include <string>
 
-#undef SQLLITE_ENABLED
-#ifdef SQLLITE_ENABLED
+#ifndef _WIN32
 #include "sqlite3.h"
 #endif
 
