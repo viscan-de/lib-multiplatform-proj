@@ -170,14 +170,12 @@ jobs:
       if: ${{ matrix.os == 'macos-latest' || matrix.os == 'ubuntu-latest' }}
       run: |
         rootsrcdir="$(pwd)"
-
-        cd ${{ steps.strings.outputs.build-output-dir }}
-        cd lib
-        ls -oh $rootsrcdir
-        ls -oh $rootsrcdir/libtiff
-        ls -oh $rootsrcdir/libtiff/lib
+        cd libtiff
+        cp ${{ steps.strings.outputs.build-output-dir }}/lib/*.a ./
+        ls -oh ./
+        
         for f in * ; do libsfound="$libsfound\naddlib $f\n" ; done
-        printf "create libprojcomplete.a\n$libsfound\naddlib $rootsrcdir/libtiff/libtiff.a\naddlib $rootsrcdir/libtiff/libjpeg.a\naddlib $rootsrcdir/libtiff/libpng16.a\naddlib $rootsrcdir/libtiff/libtiffxx.a\nsave\nend" > libprojcomplete.mri
+        printf "create libprojcomplete.a\n$libsfound\nsave\nend" > libprojcomplete.mri
         cat libprojcomplete.mri
         ar -M <libprojcomplete.mri
         ls -oh
