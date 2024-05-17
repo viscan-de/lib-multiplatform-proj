@@ -165,6 +165,16 @@ jobs:
       # Build your program with the given configuration. Note that --config is needed because the default Windows generator is a multi-config generator (Visual Studio generator).
       run: cmake --build ${{ steps.strings.outputs.build-output-dir }} --config ${{ matrix.build_type }} -t proj
 
+    - name: Combine static libraries (Linux)
+      if: ${{ matrix.os == 'macos-latest' || matrix.os == 'ubuntu-latest' }}
+      run: |
+        cd ${{ steps.strings.outputs.build-output-dir }}
+        cd lib
+        for f in * ; do libsfound="$libsfound\naddlib $f\n" ; done
+        printf "create libprojcomplete.a\n$libsfound\naddlib ./libtiff/lib/libtiff.a\naddlib ./libtiff/lib/libjpeg.a\naddlib ./libtiff/lib/libpng16.a\naddlib ./libtiff/lib/libtiffxx.a\nsave\nend" > libprojcomplete.mri
+        cat libprojcomplete.mri
+        ar -M <libprojcomplete.mri
+        ls -oh
 #    - name: Test
 #      working-directory: ${{ steps.strings.outputs.build-output-dir }}
 #      # Execute tests defined by the CMake configuration. Note that --build-config is needed because the default Windows generator is a multi-config generator (Visual Studio generator).
