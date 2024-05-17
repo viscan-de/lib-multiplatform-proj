@@ -152,8 +152,9 @@ jobs:
       # See https://cmake.org/cmake/help/latest/variable/CMAKE_BUILD_TYPE.html?highlight=cmake_build_type
       if: ${{ matrix.os == 'windows-latest' }}
       run: >
-        cmake -GXcode -B ${{ steps.strings.outputs.build-output-dir }} 
-        -DCMAKE_TOOLCHAIN_FILE=./ios.cmake -DIOS_PLATFORM=${{ matrix.ios_platform }}
+        cmake -B ${{ steps.strings.outputs.build-output-dir }} 
+        -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }}
+        -DCMAKE_C_COMPILER=${{ matrix.c_compiler }}
         -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
         -DCMAKE_BUILDENV_GITHUB=ON
         -DBUILD_APPS=OFF 
