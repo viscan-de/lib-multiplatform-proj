@@ -229,7 +229,7 @@ jobs:
         cp libprojcomplete.a ${{ steps.strings.outputs.build-output-dir }}/lib/libproj.a
         ls -oh ${{ steps.strings.outputs.build-output-dir }}/lib/
 
-    - name: Combine static libraries (Linux)
+    - name: Combine static libraries (Mac)
       if: ${{ matrix.os == 'macos-latest' }}
       run: |
         rootsrcdir="$(pwd)"
