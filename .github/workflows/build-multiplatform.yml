@@ -172,13 +172,14 @@ jobs:
         rootsrcdir="$(pwd)"
         cd libtiff/lib
         cp ${{ steps.strings.outputs.build-output-dir }}/lib/*.a ./
-        ls -oh ./
         
         for f in * ; do libsfound="$libsfound\naddlib $f\n" ; done
         printf "create libprojcomplete.a\n$libsfound\nsave\nend" > libprojcomplete.mri
         cat libprojcomplete.mri
         ar -M <libprojcomplete.mri
-        ls -oh
+        cp libprojcomplete.a ${{ steps.strings.outputs.build-output-dir }}/lib/libproj.a
+        ls -oh ${{ steps.strings.outputs.build-output-dir }}/lib/
+        
 #    - name: Test
 #      working-directory: ${{ steps.strings.outputs.build-output-dir }}
 #      # Execute tests defined by the CMake configuration. Note that --build-config is needed because the default Windows generator is a multi-config generator (Visual Studio generator).
