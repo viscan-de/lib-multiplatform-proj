@@ -188,7 +188,7 @@ jobs:
         cp ${{ steps.strings.outputs.build-output-dir }}/lib/*.a ./
         
         for f in * ; do libsfound="$libsfound $f" ; done
-        xcrun lipo $libsfound -create -output libprojcomplete.a
+        xcrun libtool -static -o libprojcomplete.a $libsfound
         ls -oh ./
         cp libprojcomplete.a ${{ steps.strings.outputs.build-output-dir }}/lib/libproj.a
         ls -oh ${{ steps.strings.outputs.build-output-dir }}/lib/
