@@ -31,9 +31,11 @@ jobs:
           - os: ubuntu-latest
             c_compiler: gcc
             cpp_compiler: g++
+            apple_env: posix
           - os: ubuntu-latest
             c_compiler: clang
             cpp_compiler: clang++
+            apple_env: posix
         exclude:
           - os: macos-latest
             c_compiler: clang_ios_sim
@@ -72,34 +74,84 @@ jobs:
     - name: Checkout repository (lib-multiplatform-proj)
       uses: actions/checkout@v4
 
-#    - name: Checkout JSON repository (nlohmann/json)
-#      uses: actions/checkout@master
-#      with:
-#        path: ./.json
-#        repository: nlohmann/json
+    - name: Check out libtiff (Mac & Linux)
+      # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
+      # See https://cmake.org/cmake/help/latest/variable/CMAKE_BUILD_TYPE.html?highlight=cmake_build_type
+      if: ${{ matrix.os == 'macos-latest' || matrix.os == 'ubuntu-latest' }}
+      uses: actions/checkout@master
+      with:
+        path: ./.libtiff
+        repository: viscan-de/lib-multiplatform-tiff
 
-#    - name: Checkout Eigen3 repository (gitlab Eigen3)
-#      run: git clone https://gitlab.com/libeigen/eigen.git ./.eigen
+    - name: Build libtiff (Mac & Linux)
+      if: ${{ matrix.os == 'macos-latest' || matrix.os == 'ubuntu-latest' }}
+      run: |
+        cd .libtiff
+        make platform=${{ matrix.apple_env }}
+        ln -s ./.libtiff/${{ matrix.apple_env }}/dependencies ../libtiff
 
-#    - name: Checkout GGeodesy repository (xanthospap/ggeodesy)
-#      uses: actions/checkout@master
-#      with:
-#        path: ./.ggeodesy
-#        repository: xanthospap/ggeodesy
+    - name: Check out vcpkg (Windows)
+      # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
+      # See https://cmake.org/cmake/help/latest/variable/CMAKE_BUILD_TYPE.html?highlight=cmake_build_type
+      if: ${{ matrix.os == 'windows-latest' }}
+      uses: actions/checkout@master
+      with:
+        path: ./.vcpkg
+        repository: microsoft/vcpkg
+        
+    - name: Build libtiff
+      if: ${{ matrix.os == 'windows-latest' }}
+      run: |
+        cd .vcpkg && bootstrap-vcpkg.bat
+        vcpkg install tiff
 
     - name: Set reusable strings
       # Turn repeated input strings (such as the build output directory) into step outputs. These step outputs can be used throughout the workflow file.
       id: strings
       shell: bash
       run: |
-        echo "build-output-dir=${{ github.workspace }}/build" >> "$GITHUB_OUTPUT"
+        #echo "build-output-dir=${{ github.workspace }}/build" >> "$GITHUB_OUTPUT"
+        echo "build-output-dir=$(echo "${{ github.workspace }}/build" | sed -e 's/\\/\//g')" >> "$GITHUB_OUTPUT"
 
     - name: Configure CMake
       # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
       # See https://cmake.org/cmake/help/latest/variable/CMAKE_BUILD_TYPE.html?highlight=cmake_build_type
-      if: ${{ matrix.c_compiler != 'clang_ios_sim' &&  matrix.c_compiler != 'clang_ios_os' }}
+      if: ${{ matrix.c_compiler != 'clang_ios_sim' &&  matrix.c_compiler != 'clang_ios_os' && matrix.os != 'windows-latest' }}
       run: >
         cmake -B ${{ steps.strings.outputs.build-output-dir }}
+        -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }}
+        -DCMAKE_C_COMPILER=${{ matrix.c_compiler }}
+        -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+        -DCMAKE_BUILDENV_GITHUB=ON
+        -DBUILD_APPS=OFF
+        -DBUILD_PROJSYNC=OFF 
+        -DBUILD_SHARED_LIBS=OFF
+        -DTIFF_LIBRARY=./libtiff/lib 
+        -DTIFF_INCLUDE_DIR=./libtiff/include
+        -S ${{ github.workspace }}
+  
+    - name: Configure CMake for iOS
+      # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
+      # See https://cmake.org/cmake/help/latest/variable/CMAKE_BUILD_TYPE.html?highlight=cmake_build_type
+      if: ${{ (matrix.c_compiler == 'clang_ios_sim' ||  matrix.c_compiler == 'clang_ios_os') && matrix.os == 'macos-latest' }}
+      run: >
+        cmake -GXcode -B ${{ steps.strings.outputs.build-output-dir }} 
+        -DCMAKE_TOOLCHAIN_FILE=./ios.cmake -DIOS_PLATFORM=${{ matrix.ios_platform }}
+        -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+        -DCMAKE_BUILDENV_GITHUB=ON
+        -DBUILD_APPS=OFF 
+        -DBUILD_PROJSYNC=OFF 
+        -DBUILD_SHARED_LIBS=OFF
+        -DTIFF_LIBRARY=./libtiff/lib 
+        -DTIFF_INCLUDE_DIR=./libtiff/include
+        -S ${{ github.workspace }}
+
+    - name: Configure CMake for Windows
+      # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
+      # See https://cmake.org/cmake/help/latest/variable/CMAKE_BUILD_TYPE.html?highlight=cmake_build_type
+      if: ${{ matrix.os == 'windows-latest' }}
+      run: >
+        cmake -B ${{ steps.strings.outputs.build-output-dir }} 
         -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }}
         -DCMAKE_C_COMPILER=${{ matrix.c_compiler }}
         -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
@@ -107,53 +159,76 @@ jobs:
         -DBUILD_APPS=OFF 
         -DBUILD_PROJSYNC=OFF 
         -DBUILD_SHARED_LIBS=OFF
-        -S ${{ github.workspace }}
-
-    - name: Configure CMake for iOS
-      # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
-      # See https://cmake.org/cmake/help/latest/variable/CMAKE_BUILD_TYPE.html?highlight=cmake_build_type
-      if: ${{ (matrix.c_compiler == 'clang_ios_sim' ||  matrix.c_compiler == 'clang_ios_os') && matrix.os == 'macos-latest' }}
-      run: >
-        cmake -GXcode -B ${{ steps.strings.outputs.build-output-dir }} -DCMAKE_TOOLCHAIN_FILE=./ios.cmake -DIOS_PLATFORM=${{ matrix.ios_platform }}
-        -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
-        -DCMAKE_BUILDENV_GITHUB=ON
-        -DBUILD_APPS=OFF 
-        -DBUILD_PROJSYNC=OFF 
-        -DBUILD_SHARED_LIBS=OFF
+        -DTIFF_LIBRARY="./.vcpkg/installed/x64-windows/lib"
+        -DTIFF_INCLUDE_DIR="./.vcpkg/installed/x64-windows/include"
         -S ${{ github.workspace }}
 
     - name: Build
+      shell: bash
       # Build your program with the given configuration. Note that --config is needed because the default Windows generator is a multi-config generator (Visual Studio generator).
-      run: cmake --build ${{ steps.strings.outputs.build-output-dir }} --config ${{ matrix.build_type }} -t proj
+      run: |
+        cmake --build ${{ steps.strings.outputs.build-output-dir }} --config ${{ matrix.build_type }} -t proj
+        cd ${{ steps.strings.outputs.build-output-dir }}
+        cd lib
+        if [ -d "${{ matrix.build_type }}" ]; then
+          echo "${{ matrix.build_type }} does exist."
+          mv ./${{ matrix.build_type }}/* ./
+        fi
 
-    #- name: Test
-    #  working-directory: ${{ steps.strings.outputs.build-output-dir }}
-    #  # Execute tests defined by the CMake configuration. Note that --build-config is needed because the default Windows generator is a multi-config generator (Visual Studio generator).
-    #  # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
-    #  run: ctest --build-config ${{ matrix.build_type }} --output-on-failure
+    - name: Combine static libraries (Linux)
+      if: ${{ matrix.os == 'ubuntu-latest' }}
+      run: |
+        rootsrcdir="$(pwd)"
+        cd libtiff/lib
+        cp ${{ steps.strings.outputs.build-output-dir }}/lib/*.a ./
+        
+        for f in * ; do libsfound="$libsfound\naddlib $f\n" ; done
+        printf "create libprojcomplete.a\n$libsfound\nsave\nend" > libprojcomplete.mri
+        cat libprojcomplete.mri
+        ar -M <libprojcomplete.mri
+        cp libprojcomplete.a ${{ steps.strings.outputs.build-output-dir }}/lib/libproj.a
+        ls -oh ${{ steps.strings.outputs.build-output-dir }}/lib/
 
-    #- name: Generate coverage report (GCC)
-    #  uses: threeal/gcovr-action@v1.0.0
-    #  if: ${{ (matrix.os == 'macos-latest' ||  matrix.c_compiler == 'gcc') && (matrix.c_compiler != 'clang_ios_sim' &&  matrix.c_compiler != 'clang_ios_os') }}
-    #  with:
-    #    fail-under-line: 90
-    #    excludes: |
-    #      test/*
-    #      sample/*
-    #      build/*
-    #      .json/*
-    #      .eigen/*
+    - name: Combine static libraries (Mac OS)
+      if: ${{ matrix.os == 'macos-latest' }}
+      run: |
+        rootsrcdir="$(pwd)"
+        cd libtiff/lib
+        cp ${{ steps.strings.outputs.build-output-dir }}/lib/*.a ./
+        
+        for f in * ; do libsfound="$libsfound $f" ; done
+        xcrun libtool -static -o libprojcomplete.a $libsfound
+        ls -oh ./
+        cp libprojcomplete.a ${{ steps.strings.outputs.build-output-dir }}/lib/libproj.a
+        ls -oh ${{ steps.strings.outputs.build-output-dir }}/lib/
+        
+#    - name: Test
+#      working-directory: ${{ steps.strings.outputs.build-output-dir }}
+#      # Execute tests defined by the CMake configuration. Note that --build-config is needed because the default Windows generator is a multi-config generator (Visual Studio generator).
+#      # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
+#      run: ctest --build-config ${{ matrix.build_type }} --output-on-failure
 
-    #- name: Generate coverage report (CLANG)
-    #  uses: threeal/gcovr-action@v1.0.0
-    #  if: ${{ (matrix.os != 'macos-latest' &&  matrix.c_compiler == 'clang') && (matrix.c_compiler != 'clang_ios_sim' &&  matrix.c_compiler != 'clang_ios_os') }}
-    #  with:
-    #    fail-under-line: 90
-    #    gcov-executable: llvm-cov gcov
-    #    excludes: |
-    #      test/*
-    #      sample/*
-    #      build/*
-    #      .json/*
-    #      .eigen/*
+#    - name: Generate coverage report (GCC)
+#      uses: threeal/gcovr-action@v1.0.0
+#      if: ${{ (matrix.os != 'macos-latest' &&  matrix.c_compiler == 'gcc') && (matrix.c_compiler != 'clang_ios_sim' &&  matrix.c_compiler != 'clang_ios_os') }}
+#      with:
+#        fail-under-line: 90
+#        excludes: |
+#          test/*
+#          sample/*
+#          build/*
+#          .json/*
+#          .eigen/*
 
+#    - name: Generate coverage report (CLANG)
+#      uses: threeal/gcovr-action@v1.0.0
+#      if: ${{ (matrix.os != 'macos-latest' &&  matrix.c_compiler == 'clang') && (matrix.c_compiler != 'clang_ios_sim' &&  matrix.c_compiler != 'clang_ios_os') }}
+#      with:
+#        fail-under-line: 90
+#        gcov-executable: llvm-cov gcov
+#        excludes: |
+#          test/*
+#          sample/*
+#          build/*
+#          .json/*
+#          .eigen/*
