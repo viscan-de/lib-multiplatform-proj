@@ -28,7 +28,7 @@ jobs:
           release_name: Release ${{ github.ref }}
           draft: false
           prerelease: false
-      - name: Checkout repository (lib-multiplatform-coordinate-transformation)
+      - name: Checkout repository (lib-multiplatform-proj)
         uses: actions/checkout@v4
       - name: Release
         uses: softprops/action-gh-release@v1
@@ -109,7 +109,7 @@ jobs:
             c_compiler: clang_ios_sim
 
     steps:
-    - name: Checkout repository (lib-multiplatform-coordinate-transformation)
+    - name: Checkout repository (lib-multiplatform-proj)
       uses: actions/checkout@v4
 
     - name: Check out libtiff (iOS)
@@ -202,6 +202,7 @@ jobs:
       # Build your program with the given configuration. Note that --config is needed because the default Windows generator is a multi-config generator (Visual Studio generator).
       run: |
         cmake --build ${{ steps.strings.outputs.build-output-dir }} --config ${{ matrix.build_type }} -t proj
+        ls -Roh ${{ steps.strings.outputs.build-output-dir }}/../*
         cd ${{ steps.strings.outputs.build-output-dir }}
         cd lib/${{ matrix.build_type }}
         for f in * ; do mv "$f" ${{ matrix.library_name_extension }}_"$f" ; done
@@ -258,14 +259,14 @@ jobs:
         files: |
           ${{ steps.strings.outputs.build-output-dir-slashes }}/lib/${{ matrix.build_type }}/*
 
-  trigger_update:
-    name: Trigger framework update
-    needs: release_assets
-    runs-on: ubuntu-latest
-    steps:
-    - name: Repository Dispatch
-      uses: peter-evans/repository-dispatch@v2
-      with:
-        token: ${{ secrets.TRIGGER_FW_UPDATE }}
-        repository: vigram-sw/framework-ios-coordinate-transformation
-        event-type: libCoordTrafoRelease
+#  trigger_update:
+#    name: Trigger framework update
+#    needs: release_assets
+#    runs-on: ubuntu-latest
+#    steps:
+#    - name: Repository Dispatch
+#      uses: peter-evans/repository-dispatch@v2
+#      with:
+#        token: ${{ secrets.TRIGGER_FW_UPDATE }}
+#        repository: viscan-de/framework-ios-coordinate-transformation
+#        event-type: libCoordTrafoRelease
