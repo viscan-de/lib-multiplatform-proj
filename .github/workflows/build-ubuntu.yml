@@ -114,13 +114,13 @@ jobs:
       # See https://cmake.org/cmake/help/latest/variable/CMAKE_BUILD_TYPE.html?highlight=cmake_build_type
       if: ${{ (matrix.c_compiler == 'clang_ios_sim' ||  matrix.c_compiler == 'clang_ios_os') && matrix.os == 'macos-latest' }}
       run: >
-        cmake -B ${{ steps.strings.outputs.build-output-dir }} -DCMAKE_TOOLCHAIN_FILE=./ios.cmake -DIOS_PLATFORM=${{ matrix.ios_platform }}
+        cmake -GXcode -B ${{ steps.strings.outputs.build-output-dir }} -DCMAKE_TOOLCHAIN_FILE=./ios.cmake -DIOS_PLATFORM=${{ matrix.ios_platform }}
         -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
         -DCMAKE_BUILDENV_GITHUB=ON
         -DBUILD_APPS=OFF 
         -DBUILD_PROJSYNC=OFF 
         -DBUILD_SHARED_LIBS=OFF
-        -S ${{ github.workspace }} -GXcode 
+        -S ${{ github.workspace }}
 
     - name: Build
       # Build your program with the given configuration. Note that --config is needed because the default Windows generator is a multi-config generator (Visual Studio generator).
