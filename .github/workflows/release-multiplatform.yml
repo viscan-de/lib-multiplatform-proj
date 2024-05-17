@@ -204,7 +204,11 @@ jobs:
         cmake --build ${{ steps.strings.outputs.build-output-dir }} --config ${{ matrix.build_type }} -t proj
         ls -Roh ${{ steps.strings.outputs.build-output-dir }}/../*
         cd ${{ steps.strings.outputs.build-output-dir }}
-        cd lib/${{ matrix.build_type }}
+        cd lib
+        if [ -d "$DIRECTORY" ]; then
+          echo "${{ matrix.build_type }} does exist."
+          mv ./${{ matrix.build_type }}/* ./
+        fi
         for f in * ; do mv "$f" ${{ matrix.library_name_extension }}_"$f" ; done
 
 #    - name: Test
@@ -257,7 +261,7 @@ jobs:
       if: startsWith(github.ref, 'refs/tags/')
       with:
         files: |
-          ${{ steps.strings.outputs.build-output-dir-slashes }}/lib/${{ matrix.build_type }}/*
+          ${{ steps.strings.outputs.build-output-dir-slashes }}/lib/*
 
 #  trigger_update:
 #    name: Trigger framework update

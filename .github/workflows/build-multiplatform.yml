@@ -69,7 +69,7 @@ jobs:
             c_compiler: clang_ios_sim
 
     steps:
-    - name: Checkout repository (lib-multiplatform-coordinate-transformation)
+    - name: Checkout repository (lib-multiplatform-proj)
       uses: actions/checkout@v4
 
     - name: Check out libtiff (iOS)
