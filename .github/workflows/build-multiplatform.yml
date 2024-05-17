@@ -147,6 +147,22 @@ jobs:
         -DTIFF_INCLUDE_DIR=./libtiff/include
         -S ${{ github.workspace }}
 
+    - name: Configure CMake for Windows
+      # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
+      # See https://cmake.org/cmake/help/latest/variable/CMAKE_BUILD_TYPE.html?highlight=cmake_build_type
+      if: ${{ matrix.os == 'windows-latest' }}
+      run: >
+        cmake -GXcode -B ${{ steps.strings.outputs.build-output-dir }} 
+        -DCMAKE_TOOLCHAIN_FILE=./ios.cmake -DIOS_PLATFORM=${{ matrix.ios_platform }}
+        -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+        -DCMAKE_BUILDENV_GITHUB=ON
+        -DBUILD_APPS=OFF 
+        -DBUILD_PROJSYNC=OFF 
+        -DBUILD_SHARED_LIBS=OFF
+        -DTIFF_LIBRARY=.\.vcpkg\installed\x64-windows\lib
+        -DTIFF_INCLUDE_DIR=.\.vcpkg\installed\x64-windows\include
+        -S ${{ github.workspace }}
+
     - name: Build
       # Build your program with the given configuration. Note that --config is needed because the default Windows generator is a multi-config generator (Visual Studio generator).
       run: cmake --build ${{ steps.strings.outputs.build-output-dir }} --config ${{ matrix.build_type }} -t proj
