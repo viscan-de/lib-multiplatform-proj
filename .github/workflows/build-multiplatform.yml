@@ -164,7 +164,14 @@ jobs:
 
     - name: Build
       # Build your program with the given configuration. Note that --config is needed because the default Windows generator is a multi-config generator (Visual Studio generator).
-      run: cmake --build ${{ steps.strings.outputs.build-output-dir }} --config ${{ matrix.build_type }} -t proj
+      run: |
+        cmake --build ${{ steps.strings.outputs.build-output-dir }} --config ${{ matrix.build_type }} -t proj
+        cd ${{ steps.strings.outputs.build-output-dir }}
+        cd lib
+        if [ -d "${{ matrix.build_type }}" ]; then
+          echo "${{ matrix.build_type }} does exist."
+          mv ./${{ matrix.build_type }}/* ./
+        fi
 
     - name: Combine static libraries (Linux)
       if: ${{ matrix.os == 'ubuntu-latest' }}
