@@ -213,7 +213,6 @@ jobs:
           echo "${{ matrix.build_type }} does exist."
           mv ./${{ matrix.build_type }}/* ./
         fi
-        for f in * ; do mv "$f" ${{ matrix.library_name_extension }}_"$f" ; done
 
     - name: Combine static libraries (Linux)
       if: ${{ matrix.os == 'ubuntu-latest' }}
