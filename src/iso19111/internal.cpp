@@ -46,7 +46,10 @@
 #include <sstream> // std::istringstream and std::ostringstream
 #include <string>
 
+#undef SQLLITE_ENABLED
+#ifdef SQLLITE_ENABLED
 #include "sqlite3.h"
+#endif
 
 NS_PROJ_START
 
