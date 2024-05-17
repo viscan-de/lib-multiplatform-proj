@@ -29,7 +29,7 @@ jobs:
             c_compiler: gcc
             cpp_compiler: g++
             apple_env: posix
-        exclude:
+
           - os: macos-latest
             c_compiler: clang_ios_sim
             ios_platform: SIM
@@ -47,7 +47,7 @@ jobs:
             cpp_compiler: clang++
             ios_platform: OS
             apple_env: ios
-      
+        exclude:      
           - os: ubuntu-latest
             c_compiler: clang
             #cpp_compiler: clang++
