@@ -72,7 +72,7 @@ jobs:
     - name: Checkout repository (lib-multiplatform-coordinate-transformation)
       uses: actions/checkout@v4
 
-    - name: Check out libtiff
+    - name: Check out libtiff (iOS)
       # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
       # See https://cmake.org/cmake/help/latest/variable/CMAKE_BUILD_TYPE.html?highlight=cmake_build_type
       if: ${{ (matrix.c_compiler == 'clang_ios_sim' ||  matrix.c_compiler == 'clang_ios_os') && matrix.os == 'macos-latest' }}
@@ -81,24 +81,33 @@ jobs:
         path: ./.libtiff
         repository: viscan-de/lib-multiplatform-tiff
 
-    - name: Build libtiff
+    - name: Build libtiff (iOS)
       if: ${{ (matrix.c_compiler == 'clang_ios_sim' ||  matrix.c_compiler == 'clang_ios_os') && matrix.os == 'macos-latest' }}
       run: |
         cd .libtiff
         make platform=${{ matrix.apple_env }}
         ln -s ./.libtiff/${{ matrix.apple_env }}/dependencies ../libtiff
 
+    - name: Check out vcpkg (Windows)
+      # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
+      # See https://cmake.org/cmake/help/latest/variable/CMAKE_BUILD_TYPE.html?highlight=cmake_build_type
+      if: ${{ matrix.os == 'windows-latest' }}
+      with:
+        path: ./.vcpkg
+        repository: microsoft/vcpkg
+        
     - name: Build libtiff
       if: ${{ matrix.os == 'windows-latest' }}
-      uses: johnwason/vcpkg-action@v6
-      id: vcpkg
-      with:
-        pkgs: tiff
-        triplet: x64-windows-release
-        token: ${{ github.token }}
-        github-binarycache: true
+      run: |
+        cd .vcpkg && bootstrap-vcpkg.bat
+        vcpkg install tiff
+        cd installed
+        dir
+        cd x86_64-windows
+        dir
+        cd lib
+        dir
 
-       
     - name: Set reusable strings
       # Turn repeated input strings (such as the build output directory) into step outputs. These step outputs can be used throughout the workflow file.
       id: strings
@@ -109,7 +118,7 @@ jobs:
     - name: Configure CMake
       # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
       # See https://cmake.org/cmake/help/latest/variable/CMAKE_BUILD_TYPE.html?highlight=cmake_build_type
-      if: ${{ matrix.c_compiler != 'clang_ios_sim' &&  matrix.c_compiler != 'clang_ios_os' }}
+      if: ${{ matrix.c_compiler != 'clang_ios_sim' &&  matrix.c_compiler != 'clang_ios_os' && matrix.os != 'windows-latest' }}
       run: >
         cmake -B ${{ steps.strings.outputs.build-output-dir }}
         -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }}
