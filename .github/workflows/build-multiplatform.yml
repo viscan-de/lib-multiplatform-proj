@@ -170,7 +170,7 @@ jobs:
       if: ${{ matrix.os == 'macos-latest' || matrix.os == 'ubuntu-latest' }}
       run: |
         rootsrcdir="$(pwd)"
-        cd libtiff
+        cd libtiff/lib
         cp ${{ steps.strings.outputs.build-output-dir }}/lib/*.a ./
         ls -oh ./
         
