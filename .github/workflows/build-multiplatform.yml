@@ -168,7 +168,10 @@ jobs:
     - name: Combine static libraries (Linux)
       if: ${{ matrix.os == 'macos-latest' || matrix.os == 'ubuntu-latest' }}
       run: |
+        ls -oh ./*
         rootsrcdir="$(pwd)"
+        ls -oh ./libtiff/*
+        ls -oh ./libtiff/lib/*
         cd ${{ steps.strings.outputs.build-output-dir }}
         cd lib
         for f in * ; do libsfound="$libsfound\naddlib $f\n" ; done
