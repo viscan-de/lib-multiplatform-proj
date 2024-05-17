@@ -239,7 +239,9 @@ jobs:
 #          sample/*
 #          build/*
 
-    - run: ls -Roh ${{ steps.strings.outputs.build-output-dir }}/../*
+    - name: tmp
+      shell: bash
+      run: ls -Roh ${{ steps.strings.outputs.build-output-dir }}/../*
 
     #- name: Upload release assets
     #  uses: actions/upload-release-asset@v1
