@@ -177,7 +177,7 @@ jobs:
         ls -oh $rootsrcdir/libtiff
         ls -oh $rootsrcdir/libtiff/lib
         for f in * ; do libsfound="$libsfound\naddlib $f\n" ; done
-        printf "create libprojcomplete.a\n$libsfound\naddlib $rootsrcdir/libtiff/lib/libtiff.a\naddlib $rootsrcdir/libtiff/lib/libjpeg.a\naddlib $rootsrcdir/libtiff/lib/libpng16.a\naddlib $rootsrcdir/libtiff/lib/libtiffxx.a\nsave\nend" > libprojcomplete.mri
+        printf "create libprojcomplete.a\n$libsfound\naddlib $rootsrcdir/libtiff/libtiff.a\naddlib $rootsrcdir/libtiff/libjpeg.a\naddlib $rootsrcdir/libtiff/libpng16.a\naddlib $rootsrcdir/libtiff/libtiffxx.a\nsave\nend" > libprojcomplete.mri
         cat libprojcomplete.mri
         ar -M <libprojcomplete.mri
         ls -oh
