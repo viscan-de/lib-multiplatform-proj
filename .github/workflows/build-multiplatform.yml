@@ -160,8 +160,8 @@ jobs:
         -DBUILD_APPS=OFF 
         -DBUILD_PROJSYNC=OFF 
         -DBUILD_SHARED_LIBS=OFF
-        -DTIFF_LIBRARY=.\.vcpkg\installed\x64-windows\lib
-        -DTIFF_INCLUDE_DIR=.\.vcpkg\installed\x64-windows\include
+        -DTIFF_LIBRARY="./.vcpkg/installed/x64-windows/lib"
+        -DTIFF_INCLUDE_DIR="./.vcpkg/installed/x64-windows/include"
         -S ${{ github.workspace }}
 
     - name: Build
