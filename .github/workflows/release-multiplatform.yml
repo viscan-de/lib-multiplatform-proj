@@ -203,7 +203,6 @@ jobs:
       # Build your program with the given configuration. Note that --config is needed because the default Windows generator is a multi-config generator (Visual Studio generator).
       run: |
         cmake --build ${{ steps.strings.outputs.build-output-dir }} --config ${{ matrix.build_type }} -t proj
-        ls -Roh ${{ steps.strings.outputs.build-output-dir }}/../*
         cd ${{ steps.strings.outputs.build-output-dir }}
         cd lib
         if [ -d "${{ matrix.build_type }}" ]; then
@@ -238,10 +237,6 @@ jobs:
 #          test/*
 #          sample/*
 #          build/*
-
-    - name: tmp
-      shell: bash
-      run: ls -Roh ${{ steps.strings.outputs.build-output-dir }}/../*
 
     #- name: Upload release assets
     #  uses: actions/upload-release-asset@v1
