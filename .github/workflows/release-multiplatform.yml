@@ -261,7 +261,7 @@ jobs:
       if: startsWith(github.ref, 'refs/tags/')
       with:
         files: |
-          ${{ steps.strings.outputs.build-output-dir-slashes }}/lib/*
+          ${{ steps.strings.outputs.build-output-dir }}/lib/*
 
 #  trigger_update:
 #    name: Trigger framework update
