@@ -87,6 +87,9 @@ jobs:
         cd .libtiff
         make platform==${{ matrix.apple_env }}
         ln -s ./=${{ matrix.apple_env }}/dependencies ../libtiff
+
+    - uses: actions/setup-python@v5
+      if: ${{ (matrix.c_compiler == 'clang_ios_sim' ||  matrix.c_compiler == 'clang_ios_os') && matrix.os == 'macos-latest' }}
     
     - name: Set reusable strings
       # Turn repeated input strings (such as the build output directory) into step outputs. These step outputs can be used throughout the workflow file.
