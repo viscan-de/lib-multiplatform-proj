@@ -328,10 +328,10 @@ endif()
 include_directories(${PROJ_SOURCE_DIR}/src)
 
 #add_subdirectory(data)
-#add_subdirectory(include)
-#add_subdirectory(src)
+add_subdirectory(include)
+add_subdirectory(src)
 #add_subdirectory(man)
-#add_subdirectory(cmake)
+add_subdirectory(cmake)
 #add_subdirectory(examples)
 
 #if(BUILD_TESTING)
