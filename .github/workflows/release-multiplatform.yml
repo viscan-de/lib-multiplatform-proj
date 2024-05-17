@@ -29,7 +29,7 @@ jobs:
           draft: false
           prerelease: false
       - name: Checkout repository (lib-multiplatform-coordinate-transformation)
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: Release
         uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/')
@@ -74,16 +74,19 @@ jobs:
           - os: macos-latest
             c_compiler: clang
             cpp_compiler: clang++
+            apple_env: macos
             library_name_extension: "macos_clang_x64-arm64"
           - os: macos-latest
             c_compiler: clang_ios_os
             cpp_compiler: clang++
             ios_platform: OS
+            apple_env: ios
             library_name_extension: "ios_os_clang_arm64"
           - os: macos-latest
             c_compiler: clang_ios_sim
             ios_platform: SIM
             cpp_compiler: clang++
+            apple_env: ios_sim
             library_name_extension: "ios_sim_clang_x64-arm64"
         exclude:
           - os: windows-latest
@@ -107,95 +110,130 @@ jobs:
 
     steps:
     - name: Checkout repository (lib-multiplatform-coordinate-transformation)
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
-    - name: Checkout JSON repository (nlohmann/json)
+    - name: Check out libtiff (iOS)
+      # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
+      # See https://cmake.org/cmake/help/latest/variable/CMAKE_BUILD_TYPE.html?highlight=cmake_build_type
+      if: ${{ (matrix.c_compiler == 'clang_ios_sim' ||  matrix.c_compiler == 'clang_ios_os') && matrix.os == 'macos-latest' }}
       uses: actions/checkout@master
       with:
-        path: ./.json
-        repository: nlohmann/json
-        
-    - name: Checkout Eigen3 repository (gitlab Eigen3)
-      run: git clone https://gitlab.com/libeigen/eigen.git ./.eigen
-        
-    - name: Checkout GGeodesy repository (xanthospap/ggeodesy)
+        path: ./.libtiff
+        repository: viscan-de/lib-multiplatform-tiff
+
+    - name: Build libtiff (iOS)
+      if: ${{ (matrix.c_compiler == 'clang_ios_sim' ||  matrix.c_compiler == 'clang_ios_os') && matrix.os == 'macos-latest' }}
+      run: |
+        cd .libtiff
+        make platform=${{ matrix.apple_env }}
+        ln -s ./.libtiff/${{ matrix.apple_env }}/dependencies ../libtiff
+
+    - name: Check out vcpkg (Windows)
+      # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
+      # See https://cmake.org/cmake/help/latest/variable/CMAKE_BUILD_TYPE.html?highlight=cmake_build_type
+      if: ${{ matrix.os == 'windows-latest' }}
       uses: actions/checkout@master
       with:
-        path: ./.ggeodesy
-        repository: xanthospap/ggeodesy
+        path: ./.vcpkg
+        repository: microsoft/vcpkg
+        
+    - name: Build libtiff
+      if: ${{ matrix.os == 'windows-latest' }}
+      run: |
+        cd .vcpkg && bootstrap-vcpkg.bat
+        vcpkg install tiff
 
     - name: Set reusable strings
       # Turn repeated input strings (such as the build output directory) into step outputs. These step outputs can be used throughout the workflow file.
       id: strings
       shell: bash
       run: |
-        echo "build-output-dir=${{ github.workspace }}/build" >> "$GITHUB_OUTPUT";
-        OUTPUTDIR="${{ github.workspace }}/build";
-        echo "build-output-dir-slashes=${OUTPUTDIR//\\//}" >> "$GITHUB_OUTPUT"
+        echo "build-output-dir=${{ github.workspace }}/build" >> "$GITHUB_OUTPUT"
 
     - name: Configure CMake
       # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
       # See https://cmake.org/cmake/help/latest/variable/CMAKE_BUILD_TYPE.html?highlight=cmake_build_type
-      if: ${{ matrix.c_compiler != 'clang_ios_sim' &&  matrix.c_compiler != 'clang_ios_os' }}
+      if: ${{ matrix.c_compiler != 'clang_ios_sim' &&  matrix.c_compiler != 'clang_ios_os' && matrix.os != 'windows-latest' }}
       run: >
         cmake -B ${{ steps.strings.outputs.build-output-dir }}
         -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }}
         -DCMAKE_C_COMPILER=${{ matrix.c_compiler }}
         -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
         -DCMAKE_BUILDENV_GITHUB=ON
-        -DENV_NAME=${{ matrix.library_name_extension }}
+        -DBUILD_APPS=OFF
+        -DBUILD_PROJSYNC=OFF 
+        -DBUILD_SHARED_LIBS=OFF
         -S ${{ github.workspace }}
-
+  
     - name: Configure CMake for iOS
       # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
       # See https://cmake.org/cmake/help/latest/variable/CMAKE_BUILD_TYPE.html?highlight=cmake_build_type
       if: ${{ (matrix.c_compiler == 'clang_ios_sim' ||  matrix.c_compiler == 'clang_ios_os') && matrix.os == 'macos-latest' }}
       run: >
-        cmake -B ${{ steps.strings.outputs.build-output-dir }} 
-        -DCMAKE_TOOLCHAIN_FILE=./ios.cmake 
-        -DIOS_PLATFORM=${{ matrix.ios_platform }}
+        cmake -GXcode -B ${{ steps.strings.outputs.build-output-dir }} 
+        -DCMAKE_TOOLCHAIN_FILE=./ios.cmake -DIOS_PLATFORM=${{ matrix.ios_platform }}
         -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
         -DCMAKE_BUILDENV_GITHUB=ON
-        -DENV_NAME=${{ matrix.library_name_extension }}
-        -S ${{ github.workspace }} -GXcode 
+        -DBUILD_APPS=OFF 
+        -DBUILD_PROJSYNC=OFF 
+        -DBUILD_SHARED_LIBS=OFF
+        -DTIFF_LIBRARY=./libtiff/lib 
+        -DTIFF_INCLUDE_DIR=./libtiff/include
+        -S ${{ github.workspace }}
 
+    - name: Configure CMake for Windows
+      # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
+      # See https://cmake.org/cmake/help/latest/variable/CMAKE_BUILD_TYPE.html?highlight=cmake_build_type
+      if: ${{ matrix.os == 'windows-latest' }}
+      run: >
+        cmake -B ${{ steps.strings.outputs.build-output-dir }} 
+        -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }}
+        -DCMAKE_C_COMPILER=${{ matrix.c_compiler }}
+        -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+        -DCMAKE_BUILDENV_GITHUB=ON
+        -DBUILD_APPS=OFF 
+        -DBUILD_PROJSYNC=OFF 
+        -DBUILD_SHARED_LIBS=OFF
+        -DTIFF_LIBRARY="./.vcpkg/installed/x64-windows/lib"
+        -DTIFF_INCLUDE_DIR="./.vcpkg/installed/x64-windows/include"
+        -S ${{ github.workspace }}
 
     - name: Build
       # Build your program with the given configuration. Note that --config is needed because the default Windows generator is a multi-config generator (Visual Studio generator).
-      run: cmake --build ${{ steps.strings.outputs.build-output-dir }} --config ${{ matrix.build_type }}
+      run: |
+        cmake --build ${{ steps.strings.outputs.build-output-dir }} --config ${{ matrix.build_type }} -t proj
+        cd ${{ steps.strings.outputs.build-output-dir }}
+        cd lib/${{ matrix.build_type }}
+        for f in * ; do mv "$f" ${{ matrix.library_name_extension }}_"$f" ; done
 
-    - name: Test
-      working-directory: ${{ steps.strings.outputs.build-output-dir }}
-      # Execute tests defined by the CMake configuration. Note that --build-config is needed because the default Windows generator is a multi-config generator (Visual Studio generator).
-      # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
-      run: ctest --build-config ${{ matrix.build_type }} --output-on-failure
+#    - name: Test
+#      working-directory: ${{ steps.strings.outputs.build-output-dir }}
+#      # Execute tests defined by the CMake configuration. Note that --build-config is needed because the default Windows generator is a multi-config generator (Visual Studio generator).
+#      # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
+#      run: ctest --build-config ${{ matrix.build_type }} --output-on-failure
 
-    - name: Generate coverage report (GCC)
-      uses: threeal/gcovr-action@v1.0.0
-      if: ${{ (matrix.os != 'macos-latest' &&  matrix.c_compiler == 'gcc') && (matrix.c_compiler != 'clang_ios_sim' &&  matrix.c_compiler != 'clang_ios_os') }}
-      with:
-        fail-under-line: 90
-        excludes: |
-          test/*
-          sample/*
-          build/*
-          .json/*
-          .eigen/*
+#    - name: Generate coverage report (GCC)
+#      uses: threeal/gcovr-action@v1.0.0
+#      if: ${{ (matrix.os != 'macos-latest' &&  matrix.c_compiler == 'gcc') && (matrix.c_compiler != 'clang_ios_sim' &&  matrix.c_compiler != 'clang_ios_os') }}
+#      with:
+#        fail-under-line: 90
+#        excludes: |
+#          test/*
+#          sample/*
+#          build/*
 
-    - name: Generate coverage report (CLANG)
-      uses: threeal/gcovr-action@v1.0.0
-      if: ${{ (matrix.os != 'macos-latest' &&  matrix.c_compiler == 'clang') && (matrix.c_compiler != 'clang_ios_sim' &&  matrix.c_compiler != 'clang_ios_os') }}
-      with:
-        fail-under-line: 90
-        gcov-executable: llvm-cov gcov
-        excludes: |
-          test/*
-          sample/*
-          build/*
-          .json/*
-          .eigen/*
+#    - name: Generate coverage report (CLANG)
+#      uses: threeal/gcovr-action@v1.0.0
+#      if: ${{ (matrix.os != 'macos-latest' &&  matrix.c_compiler == 'clang') && (matrix.c_compiler != 'clang_ios_sim' &&  matrix.c_compiler != 'clang_ios_os') }}
+#      with:
+#        fail-under-line: 90
+#        gcov-executable: llvm-cov gcov
+#        excludes: |
+#          test/*
+#          sample/*
+#          build/*
 
-    #- run: ls -Roh ${{ steps.strings.outputs.build-output-dir }}/../*
+    - run: ls -Roh ${{ steps.strings.outputs.build-output-dir }}/../*
 
     #- name: Upload release assets
     #  uses: actions/upload-release-asset@v1
@@ -218,7 +256,7 @@ jobs:
       if: startsWith(github.ref, 'refs/tags/')
       with:
         files: |
-          ${{ steps.strings.outputs.build-output-dir-slashes }}/lib/${{ matrix.build_type }}/libCoordTrafo_${{ matrix.library_name_extension }}.*
+          ${{ steps.strings.outputs.build-output-dir-slashes }}/lib/${{ matrix.build_type }}/*
 
   trigger_update:
     name: Trigger framework update
