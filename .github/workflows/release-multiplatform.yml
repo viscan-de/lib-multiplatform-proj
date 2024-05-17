@@ -62,10 +62,12 @@ jobs:
           - os: ubuntu-latest
             c_compiler: gcc
             cpp_compiler: g++
+            apple_env: posix
             library_name_extension: "ubuntu_g++_x64"
           - os: ubuntu-latest
             c_compiler: clang
             cpp_compiler: clang++
+            apple_env: posix
             library_name_extension: "ubuntu_clang_x64"
           - os: windows-latest
             c_compiler: cl
@@ -74,7 +76,7 @@ jobs:
           - os: macos-latest
             c_compiler: clang
             cpp_compiler: clang++
-            apple_env: macos
+            apple_env: posix
             library_name_extension: "macos_clang_x64-arm64"
           - os: macos-latest
             c_compiler: clang_ios_os
@@ -112,17 +114,17 @@ jobs:
     - name: Checkout repository (lib-multiplatform-proj)
       uses: actions/checkout@v4
 
-    - name: Check out libtiff (iOS)
+    - name: Check out libtiff (Mac & Linux)
       # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
       # See https://cmake.org/cmake/help/latest/variable/CMAKE_BUILD_TYPE.html?highlight=cmake_build_type
-      if: ${{ (matrix.c_compiler == 'clang_ios_sim' ||  matrix.c_compiler == 'clang_ios_os') && matrix.os == 'macos-latest' }}
+      if: ${{ matrix.os == 'macos-latest' || matrix.os == 'ubuntu-latest' }}
       uses: actions/checkout@master
       with:
         path: ./.libtiff
         repository: viscan-de/lib-multiplatform-tiff
 
-    - name: Build libtiff (iOS)
-      if: ${{ (matrix.c_compiler == 'clang_ios_sim' ||  matrix.c_compiler == 'clang_ios_os') && matrix.os == 'macos-latest' }}
+    - name: Build libtiff (Mac & Linux)
+      if: ${{ matrix.os == 'macos-latest' || matrix.os == 'ubuntu-latest' }}
       run: |
         cd .libtiff
         make platform=${{ matrix.apple_env }}
@@ -148,7 +150,7 @@ jobs:
       id: strings
       shell: bash
       run: |
-        echo "$(echo 'build-output-dir=${{ github.workspace }}/build' | tr "\\" "/")" >> "$GITHUB_OUTPUT"
+        echo "build-output-dir=${{ github.workspace }}/build" >> "$GITHUB_OUTPUT"
 
     - name: Configure CMake
       # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
@@ -163,6 +165,8 @@ jobs:
         -DBUILD_APPS=OFF
         -DBUILD_PROJSYNC=OFF 
         -DBUILD_SHARED_LIBS=OFF
+        -DTIFF_LIBRARY=./libtiff/lib 
+        -DTIFF_INCLUDE_DIR=./libtiff/include
         -S ${{ github.workspace }}
   
     - name: Configure CMake for iOS
@@ -209,6 +213,41 @@ jobs:
           echo "${{ matrix.build_type }} does exist."
           mv ./${{ matrix.build_type }}/* ./
         fi
+        for f in * ; do mv "$f" ${{ matrix.library_name_extension }}_"$f" ; done
+
+    - name: Combine static libraries (Linux)
+      if: ${{ matrix.os == 'ubuntu-latest' }}
+      run: |
+        rootsrcdir="$(pwd)"
+        cd libtiff/lib
+        cp ${{ steps.strings.outputs.build-output-dir }}/lib/*.a ./
+        
+        for f in * ; do libsfound="$libsfound\naddlib $f\n" ; done
+        printf "create libprojcomplete.a\n$libsfound\nsave\nend" > libprojcomplete.mri
+        cat libprojcomplete.mri
+        ar -M <libprojcomplete.mri
+        cp libprojcomplete.a ${{ steps.strings.outputs.build-output-dir }}/lib/libproj.a
+        ls -oh ${{ steps.strings.outputs.build-output-dir }}/lib/
+
+    - name: Combine static libraries (Linux)
+      if: ${{ matrix.os == 'macos-latest' }}
+      run: |
+        rootsrcdir="$(pwd)"
+        cd libtiff/lib
+        cp ${{ steps.strings.outputs.build-output-dir }}/lib/*.a ./
+        
+        for f in * ; do libsfound="$libsfound $f" ; done
+        xcrun libtool -static -o libprojcomplete.a $libsfound
+        ls -oh ./
+        cp libprojcomplete.a ${{ steps.strings.outputs.build-output-dir }}/lib/libproj.a
+        ls -oh ${{ steps.strings.outputs.build-output-dir }}/lib/
+
+    - name: Rename binaries
+      shell: bash
+      # Build your program with the given configuration. Note that --config is needed because the default Windows generator is a multi-config generator (Visual Studio generator).
+      run: |
+        cd ${{ steps.strings.outputs.build-output-dir }}
+        cd lib
         for f in * ; do mv "$f" ${{ matrix.library_name_extension }}_"$f" ; done
 
 #    - name: Test
