@@ -240,6 +240,8 @@ jobs:
       run: |
         cp ./libtiff/lib/*.a ${{ steps.strings.outputs.build-output-dir }}/lib/
         cd ${{ steps.strings.outputs.build-output-dir }}/lib
+        mv ./${{ build_type }}/* ./
+        rm -rf ./${{ build_type }}
         for f in * ; do libsfound="$libsfound $f" ; done
         xcrun libtool -static -o _libproj.a $libsfound
         rm lib*.a
