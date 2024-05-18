@@ -220,6 +220,7 @@ jobs:
         if [ -d "${{ matrix.build_type }}" ]; then
           echo "${{ matrix.build_type }} does exist."
           mv ./${{ matrix.build_type }}/* ./
+          rm -rf ./${{ matrix.build_type }}
         fi
 
     - name: Combine static libraries (Linux)
@@ -240,8 +241,6 @@ jobs:
       run: |
         cp ./libtiff/lib/*.a ${{ steps.strings.outputs.build-output-dir }}/lib/
         cd ${{ steps.strings.outputs.build-output-dir }}/lib
-        mv ./${{ build_type }}/* ./
-        rm -rf ./${{ build_type }}
         for f in * ; do libsfound="$libsfound $f" ; done
         xcrun libtool -static -o _libproj.a $libsfound
         rm lib*.a
