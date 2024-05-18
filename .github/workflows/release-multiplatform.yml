@@ -230,7 +230,7 @@ jobs:
         cd ${{ steps.strings.outputs.build-output-dir }}/lib
         for f in * ; do libsfound="$libsfound\naddlib $f\n" ; done
         printf "create _libproj.a\n$libsfound\nsave\nend" > libproj-complete.mri
-        cat libprojcomplete.mri
+        cat libproj-complete.mri
         ar -M <libproj-complete.mri
         rm lib*.a
         mv _libproj.a libproj.a
@@ -248,6 +248,7 @@ jobs:
         ls -oh
 
     - name: Build Artifact
+      shell: bash
       run: |
         rm -rf ${{ steps.strings.outputs.build-output-dir }}/include
         mkdir -p ${{ steps.strings.outputs.build-output-dir }}/include
