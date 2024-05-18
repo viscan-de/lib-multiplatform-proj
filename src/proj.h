@@ -142,10 +142,14 @@ extern "C" {
 
 #ifndef PROJ_DLL
 #if defined(_MSC_VER)
+#ifndef PROJ_STATICALLY_LINKED
 #ifdef PROJ_MSVC_DLL_EXPORT
 #define PROJ_DLL __declspec(dllexport)
 #else
 #define PROJ_DLL __declspec(dllimport)
+#endif
+#else
+#define PROJ_DLL
 #endif
 #elif defined(__GNUC__)
 #define PROJ_DLL __attribute__((visibility("default")))
@@ -153,6 +157,7 @@ extern "C" {
 #define PROJ_DLL
 #endif
 #endif
+
 
 #ifdef PROJ_SUPPRESS_DEPRECATION_MESSAGE
 #define PROJ_DEPRECATED(decl, msg) decl
