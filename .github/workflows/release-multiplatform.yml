@@ -266,7 +266,7 @@ jobs:
       if: ${{ matrix.os == 'windows-latest' }}
       run: |
         cd ${{ steps.strings.outputs.build-output-dir }}
-        Compress-Archive -Path ./include ./lib -Destination ./${{ matrix.platform }}.${{ matrix.arch }}.libproj.zip 
+        Compress-Archive -Path ./include,./lib -Destination ./${{ matrix.platform }}.${{ matrix.arch }}.libproj.zip 
       
 #    - name: Test
 #      working-directory: ${{ steps.strings.outputs.build-output-dir }}
