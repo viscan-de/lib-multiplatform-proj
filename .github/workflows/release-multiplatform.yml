@@ -253,7 +253,7 @@ jobs:
         rm -rf ${{ steps.strings.outputs.build-output-dir }}/include
         mkdir -p ${{ steps.strings.outputs.build-output-dir }}/include
         cp ./include/proj/*.hpp ${{ steps.strings.outputs.build-output-dir }}/include
-        cp ./src/proj.h ./include
+        cp ./src/proj.h ${{ steps.strings.outputs.build-output-dir }}/include
 
     - name: Compress Artifacts (Linux + Mac)
       if: ${{ matrix.os != 'windows-latest' }}
@@ -266,7 +266,7 @@ jobs:
       if: ${{ matrix.os == 'windows-latest' }}
       run: |
         cd ${{ steps.strings.outputs.build-output-dir }}
-        Compress-Archive -Path ./include,./lib -Destination ./${{ matrix.platform }}.${{ matrix.arch }}.libproj.zip 
+        Compress-Archive -Path ./include,./lib -Destination -DestinationPath ./${{ matrix.platform }}.${{ matrix.arch }}.libproj.zip 
       
 #    - name: Test
 #      working-directory: ${{ steps.strings.outputs.build-output-dir }}
