@@ -255,20 +255,20 @@ jobs:
         mkdir -p ${{ steps.strings.outputs.build-output-dir }}/include
         cp ./include/proj/*.hpp ${{ steps.strings.outputs.build-output-dir }}/include
         cp ./src/proj.h ${{ steps.strings.outputs.build-output-dir }}/include
-        touch ${{ steps.strings.outputs.build-output-dir }}/viscan-lib-multiplatform-proj-release-${{ steps.strings.outputs.tag }}
+        touch ${{ steps.strings.outputs.build-output-dir }}/viscan-${{ matrix.platform }}.${{ matrix.arch }}-${{ matrix.c_compiler }}.libproj-release-${{ steps.strings.outputs.tag }}
 
     - name: Compress Artifacts (Linux + Mac)
       if: ${{ matrix.os != 'windows-latest' }}
       shell: bash
       run: |
         cd ${{ steps.strings.outputs.build-output-dir }}
-        zip -r -q ./${{ matrix.platform }}.${{ matrix.arch }}-${{ matrix.c_compiler }}.libproj.zip ./include ./lib ${{ steps.strings.outputs.build-output-dir }}/viscan-lib-multiplatform-proj-release-${{ steps.strings.outputs.tag }}
+        zip -r -q ./${{ matrix.platform }}.${{ matrix.arch }}-${{ matrix.c_compiler }}.libproj.zip ./include ./lib viscan-lib-multiplatform-proj-release-${{ steps.strings.outputs.tag }}
 
     - name: Compress Artifacts (Windows)
       if: ${{ matrix.os == 'windows-latest' }}
       run: |
         cd ${{ steps.strings.outputs.build-output-dir }}
-        Compress-Archive -Path ./include,./lib,${{ steps.strings.outputs.build-output-dir }}/viscan-lib-multiplatform-proj-release-${{ steps.strings.outputs.tag }} -DestinationPath ./${{ matrix.platform }}.${{ matrix.arch }}-${{ matrix.c_compiler }}.libproj.zip 
+        Compress-Archive -Path ./include,./lib,viscan-lib-multiplatform-proj-release-${{ steps.strings.outputs.tag }} -DestinationPath ./${{ matrix.platform }}.${{ matrix.arch }}-${{ matrix.c_compiler }}.libproj.zip 
       
 #    - name: Test
 #      working-directory: ${{ steps.strings.outputs.build-output-dir }}
