@@ -101,6 +101,11 @@ set(PROJ_C_WARN_FLAGS "${PROJ_C_WARN_FLAGS}"
 set(PROJ_CXX_WARN_FLAGS "${PROJ_CXX_WARN_FLAGS}"
   CACHE STRING "C++ flags used to compile PROJ targets")
 
+IF(MSVC)
+  set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /MT")
+  set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /MT")
+ENDIF()
+
 ################################################################################
 # PROJ CMake modules
 ################################################################################
