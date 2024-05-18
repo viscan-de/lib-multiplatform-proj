@@ -260,13 +260,13 @@ jobs:
       shell: bash
       run: |
         cd ${{ steps.strings.outputs.build-output-dir }}
-        zip -r -q ./${{ matrix.platform }}.${{ matrix.arch }}.libproj.zip ./include ./lib
+        zip -r -q ./${{ matrix.platform }}.${{ matrix.arch }}.${{ matrix.c_compiler }}.libproj.zip ./include ./lib
 
     - name: Compress Artifacts (Windows)
       if: ${{ matrix.os == 'windows-latest' }}
       run: |
         cd ${{ steps.strings.outputs.build-output-dir }}
-        Compress-Archive -Path ./include,./lib -Destination -DestinationPath ./${{ matrix.platform }}.${{ matrix.arch }}.libproj.zip 
+        Compress-Archive -Path ./include,./lib -Destination -DestinationPath ./${{ matrix.platform }}.${{ matrix.arch }}.${{ matrix.c_compiler }}.libproj.zip 
       
 #    - name: Test
 #      working-directory: ${{ steps.strings.outputs.build-output-dir }}
