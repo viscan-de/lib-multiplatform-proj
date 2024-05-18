@@ -143,7 +143,7 @@ jobs:
       if: ${{ matrix.os == 'windows-latest' }}
       run: |
         cd .vcpkg && bootstrap-vcpkg.bat
-        vcpkg install tiff
+        vcpkg install tiff:x64-windows-static
 
     - name: Set reusable strings
       # Turn repeated input strings (such as the build output directory) into step outputs. These step outputs can be used throughout the workflow file.
@@ -199,8 +199,8 @@ jobs:
         -DBUILD_APPS=OFF 
         -DBUILD_PROJSYNC=OFF 
         -DBUILD_SHARED_LIBS=OFF
-        -DTIFF_LIBRARY="./.vcpkg/installed/x64-windows/lib"
-        -DTIFF_INCLUDE_DIR="./.vcpkg/installed/x64-windows/include"
+        -DTIFF_LIBRARY="./.vcpkg/installed/x64-windows-static/lib"
+        -DTIFF_INCLUDE_DIR="./.vcpkg/installed/x64-windows-static/include"
         -S ${{ github.workspace }}
 
     - name: Build
