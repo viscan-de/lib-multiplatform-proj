@@ -10,6 +10,8 @@
 # General settings
 ################################################################################
 cmake_minimum_required(VERSION 3.9 FATAL_ERROR)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 
 project(PROJ
   DESCRIPTION "PROJ coordinate transformation software library"
