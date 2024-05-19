@@ -280,11 +280,10 @@ jobs:
         cd ${{ steps.strings.outputs.build-output-dir }}/lib
         ls "C:/Program Files/Microsoft Visual Studio/2022/Enterprise/VC/Tools/MSVC/"
         for f in C:/Program\ Files/Microsoft\ Visual\ Studio/2022/Enterprise/VC/Tools/MSVC/* ; do toolsdir="$f" ; done
-        echo "$toolsdir"
         rm jpeg.lib
         for f in * ; do libsfound="$libsfound $f" ; done
         #14.39.33519
-        $toolsdir/bin/Hostx64/x64/lib.exe /OUT:libproj._lib $libsfound
+        "$toolsdir/bin/Hostx64/x64/lib.exe" /OUT:libproj._lib $libsfound
         rm *.lib
         mv libproj._lib libproj.lib
         ls -oh
