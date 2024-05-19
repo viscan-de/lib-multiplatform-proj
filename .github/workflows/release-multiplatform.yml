@@ -79,7 +79,7 @@ jobs:
           - os: macos-latest
             c_compiler: clang
             cpp_compiler: clang++
-            env: posix
+            env: macos
             platform: darwin
             arch: x86_64+arm64
             architecture: x86_64;arm64
