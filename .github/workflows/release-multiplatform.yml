@@ -262,9 +262,9 @@ jobs:
         cd ${{ steps.strings.outputs.build-output-dir }}/lib
         for f in * ; do libsfound="$libsfound $f" ; done
         xcrun libtool -static -o _libproj.a $libsfound
-        #rm lib*.a
-        #mv _libproj.a libproj.a
-        #ls -oh
+        rm lib*.a
+        mv _libproj.a libproj.a
+        ls -oh
 
     - name: Add msbuild to PATH
       if: ${{ matrix.os == 'windows-latest' }}
@@ -272,15 +272,16 @@ jobs:
   
     - name: Combine static libraries (Windows)
       if: ${{ matrix.os == 'windows-latest' }}
+      shell: bash
       run: |
         cp ./.vcpkg/installed/x64-windows-static/lib/*.lib ${{ steps.strings.outputs.build-output-dir }}/lib/
         cd ${{ steps.strings.outputs.build-output-dir }}/lib
-        cd "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC"
-        ls
-        "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.39.33519\bin\Hostx64\x64\lib.exe" /OUT:libproj._lib *.lib
-        #rm *.lib
-        #mv libproj._lib libproj.lib
-        #ls -oh
+        ls "C:/Program Files/Microsoft Visual Studio/2022/Enterprise/VC/Tools/MSVC/"
+        for f in * ; do libsfound="$libsfound $f" ; done
+        "C:/Program Files/Microsoft Visual Studio/2022/Enterprise/VC/Tools/MSVC/14.39.33519/bin/Hostx64/x64/lib.exe" /OUT:libproj._lib $libsfound
+        rm *.lib
+        mv libproj._lib libproj.lib
+        ls -oh
 
     - name: Build Artifact
       shell: bash
