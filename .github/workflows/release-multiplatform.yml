@@ -64,13 +64,13 @@ jobs:
             cpp_compiler: g++
             env: posix
             platform: linux
-            arch: x86_64
+            architecture: x86_64
           - os: ubuntu-latest
             c_compiler: clang
             cpp_compiler: clang++
             env: posix
             platform: linux
-            arch: x86_64
+            architecture: x86_64
           - os: windows-latest
             c_compiler: cl
             cpp_compiler: cl
@@ -81,7 +81,8 @@ jobs:
             cpp_compiler: clang++
             env: posix
             platform: darwin
-            arch: arm64+x86_64
+            arch: x86_64+arm64
+            architecture: x86_64;arm64
           - os: macos-latest
             c_compiler: clang_ios_os
             cpp_compiler: clang++
@@ -89,6 +90,7 @@ jobs:
             env: ios
             platform: darwin
             arch: ios-arm64
+            architecture: arm64
           - os: macos-latest
             c_compiler: clang_ios_sim
             ios_platform: SIM
@@ -96,6 +98,7 @@ jobs:
             env: ios_sim
             platform: darwin
             arch: ios-sim-arm64+x86_64
+            architecture: x86_64;arm64
         exclude:
           - os: windows-latest
             c_compiler: gcc
@@ -169,6 +172,7 @@ jobs:
         -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }}
         -DCMAKE_C_COMPILER=${{ matrix.c_compiler }}
         -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+        -DCMAKE_OSX_ARCHITECTURES=${{ matrix.architecture }}
         -DCMAKE_BUILDENV_GITHUB=ON
         -DBUILD_APPS=OFF
         -DBUILD_PROJSYNC=OFF 
