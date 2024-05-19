@@ -133,7 +133,7 @@ jobs:
       if: ${{ matrix.os == 'macos-latest' || matrix.os == 'ubuntu-latest' }}
       run: |
         cd .libtiff
-        make platform=${{ matrix.env }}
+        make platform=${{ matrix.env }} cxx=${{ matrix.cpp_compiler}} cc=${{ matrix.c_compiler}}
         ln -s ./.libtiff/${{ matrix.env }}/dependencies ../libtiff
 
     - name: Check out vcpkg (Windows)
