@@ -261,10 +261,10 @@ jobs:
         cp ./libtiff/lib/*.a ${{ steps.strings.outputs.build-output-dir }}/lib/
         cd ${{ steps.strings.outputs.build-output-dir }}/lib
         for f in * ; do libsfound="$libsfound $f" ; done
-        xcrun libtool -static -o _libproj.a $libsfound
-        rm lib*.a
-        mv _libproj.a libproj.a
-        ls -oh
+        #xcrun libtool -static -o _libproj.a $libsfound
+        #rm lib*.a
+        #mv _libproj.a libproj.a
+        #ls -oh
 
     - name: Add msbuild to PATH
       if: ${{ matrix.os == 'windows-latest' }}
@@ -277,10 +277,10 @@ jobs:
         cp ./.vcpkg/installed/x64-windows-static/lib/*.lib ${{ steps.strings.outputs.build-output-dir }}/lib/
         cd ${{ steps.strings.outputs.build-output-dir }}/lib
         for f in * ; do libsfound="$libsfound $f" ; done
-        lib /OUT:libproj._lib $libsfound
-        rm *.lib
-        mv libproj._lib libproj.lib
-        ls -oh
+        #lib /OUT:libproj._lib $libsfound
+        #rm *.lib
+        #mv libproj._lib libproj.lib
+        #ls -oh
 
     - name: Build Artifact
       shell: bash
