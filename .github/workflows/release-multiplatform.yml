@@ -249,8 +249,8 @@ jobs:
         cd ${{ steps.strings.outputs.build-output-dir }}/lib
         for f in * ; do libsfound="$libsfound\naddlib $f\n" ; done
         printf "create _libproj.a\n$libsfound\nsave\nend" > libproj-complete.mri
-        cat libproj-complete.mri
         ar -M <libproj-complete.mri
+        rm libproj-complete.mri
         rm lib*.a
         mv _libproj.a libproj.a
         ls -oh
@@ -272,12 +272,10 @@ jobs:
   
     - name: Combine static libraries (Windows)
       if: ${{ matrix.os == 'windows-latest' }}
-      shell: bash
       run: |
         cp ./.vcpkg/installed/x64-windows-static/lib/*.lib ${{ steps.strings.outputs.build-output-dir }}/lib/
         cd ${{ steps.strings.outputs.build-output-dir }}/lib
-        for f in * ; do libsfound="$libsfound $f" ; done
-        #lib /OUT:libproj._lib $libsfound
+        lib /OUT:libproj._lib *.lib
         #rm *.lib
         #mv libproj._lib libproj.lib
         #ls -oh
