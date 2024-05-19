@@ -162,7 +162,7 @@ jobs:
     - name: Configure CMake Linux
       # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
       # See https://cmake.org/cmake/help/latest/variable/CMAKE_BUILD_TYPE.html?highlight=cmake_build_type
-      if: ${{ matrix.c_compiler != 'clang_ios_sim' &&  matrix.c_compiler != 'clang_ios_os' && matrix.os != 'windows-latest' }}
+      if: ${{ matrix.os == 'ubuntu-latest' }}
       run: >
         cmake -B ${{ steps.strings.outputs.build-output-dir }}
         -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }}
@@ -179,7 +179,7 @@ jobs:
     - name: Configure CMake for Apple
       # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
       # See https://cmake.org/cmake/help/latest/variable/CMAKE_BUILD_TYPE.html?highlight=cmake_build_type
-      if: ${{ (matrix.c_compiler == 'clang_ios_sim' ||  matrix.c_compiler == 'clang_ios_os') && matrix.os == 'macos-latest' }}
+      if: ${{ matrix.os == 'macos-latest' }}
       run: >
         cmake -GXcode -B ${{ steps.strings.outputs.build-output-dir }} 
         -DCMAKE_TOOLCHAIN_FILE=./ios.cmake 
