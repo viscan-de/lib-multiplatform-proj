@@ -64,11 +64,13 @@ jobs:
             cpp_compiler: g++
             env: posix
             platform: linux
+            arch: x86_64
           - os: ubuntu-latest
             c_compiler: clang
             cpp_compiler: clang++
             env: posix
             platform: linux
+            arch: x86_64
           - os: windows-latest
             c_compiler: cl
             cpp_compiler: cl
