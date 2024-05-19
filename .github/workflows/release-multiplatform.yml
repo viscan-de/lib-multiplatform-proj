@@ -268,7 +268,7 @@ jobs:
       if: ${{ matrix.os == 'windows-latest' }}
       shell: bash
       run: |
-        cp ./libtiff/lib/*.lib ${{ steps.strings.outputs.build-output-dir }}/lib/
+        cp ./.vcpkg/installed/x64-windows-static/lib/*.lib ${{ steps.strings.outputs.build-output-dir }}/lib/
         cd ${{ steps.strings.outputs.build-output-dir }}/lib
         for f in * ; do libsfound="$libsfound $f" ; done
         lib /OUT:libproj._lib $libsfound
