@@ -179,12 +179,14 @@ jobs:
     - name: Configure CMake for macOS
       # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
       # See https://cmake.org/cmake/help/latest/variable/CMAKE_BUILD_TYPE.html?highlight=cmake_build_type
+      #-DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
+        
       if: ${{ matrix.os == 'macos-latest' && matrix.env == 'macos' }}
       run: >
         cmake -GXcode -B ${{ steps.strings.outputs.build-output-dir }} 
         -DIOS_PLATFORM=${{ matrix.ios_platform }}
         -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
-        -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
+        -DCMAKE_OSX_ARCHITECTURES="x86_64"
         -DCMAKE_BUILDENV_GITHUB=ON
         -DBUILD_APPS=OFF 
         -DBUILD_PROJSYNC=OFF 
