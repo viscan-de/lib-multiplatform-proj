@@ -64,13 +64,11 @@ jobs:
             cpp_compiler: g++
             env: posix
             platform: linux
-            architecture: x86_64
           - os: ubuntu-latest
             c_compiler: clang
             cpp_compiler: clang++
             env: posix
             platform: linux
-            architecture: x86_64
           - os: windows-latest
             c_compiler: cl
             cpp_compiler: cl
@@ -80,9 +78,9 @@ jobs:
             c_compiler: clang
             cpp_compiler: clang++
             env: macos
+            ios_platform: MACOS
             platform: darwin
             arch: x86_64+arm64
-            architecture: x86_64;arm64
           - os: macos-latest
             c_compiler: clang_ios_os
             cpp_compiler: clang++
@@ -90,7 +88,6 @@ jobs:
             env: ios
             platform: darwin
             arch: ios-arm64
-            architecture: arm64
           - os: macos-latest
             c_compiler: clang_ios_sim
             ios_platform: SIM
@@ -98,7 +95,6 @@ jobs:
             env: ios_sim
             platform: darwin
             arch: ios-sim-arm64+x86_64
-            architecture: x86_64;arm64
         exclude:
           - os: windows-latest
             c_compiler: gcc
@@ -163,7 +159,7 @@ jobs:
         echo "build-output-dir=$(echo "${{ github.workspace }}/build" | sed -e 's/\\/\//g')" >> "$GITHUB_OUTPUT"
         echo "tag=${GITHUB_REF#refs/*/}" >> $GITHUB_OUTPUT
 
-    - name: Configure CMake Linux+macOS
+    - name: Configure CMake Linux
       # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
       # See https://cmake.org/cmake/help/latest/variable/CMAKE_BUILD_TYPE.html?highlight=cmake_build_type
       if: ${{ matrix.c_compiler != 'clang_ios_sim' &&  matrix.c_compiler != 'clang_ios_os' && matrix.os != 'windows-latest' }}
@@ -172,7 +168,6 @@ jobs:
         -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }}
         -DCMAKE_C_COMPILER=${{ matrix.c_compiler }}
         -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
-        -DCMAKE_OSX_ARCHITECTURES=${{ matrix.architecture }}
         -DCMAKE_BUILDENV_GITHUB=ON
         -DBUILD_APPS=OFF
         -DBUILD_PROJSYNC=OFF 
@@ -181,7 +176,7 @@ jobs:
         -DTIFF_INCLUDE_DIR=./libtiff/include
         -S ${{ github.workspace }}
   
-    - name: Configure CMake for iOS
+    - name: Configure CMake for Apple
       # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
       # See https://cmake.org/cmake/help/latest/variable/CMAKE_BUILD_TYPE.html?highlight=cmake_build_type
       if: ${{ (matrix.c_compiler == 'clang_ios_sim' ||  matrix.c_compiler == 'clang_ios_os') && matrix.os == 'macos-latest' }}
