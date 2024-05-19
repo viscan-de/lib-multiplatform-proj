@@ -186,7 +186,7 @@ jobs:
         cmake -GXcode -B ${{ steps.strings.outputs.build-output-dir }} 
         -DIOS_PLATFORM=${{ matrix.ios_platform }}
         -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
-        -DCMAKE_OSX_ARCHITECTURES="x86_64"
+        -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
         -DCMAKE_BUILDENV_GITHUB=ON
         -DBUILD_APPS=OFF 
         -DBUILD_PROJSYNC=OFF 
