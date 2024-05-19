@@ -82,7 +82,7 @@ jobs:
             env: macos
             ios_platform: MACOS
             platform: darwin
-            arch: x86_64+arm64
+            arch: x86_64-arm64
           - os: macos-latest
             c_compiler: clang_ios_os
             cpp_compiler: clang++
@@ -96,7 +96,7 @@ jobs:
             cpp_compiler: clang++
             env: ios_sim
             platform: darwin
-            arch: ios-sim-arm64+x86_64
+            arch: ios-sim-arm64-x86_64
         exclude:
           - os: windows-latest
             c_compiler: gcc
