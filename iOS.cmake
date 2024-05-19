@@ -43,6 +43,10 @@ elseif (${IOS_PLATFORM} STREQUAL "SIM")
     set (IOS_PLATFORM_LOCATION "iPhoneSimulator.platform")
     set (XCODE_IOS_PLATFORM iphonesimulator)
     set (CMAKE_XCODE_EFFECTIVE_PLATFORMS "-iphonesimulator")
+elseif (${IOS_PLATFORM} STREQUAL "MACOS")
+    set (IOS_PLATFORM_LOCATION "macOS.platform")
+    set (XCODE_IOS_PLATFORM macos)
+    set (CMAKE_XCODE_EFFECTIVE_PLATFORMS "-macos")    
 elseif (${IOS_PLATFORM} STREQUAL "WATCHOS")
     set (IOS_PLATFORM_LOCATION "WatchOS.platform")
     set (XCODE_IOS_PLATFORM watchos)
@@ -50,7 +54,7 @@ elseif (${IOS_PLATFORM} STREQUAL "WATCHOS")
 else ()
     message (FATAL_ERROR
              "Unsupported IOS_PLATFORM value selected. "
-             "Please choose OS, SIMULATOR, or WATCHOS.")
+             "Please choose OS, SIMULATOR, or WATCHOS, or MACOS.")
 endif ()
 
 # All iOS/Darwin specific settings - some may be redundant
