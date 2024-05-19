@@ -264,6 +264,10 @@ jobs:
         mv _libproj.a libproj.a
         ls -oh
 
+    - name: Add msbuild to PATH
+      if: ${{ matrix.os == 'windows-latest' }}
+      uses: microsoft/setup-msbuild@v2
+  
     - name: Combine static libraries (Windows)
       if: ${{ matrix.os == 'windows-latest' }}
       shell: bash
