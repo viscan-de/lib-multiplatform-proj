@@ -277,7 +277,7 @@ jobs:
         cd ${{ steps.strings.outputs.build-output-dir }}/lib
         cd "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC"
         ls
-        C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.39.33519\bin\Hostx64\x64\lib.exe /OUT:libproj._lib *.lib
+        "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.39.33519\bin\Hostx64\x64\lib.exe" /OUT:libproj._lib *.lib
         #rm *.lib
         #mv libproj._lib libproj.lib
         #ls -oh
