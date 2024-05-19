@@ -261,7 +261,7 @@ jobs:
         cp ./libtiff/lib/*.a ${{ steps.strings.outputs.build-output-dir }}/lib/
         cd ${{ steps.strings.outputs.build-output-dir }}/lib
         for f in * ; do libsfound="$libsfound $f" ; done
-        #xcrun libtool -static -o _libproj.a $libsfound
+        xcrun libtool -static -o _libproj.a $libsfound
         #rm lib*.a
         #mv _libproj.a libproj.a
         #ls -oh
