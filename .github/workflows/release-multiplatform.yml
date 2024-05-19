@@ -277,6 +277,7 @@ jobs:
         cp ./.vcpkg/installed/x64-windows-static/lib/*.lib ${{ steps.strings.outputs.build-output-dir }}/lib/
         cd ${{ steps.strings.outputs.build-output-dir }}/lib
         ls "C:/Program Files/Microsoft Visual Studio/2022/Enterprise/VC/Tools/MSVC/"
+        rm jpeg.lib
         for f in * ; do libsfound="$libsfound $f" ; done
         "C:/Program Files/Microsoft Visual Studio/2022/Enterprise/VC/Tools/MSVC/14.39.33519/bin/Hostx64/x64/lib.exe" /OUT:libproj._lib $libsfound
         rm *.lib
