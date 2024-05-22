@@ -103,6 +103,11 @@ if (LINUX)
   set(CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS} -fPIC)
 ENDIF()
 
+IF(MSVC)
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /MT")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /MT")
+ENDIF()
+
 
 set(PROJ_C_WARN_FLAGS "${PROJ_C_WARN_FLAGS}"
   CACHE STRING "C flags used to compile PROJ targets")
