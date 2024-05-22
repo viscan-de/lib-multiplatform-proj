@@ -98,7 +98,7 @@ if (CMAKE_CXX_COMPILER_ID STREQUAL "IntelLLVM")
   set(CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS} -fno-fast-math)
 endif ()
 
-if (UNIX)
+if (LINUX)
   set(CMAKE_C_FLAGS ${CMAKE_C_FLAGS} -fPIC)
   set(CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS} -fPIC)
 ENDIF()
