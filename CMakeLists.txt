@@ -98,15 +98,20 @@ if (CMAKE_CXX_COMPILER_ID STREQUAL "IntelLLVM")
   set(CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS} -fno-fast-math)
 endif ()
 
+if (UNIX)
+  set(CMAKE_C_FLAGS ${CMAKE_C_FLAGS} -fPIC)
+  set(CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS} -fPIC)
+ENDIF()
+
+
 set(PROJ_C_WARN_FLAGS "${PROJ_C_WARN_FLAGS}"
   CACHE STRING "C flags used to compile PROJ targets")
 set(PROJ_CXX_WARN_FLAGS "${PROJ_CXX_WARN_FLAGS}"
   CACHE STRING "C++ flags used to compile PROJ targets")
 
-IF(MSVC)
-  set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /MT")
-  set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /MT")
-ENDIF()
+
+
+
 
 ################################################################################
 # PROJ CMake modules
