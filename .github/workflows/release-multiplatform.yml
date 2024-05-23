@@ -159,7 +159,7 @@ jobs:
       run: |
         #echo "build-output-dir=${{ github.workspace }}/build" >> "$GITHUB_OUTPUT"
         echo "build-output-dir=$(echo "${{ github.workspace }}/build" | sed -e 's/\\/\//g')" >> "$GITHUB_OUTPUT"
-        echo "workspace-dir=${{ github.workspace }}" | sed -e 's/\\/\//g')" >> "$GITHUB_OUTPUT"
+        echo "workspace-dir=$(echo "${{ github.workspace }}" | sed -e 's/\\/\//g')" >> "$GITHUB_OUTPUT"
         echo "tag=${GITHUB_REF#refs/*/}" >> $GITHUB_OUTPUT
 
     - name: Configure CMake Linux
