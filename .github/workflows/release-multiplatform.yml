@@ -159,6 +159,7 @@ jobs:
       run: |
         #echo "build-output-dir=${{ github.workspace }}/build" >> "$GITHUB_OUTPUT"
         echo "build-output-dir=$(echo "${{ github.workspace }}/build" | sed -e 's/\\/\//g')" >> "$GITHUB_OUTPUT"
+        echo "workspace-dir=${{ github.workspace }}" | sed -e 's/\\/\//g')" >> "$GITHUB_OUTPUT"
         echo "tag=${GITHUB_REF#refs/*/}" >> $GITHUB_OUTPUT
 
     - name: Configure CMake Linux
@@ -230,7 +231,7 @@ jobs:
         -DBUILD_SHARED_LIBS=OFF
         -DTIFF_LIBRARY="./.vcpkg/installed/x64-windows-static/lib"
         -DTIFF_INCLUDE_DIR="./.vcpkg/installed/x64-windows-static/include"
-        -S ${{ github.workspace }}
+        -S ${{ steps.strings.outputs.workspace-dir }}
 
     - name: Build
       shell: bash
