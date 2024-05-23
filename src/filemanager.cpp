@@ -69,6 +69,8 @@
 #include <unistd.h>
 #endif
 
+#include <iostream>
+
 //! @cond Doxygen_Suppress
 
 using namespace NS_PROJ::internal;
@@ -789,8 +791,6 @@ unsigned long long FileStdio::tell() {
 }
 
 // ---------------------------------------------------------------------------
-
-#include <iostream>
 std::unique_ptr<File> FileStdio::open(PJ_CONTEXT *ctx, const char *filename,
                                       FileAccess access) {
     auto fp = fopen(filename, access == FileAccess::READ_ONLY     ? "rb"
