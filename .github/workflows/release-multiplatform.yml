@@ -166,7 +166,7 @@ jobs:
       # See https://cmake.org/cmake/help/latest/variable/CMAKE_BUILD_TYPE.html?highlight=cmake_build_type
       if: ${{ matrix.os == 'ubuntu-latest' }}
       run: >
-        cmake -B ${{ steps.strings.outputs.build-output-dir }}
+        CMAKE_BUILD_PARALLEL_LEVEL=4 && cmake -B ${{ steps.strings.outputs.build-output-dir }}
         -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }}
         -DCMAKE_C_COMPILER=${{ matrix.c_compiler }}
         -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
@@ -185,7 +185,7 @@ jobs:
         
       if: ${{ matrix.os == 'macos-latest' && matrix.env == 'macos' }}
       run: >
-        cmake -GXcode -B ${{ steps.strings.outputs.build-output-dir }} 
+        CMAKE_BUILD_PARALLEL_LEVEL=4 && cmake -GXcode -B ${{ steps.strings.outputs.build-output-dir }} 
         -DIOS_PLATFORM=${{ matrix.ios_platform }}
         -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
         -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
@@ -202,7 +202,7 @@ jobs:
       # See https://cmake.org/cmake/help/latest/variable/CMAKE_BUILD_TYPE.html?highlight=cmake_build_type
       if: ${{ matrix.os == 'macos-latest' && matrix.env != 'macos' }}
       run: >
-        cmake -GXcode -B ${{ steps.strings.outputs.build-output-dir }} 
+        CMAKE_BUILD_PARALLEL_LEVEL=4 && cmake -GXcode -B ${{ steps.strings.outputs.build-output-dir }} 
         -DCMAKE_TOOLCHAIN_FILE=./ios.cmake 
         -DIOS_PLATFORM=${{ matrix.ios_platform }}
         -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
@@ -219,7 +219,7 @@ jobs:
       # See https://cmake.org/cmake/help/latest/variable/CMAKE_BUILD_TYPE.html?highlight=cmake_build_type
       if: ${{ matrix.os == 'windows-latest' }}
       run: >
-        cmake -B ${{ steps.strings.outputs.build-output-dir }} 
+        CMAKE_BUILD_PARALLEL_LEVEL=4 && cmake -B ${{ steps.strings.outputs.build-output-dir }} 
         -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }}
         -DCMAKE_C_COMPILER=${{ matrix.c_compiler }}
         -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
@@ -235,7 +235,7 @@ jobs:
       shell: bash
       # Build your program with the given configuration. Note that --config is needed because the default Windows generator is a multi-config generator (Visual Studio generator).
       run: |
-        cmake --build ${{ steps.strings.outputs.build-output-dir }} --config ${{ matrix.build_type }} -t proj
+        CMAKE_BUILD_PARALLEL_LEVEL=4 && cmake --build ${{ steps.strings.outputs.build-output-dir }} --config ${{ matrix.build_type }} -t proj
         cd ${{ steps.strings.outputs.build-output-dir }}
         cd lib
         if [ -d "${{ matrix.build_type }}" ]; then
