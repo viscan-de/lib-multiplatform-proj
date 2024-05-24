@@ -1,6 +1,6 @@
 INSERT INTO "metadata" VALUES('NKG.SOURCE', 'https://github.com/NordicGeodesy/NordicTransformations');
-INSERT INTO "metadata" VALUES('NKG.VERSION', '1.0.0');
-INSERT INTO "metadata" VALUES('NKG.DATE', '2020-12-21');
+INSERT INTO "metadata" VALUES('NKG.VERSION', '1.0.1');
+INSERT INTO "metadata" VALUES('NKG.DATE', '2024-04-02');
 
 -- extent for NKG2008 transformations
 INSERT INTO "extent" VALUES(
@@ -48,6 +48,7 @@ INSERT INTO "geodetic_datum" VALUES (
     2000.0,         -- frame reference epoch
     NULL,           -- ensemble accuracy
     NULL,           -- anchor
+    NULL,           -- anchor_epoch
     0               -- deprecated
 );
 
@@ -93,6 +94,7 @@ INSERT INTO "geodetic_datum" VALUES (
     2000.0,         -- frame reference epoch
     NULL,           -- ensemble accuracy
     NULL,           -- anchor
+    NULL,           -- anchor_epoch
     0               -- deprecated
 );
 
@@ -309,7 +311,7 @@ INSERT INTO "usage" VALUES (
 -- EE
 INSERT INTO "helmert_transformation" VALUES (
     'NKG','P1_2008_EE', -- operation auth+code
-    'NKG_ETRF00 to ETRF96@2000.0', -- name
+    'NKG_ETRF00 to ETRF96@2000.0 (Estonia)', -- name
     'Transformation from NKG_ETRF00 to ETRF96, at transformation reference epoch 2000.0', -- description / remark
     'EPSG','1033',  -- method auth+code
     'Position Vector transformation (geocentric domain)',
@@ -343,7 +345,7 @@ INSERT INTO "usage" VALUES (
 -- FI
 INSERT INTO "helmert_transformation" VALUES (
     'NKG','P1_2008_FI', -- operation auth+code
-    'NKG_ETRF00 to ETRF96@2000.0', -- name
+    'NKG_ETRF00 to ETRF96@2000.0 (Finland)', -- name
     'Transformation from NKG_ETRF00 to ETRF96, at transformation reference epoch 2000.0', -- description / remark
     'EPSG','1033',  -- method auth+code
     'Position Vector transformation (geocentric domain)',
@@ -551,7 +553,7 @@ INSERT INTO "usage" VALUES (
 -- EE
 INSERT INTO "helmert_transformation" VALUES (
     'NKG','PAR_2020_EE', -- operation auth+code
-    'NKG_ETRF14 to ETRF96@2000.0', -- name
+    'NKG_ETRF14 to ETRF96@2000.0 (Estonia)', -- name
     'Transformation from NKG_ETRF14 to ETRF96, at transformation reference epoch 2000.0', -- description / remark
     'EPSG','1033',  -- method auth+code
     'Position Vector transformation (geocentric domain)',
@@ -585,7 +587,7 @@ INSERT INTO "usage" VALUES (
 -- FI
 INSERT INTO "helmert_transformation" VALUES (
     'NKG','PAR_2020_FI', -- operation auth+code
-    'NKG_ETRF14 to ETRF96@2000.0', -- name
+    'NKG_ETRF14 to ETRF96@2000.0 (Finland)', -- name
     'Transformation from NKG_ETRF14 to ETRF96, at transformation reference epoch 2000.0', -- description / remark
     'EPSG','1033',  -- method auth+code
     'Position Vector transformation (geocentric domain)',
@@ -685,7 +687,7 @@ INSERT INTO "usage" VALUES (
 -- NO
 INSERT INTO "helmert_transformation" VALUES (
     'NKG','PAR_2020_NO', -- operation auth+code
-    'NKG_ETRF14 to ETRF93@2000.0', -- name
+    'NKG_ETRF14 to ETRF93@2000.0 (Helmert)', -- name
     'Transformation from NKG_ETRF14 to ETRF93, at transformation reference epoch 2000.0', -- description / remark
     'EPSG','1033',  -- method auth+code
     'Position Vector transformation (geocentric domain)',
@@ -733,9 +735,9 @@ INSERT INTO "other_transformation" (
 )
 VALUES(
     'NKG', 'NKG_ETRF14_ETRF93_2000', -- object auth+code
-    'NKG_ETRF14 to ETRF93@2000.0', -- name
+    'NKG_ETRF14 to ETRF93@2000.0 (Gridshift)', -- name
     'Transformation from NKG_ETRF14 to ETRF93, at transformation reference epoch 2000.0', -- description / remark
-    'PROJ', 'PROJString', 
+    'PROJ', 'PROJString',
     '+proj=xyzgridshift +grids=no_kv_NKGETRF14_EPSG7922_2000.tif',
     'NKG','ETRF14',  -- source auth+code
     'EPSG','7922',   -- target auth+code
@@ -810,7 +812,7 @@ INSERT INTO "other_transformation" (
 )
 VALUES(
     'NKG', 'ETRF92_2000_TO_ETRF92_1994',-- object auth+code
-    'ETRF92@2000.0 to ETRF92@1994.704', -- name
+    'ETRF92@2000.0 to ETRF92@1994.704 using nkgrf03vel_realigned', -- name
     NULL, -- description
     'PROJ', 'PROJString',               -- method auth+cod
     '+proj=deformation +dt=-5.296 +grids=eur_nkg_nkgrf03vel_realigned.tif',
@@ -915,7 +917,7 @@ INSERT INTO "other_transformation" (
 )
 VALUES(
     'NKG', 'ETRF96_2000_TO_ETRF96_1997_56',-- object auth+code
-    'ETRF96@2000.0 to ETRF96@1997.56', -- name
+    'ETRF96@2000.0 to ETRF96@1997.56 using nkgrf03vel_realigned', -- name
     NULL, -- description
     'PROJ', 'PROJString',               -- method auth+cod
     '+proj=deformation +dt=-2.44 +grids=eur_nkg_nkgrf03vel_realigned.tif',
@@ -1023,7 +1025,7 @@ INSERT INTO "other_transformation" (
 )
 VALUES(
     'NKG', 'ETRF96_2000_TO_ETRF96_1997',-- object auth+code
-    'ETRF96@2000.0 to ETRF96@1997.0',     -- name
+    'ETRF96@2000.0 to ETRF96@1997.0 using nkgrf03vel_realigned',     -- name
     NULL,                               -- description
     'PROJ', 'PROJString',               -- method auth+cod
     '+proj=deformation +dt=-3.0 +grids=eur_nkg_nkgrf03vel_realigned.tif',
@@ -1131,7 +1133,7 @@ INSERT INTO "other_transformation" (
 )
 VALUES(
     'NKG', 'ETRF89_2000_TO_ETRF89_1992',-- object auth+code
-    'ETRF89@2000.0 to ETRF89@1992.75',  -- name
+    'ETRF89@2000.0 to ETRF89@1992.75 using nkgrf03vel_realigned',  -- name
     NULL,                               -- description
     'PROJ', 'PROJString',               -- method auth+cod
     '+proj=deformation +dt=-7.25 +grids=eur_nkg_nkgrf03vel_realigned.tif',
@@ -1238,7 +1240,7 @@ INSERT INTO "other_transformation" (
 )
 VALUES(
     'NKG', 'ETRF2000_2000_TO_ETRF_2000_2003',-- object auth+code
-    'ETRF2000@2000.0 to ETRF2000@2003.75',  -- name
+    'ETRF2000@2000.0 to ETRF2000@2003.75 using nkgrf03vel_realigned',  -- name
     NULL,                                   -- description
     'PROJ', 'PROJString',               -- method auth+cod
     '+proj=deformation +dt=3.75 +grids=eur_nkg_nkgrf03vel_realigned.tif',
@@ -1345,7 +1347,7 @@ INSERT INTO "other_transformation" (
 )
 VALUES(
     'NKG', 'ETRF93_2000_TO_ETRF93_1995',-- object auth+code
-    'ETRF93@2000.0 to ETRF93@1995.0',   -- name
+    'ETRF93@2000.0 to ETRF93@1995.0 using nkgrf03vel_realigned',   -- name
     NULL,                               -- description
     'PROJ', 'PROJString',               -- method auth+cod
     '+proj=deformation +dt=-5 +grids=eur_nkg_nkgrf03vel_realigned.tif',
@@ -1452,7 +1454,7 @@ INSERT INTO "other_transformation" (
 )
 VALUES(
     'NKG', 'ETRF97_2000_TO_ETRF97_1999',-- object auth+code
-    'ETRF97@2000.0 to ETRF97@1999.5',   -- name
+    'ETRF97@2000.0 to ETRF97@1999.5 using nkgrf03vel_realigned',   -- name
     NULL,                               -- description
     'PROJ', 'PROJString',               -- method auth+cod
     '+proj=deformation +dt=-0.5 +grids=eur_nkg_nkgrf03vel_realigned.tif',
@@ -1557,7 +1559,7 @@ INSERT INTO "other_transformation" (
 )
 VALUES(
     'NKG', 'DK_2020_INTRAPLATE',        -- object auth+code
-    'ETRF92@2000.0 to ETRF92@1994.704', -- name
+    'ETRF92@2000.0 to ETRF92@1994.704 using nkgrf17vel', -- name
     NULL,                               -- description
     'PROJ', 'PROJString',               -- method auth+cod
     '+proj=deformation +dt=15.829 +grids=eur_nkg_nkgrf17vel.tif',
@@ -1671,7 +1673,7 @@ INSERT INTO "other_transformation" (
 )
 VALUES(
     'NKG', 'EE_2020_INTRAPLATE',-- object auth+code
-    'ETRF96@2000.0 to ETRF96@1997.56', -- name
+    'ETRF96@2000.0 to ETRF96@1997.56 using nkgrf17vel', -- name
     NULL, -- description
     'PROJ', 'PROJString',               -- method auth+cod
     '+proj=deformation +dt=-2.44 +grids=eur_nkg_nkgrf17vel.tif',
@@ -1787,7 +1789,7 @@ INSERT INTO "other_transformation" (
 )
 VALUES(
     'NKG', 'FI_2020_INTRAPLATE',-- object auth+code
-    'ETRF96@2000.0 to ETRF96@1997.0', -- name
+    'ETRF96@2000.0 to ETRF96@1997.0 using nkgrf17vel', -- name
     NULL, -- description
     'PROJ', 'PROJString',               -- method auth+cod
     '+proj=deformation +dt=-3 +grids=eur_nkg_nkgrf17vel.tif',
@@ -1903,7 +1905,7 @@ INSERT INTO "other_transformation" (
 )
 VALUES(
     'NKG', 'LV_2020_INTRAPLATE',        -- object auth+code
-    'ETRF89@2000.0 to ETRF89@1992.75 (LKS-92)',  -- name
+    'ETRF89@2000.0 to ETRF89@1992.75 (LKS-92) using nkgrf17vel',  -- name
     NULL,                               -- description
     'PROJ', 'PROJString',               -- method auth+cod
     '+proj=deformation +dt=-7.25 +grids=eur_nkg_nkgrf17vel.tif',
@@ -2019,7 +2021,7 @@ INSERT INTO "other_transformation" (
 )
 VALUES(
     'NKG', 'LT_2020_INTRAPLATE',            -- object auth+code
-    'ETRF2000@2000.0 to ETRF2000@2003.75 (LKS94)',  -- name
+    'ETRF2000@2000.0 to ETRF2000@2003.75 (LKS94) using nkgrf17vel',  -- name
     NULL,                                   -- description
     'PROJ', 'PROJString',               -- method auth+cod
     '+proj=deformation +dt=3.75 +grids=eur_nkg_nkgrf17vel.tif',
@@ -2135,7 +2137,7 @@ INSERT INTO "other_transformation" (
 )
 VALUES(
     'NKG', 'NO_2020_INTRAPLATE',        -- object auth+code
-    'ETRF93@2000.0 to ETRF93@1995.0',   -- name
+    'ETRF93@2000.0 to ETRF93@1995.0 using nkgrf17vel',   -- name
     NULL,                               -- description
     'PROJ', 'PROJString',               -- method auth+cod
     '+proj=deformation +dt=-5 +grids=eur_nkg_nkgrf17vel.tif',
@@ -2200,7 +2202,7 @@ INSERT INTO "concatenated_operation_step" (
     operation_auth_name, operation_code, step_number, step_auth_name, step_code
 ) VALUES
     ('NKG', 'ITRF2014_TO_NO', 1, 'EPSG', '8366'), -- ITRF2014 -> ETRF2014
-    ('NKG', 'ITRF2014_TO_NO', 2, 'NKG', 'NKG_ETRF14_TO_ETRF2014'), 
+    ('NKG', 'ITRF2014_TO_NO', 2, 'NKG', 'NKG_ETRF14_TO_ETRF2014'),
     ('NKG', 'ITRF2014_TO_NO', 3, 'NKG', 'NKG_ETRF14_ETRF93_2000'),
     ('NKG', 'ITRF2014_TO_NO', 4, 'NKG', 'NO_2020_INTRAPLATE')
 ;
@@ -2245,7 +2247,7 @@ INSERT INTO "other_transformation" (
 )
 VALUES(
     'NKG', 'SE_2020_INTRAPLATE',-- object auth+code
-    'ETRF97@2000.0 to ETRF97@1999.5', -- name
+    'ETRF97@2000.0 to ETRF97@1999.5 using nkgrf17vel', -- name
     NULL, -- description
     'PROJ', 'PROJString',               -- method auth+cod
     '+proj=deformation +dt=-0.5 +grids=eur_nkg_nkgrf17vel.tif',

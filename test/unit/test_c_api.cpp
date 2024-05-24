@@ -232,6 +232,20 @@ TEST_F(CApi, proj_create) {
         ObjectKeeper keeper(obj);
         EXPECT_NE(obj, nullptr);
     }
+
+    {
+        PJ_CONTEXT *ctxt = proj_context_create();
+        std::string s;
+        proj_log_func(ctxt, &s, [](void *user_data, int, const char *msg) {
+            *static_cast<std::string *>(user_data) = msg;
+        });
+        auto crs = proj_create(ctxt, "EPSG:i_do_not_exist");
+        proj_destroy(crs);
+        proj_context_destroy(ctxt);
+        EXPECT_EQ(crs, nullptr);
+        EXPECT_STREQ(s.c_str(),
+                     "proj_create: crs not found: EPSG:i_do_not_exist");
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -341,6 +355,39 @@ TEST_F(CApi, proj_create_from_wkt) {
         ObjectKeeper keeper(obj);
         EXPECT_NE(obj, nullptr);
         EXPECT_EQ(warningList, nullptr);
+        proj_string_list_destroy(warningList);
+        EXPECT_EQ(errorList, nullptr);
+        proj_string_list_destroy(errorList);
+    }
+    {
+        PROJ_STRING_LIST warningList = nullptr;
+        PROJ_STRING_LIST errorList = nullptr;
+        const char *const options[] = {
+            "UNSET_IDENTIFIERS_IF_INCOMPATIBLE_DEF=YES", nullptr};
+        auto wkt = "PROJCS[\"Merchich / Nord Maroc\","
+                   "    GEOGCS[\"Merchich\","
+                   "        DATUM[\"Merchich\","
+                   "            SPHEROID[\"Clarke 1880 (IGN)\","
+                   "6378249.2,293.466021293627]],"
+                   "        PRIMEM[\"Greenwich\",0],"
+                   "        UNIT[\"grad\",0.015707963267949,"
+                   "            AUTHORITY[\"EPSG\",\"9105\"]],"
+                   "        AUTHORITY[\"EPSG\",\"4261\"]],"
+                   "    PROJECTION[\"Lambert_Conformal_Conic_1SP\"],"
+                   "    PARAMETER[\"latitude_of_origin\",37],"
+                   "    PARAMETER[\"central_meridian\",-6],"
+                   "    PARAMETER[\"scale_factor\",0.999625769],"
+                   "    PARAMETER[\"false_easting\",500000],"
+                   "    PARAMETER[\"false_northing\",300000],"
+                   "    UNIT[\"metre\",1,"
+                   "        AUTHORITY[\"EPSG\",\"9001\"]],"
+                   "    AXIS[\"Easting\",EAST],"
+                   "    AXIS[\"Northing\",NORTH]]";
+        auto obj = proj_create_from_wkt(m_ctxt, wkt, options, &warningList,
+                                        &errorList);
+        ObjectKeeper keeper(obj);
+        EXPECT_NE(obj, nullptr);
+        EXPECT_NE(warningList, nullptr);
         proj_string_list_destroy(warningList);
         EXPECT_EQ(errorList, nullptr);
         proj_string_list_destroy(errorList);
@@ -1060,6 +1107,22 @@ TEST_F(CApi, proj_create_from_database) {
                         "step proj=unitconvert xy_in=rad xy_out=deg "
                         "step proj=axisswap order=2,1"));
         EXPECT_EQ(info.accuracy, 1);
+    }
+
+    {
+        PJ_CONTEXT *ctxt = proj_context_create();
+        std::string s;
+        proj_log_func(ctxt, &s, [](void *user_data, int, const char *msg) {
+            *static_cast<std::string *>(user_data) = msg;
+        });
+        auto crs = proj_create_from_database(ctxt, "EPSG", "i_do_not_exist",
+                                             PJ_CATEGORY_CRS, false, nullptr);
+        proj_destroy(crs);
+        proj_context_destroy(ctxt);
+        EXPECT_EQ(crs, nullptr);
+        EXPECT_STREQ(
+            s.c_str(),
+            "proj_create_from_database: crs not found: EPSG:i_do_not_exist");
     }
 }
 
@@ -4223,8 +4286,8 @@ TEST_F(CApi, proj_get_celestial_body_list_from_database) {
     { proj_celestial_body_list_destroy(nullptr); }
 
     {
-        auto list =
-            proj_get_celestial_body_list_from_database(nullptr, nullptr, 0);
+        auto list = proj_get_celestial_body_list_from_database(nullptr, nullptr,
+                                                               nullptr);
         ASSERT_NE(list, nullptr);
         ASSERT_NE(list[0], nullptr);
         ASSERT_NE(list[0]->auth_name, nullptr);
@@ -4669,7 +4732,7 @@ TEST_F(CApi, proj_context_copy_from_default) {
 
 TEST_F(CApi, proj_context_clone) {
     int new_init_rules =
-        proj_context_get_use_proj4_init_rules(NULL, 0) > 0 ? 0 : 1;
+        proj_context_get_use_proj4_init_rules(nullptr, 0) > 0 ? 0 : 1;
     PJ_CONTEXT *new_ctx = proj_context_create();
     EXPECT_NE(new_ctx, nullptr);
     PjContextKeeper keeper_ctxt(new_ctx);
@@ -5545,6 +5608,7 @@ TEST_F(CApi, proj_create_derived_geographic_crs) {
         "            MEMBER[\"World Geodetic System 1984 (G1674)\"],\n"
         "            MEMBER[\"World Geodetic System 1984 (G1762)\"],\n"
         "            MEMBER[\"World Geodetic System 1984 (G2139)\"],\n"
+        "            MEMBER[\"World Geodetic System 1984 (G2296)\"],\n"
         "            ELLIPSOID[\"WGS 84\",6378137,298.257223563,\n"
         "                LENGTHUNIT[\"metre\",1]],\n"
         "            ENSEMBLEACCURACY[2.0]],\n"
@@ -5972,7 +6036,7 @@ TEST_F(CApi, proj_get_insert_statements) {
             EXPECT_EQ(std::string(list[0]),
                       "INSERT INTO geodetic_datum VALUES('HOBU',"
                       "'GEODETIC_DATUM_XXXX','GDA2020','','EPSG','7019',"
-                      "'EPSG','8901',NULL,NULL,NULL,NULL,0);");
+                      "'EPSG','8901',NULL,NULL,NULL,NULL,NULL,0);");
             EXPECT_EQ(sizeOfStringList(list), 4);
             proj_string_list_destroy(list);
         }
@@ -6020,7 +6084,7 @@ TEST_F(CApi, proj_get_insert_statements) {
             EXPECT_EQ(std::string(list[0]),
                       "INSERT INTO geodetic_datum VALUES('HOBU',"
                       "'GEODETIC_DATUM_XXXX','GDA2020','','EPSG','7019',"
-                      "'EPSG','8901',NULL,NULL,NULL,NULL,0);");
+                      "'EPSG','8901',NULL,NULL,NULL,NULL,NULL,0);");
             proj_string_list_destroy(list);
         }
 

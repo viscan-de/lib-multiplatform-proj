@@ -136,7 +136,7 @@ constexpr const char *CS_TYPE_ORDINAL = cs::OrdinalCS::WKT2_TYPE;
 constexpr int DATABASE_LAYOUT_VERSION_MAJOR = 1;
 // If the code depends on the new additions, then DATABASE_LAYOUT_VERSION_MINOR
 // must be incremented.
-constexpr int DATABASE_LAYOUT_VERSION_MINOR = 3;
+constexpr int DATABASE_LAYOUT_VERSION_MINOR = 4;
 
 constexpr size_t N_MAX_PARAMS = 7;
 
@@ -402,7 +402,7 @@ SQLResultSet SQLiteHandle::run(sqlite3_stmt *stmt, const std::string &sql,
     for (const auto &param : parameters) {
         const auto &paramType = param.type();
         if (paramType == SQLValues::Type::STRING) {
-            auto strValue = param.stringValue();
+            const auto &strValue = param.stringValue();
             sqlite3_bind_text(stmt, nBindField, strValue.c_str(),
                               static_cast<int>(strValue.size()),
                               SQLITE_TRANSIENT);
@@ -1211,7 +1211,7 @@ void DatabaseContext::Private::open(const std::string &databasePath,
 
     sqlite_handle_ = SQLiteHandleCache::get().getHandle(path, ctx);
 
-    databasePath_ = path;
+    databasePath_ = std::move(path);
 }
 
 // ---------------------------------------------------------------------------
@@ -1265,7 +1265,7 @@ void DatabaseContext::Private::attachExtraDatabases(
             "AND name NOT LIKE 'sqlite_stat%'");
     std::map<std::string, std::vector<std::string>> tableStructure;
     for (const auto &rowTable : tables) {
-        auto tableName = rowTable[0];
+        const auto &tableName = rowTable[0];
         auto tableInfo = run("PRAGMA table_info(\"" +
                              replaceAll(tableName, "\"", "\"\"") + "\")");
         for (const auto &rowCol : tableInfo) {
@@ -1294,18 +1294,15 @@ void DatabaseContext::Private::attachExtraDatabases(
         sqlite_handle, true, nLayoutVersionMajor, nLayoutVersionMinor);
     l_handle = sqlite_handle_;
 
-    run("ATTACH DATABASE '" + replaceAll(databasePath_, "'", "''") +
-        "' AS db_0");
+    run("ATTACH DATABASE ? AS db_0", {databasePath_});
     detach_ = true;
     int count = 1;
     for (const auto &otherDbPath : auxiliaryDatabasePaths) {
         const auto attachedDbName("db_" + toString(static_cast<int>(count)));
-        std::string sql = "ATTACH DATABASE '";
-        sql += replaceAll(otherDbPath, "'", "''");
-        sql += "' AS ";
+        std::string sql = "ATTACH DATABASE ? AS ";
         sql += attachedDbName;
         count++;
-        run(sql);
+        run(sql, {otherDbPath});
 
         l_handle->checkDatabaseLayout(databasePath_, otherDbPath,
                                       attachedDbName + '.');
@@ -1463,7 +1460,7 @@ static void identifyFromNameOrCode(
 
     for (const auto &id : obj->identifiers()) {
         try {
-            const auto idAuthName = *(id->codeSpace());
+            const auto &idAuthName = *(id->codeSpace());
             if (std::find(allowedAuthoritiesTmp.begin(),
                           allowedAuthoritiesTmp.end(),
                           idAuthName) != allowedAuthoritiesTmp.end()) {
@@ -2143,6 +2140,15 @@ std::vector<std::string> DatabaseContext::Private::getInsertStatementsFor(
 
 // ---------------------------------------------------------------------------
 
+static std::string anchorEpochToStr(double val) {
+    constexpr int BUF_SIZE = 16;
+    char szBuffer[BUF_SIZE];
+    sqlite3_snprintf(BUF_SIZE, szBuffer, "%.3f", val);
+    return szBuffer;
+}
+
+// ---------------------------------------------------------------------------
+
 std::vector<std::string> DatabaseContext::Private::getInsertStatementsFor(
     const datum::GeodeticReferenceFrameNNPtr &datum,
     const std::string &authName, const std::string &code, bool numericCode,
@@ -2214,15 +2220,21 @@ std::vector<std::string> DatabaseContext::Private::getInsertStatementsFor(
         frameReferenceEpoch =
             toString(dynamicDatum->frameReferenceEpoch().value());
     }
-    const std::string anchor = *(datum->anchorDefinition());
+    const std::string anchor(*(datum->anchorDefinition()));
+    const util::optional<common::Measure> &anchorEpoch = datum->anchorEpoch();
     const auto sql = formatStatement(
         "INSERT INTO geodetic_datum VALUES("
-        "'%q','%q','%q','%q','%q','%q','%q','%q',%s,%s,NULL,%Q,0);",
+        "'%q','%q','%q','%q','%q','%q','%q','%q',%s,%s,NULL,%Q,%s,0);",
         authName.c_str(), code.c_str(), datum->nameStr().c_str(),
         "", // description
         ellipsoidAuthName.c_str(), ellipsoidCode.c_str(), pmAuthName.c_str(),
         pmCode.c_str(), publicationDate.c_str(), frameReferenceEpoch.c_str(),
-        anchor.empty() ? nullptr : anchor.c_str());
+        anchor.empty() ? nullptr : anchor.c_str(),
+        anchorEpoch.has_value()
+            ? anchorEpochToStr(
+                  anchorEpoch->convertToUnit(common::UnitOfMeasure::YEAR))
+                  .c_str()
+            : "NULL");
     appendSql(sqlStatements, sql);
 
     identifyOrInsertUsages(datum, "geodetic_datum", authName, code,
@@ -2303,28 +2315,41 @@ std::vector<std::string> DatabaseContext::Private::getInsertStatementsFor(
         assert(!pmIds.empty());
         const std::string &pmAuthName = *(pmIds.front()->codeSpace());
         const std::string &pmCode = pmIds.front()->code();
-        const auto anchor = *(firstDatum->anchorDefinition());
+        const std::string anchor(*(firstDatum->anchorDefinition()));
+        const util::optional<common::Measure> &anchorEpoch =
+            firstDatum->anchorEpoch();
         const auto sql = formatStatement(
             "INSERT INTO geodetic_datum VALUES("
-            "'%q','%q','%q','%q','%q','%q','%q','%q',NULL,NULL,%f,%Q,0);",
+            "'%q','%q','%q','%q','%q','%q','%q','%q',NULL,NULL,%f,%Q,%s,0);",
             authName.c_str(), code.c_str(), ensemble->nameStr().c_str(),
             "", // description
             ellipsoidAuthName.c_str(), ellipsoidCode.c_str(),
             pmAuthName.c_str(), pmCode.c_str(), accuracy,
-            anchor.empty() ? nullptr : anchor.c_str());
+            anchor.empty() ? nullptr : anchor.c_str(),
+            anchorEpoch.has_value()
+                ? anchorEpochToStr(
+                      anchorEpoch->convertToUnit(common::UnitOfMeasure::YEAR))
+                      .c_str()
+                : "NULL");
         appendSql(sqlStatements, sql);
     } else {
         const auto firstDatum =
             AuthorityFactory::create(self, membersId.front().first)
                 ->createVerticalDatum(membersId.front().second);
-        const auto anchor = *(firstDatum->anchorDefinition());
+        const std::string anchor(*(firstDatum->anchorDefinition()));
+        const util::optional<common::Measure> &anchorEpoch =
+            firstDatum->anchorEpoch();
         const auto sql = formatStatement(
             "INSERT INTO vertical_datum VALUES("
-            "'%q','%q','%q','%q',NULL,NULL,%f,%Q,"
-            "0);",
+            "'%q','%q','%q','%q',NULL,NULL,%f,%Q,%s,0);",
             authName.c_str(), code.c_str(), ensemble->nameStr().c_str(),
             "", // description
-            accuracy, anchor.empty() ? nullptr : anchor.c_str());
+            accuracy, anchor.empty() ? nullptr : anchor.c_str(),
+            anchorEpoch.has_value()
+                ? anchorEpochToStr(
+                      anchorEpoch->convertToUnit(common::UnitOfMeasure::YEAR))
+                      .c_str()
+                : "NULL");
         appendSql(sqlStatements, sql);
     }
     identifyOrInsertUsages(ensemble,
@@ -2670,14 +2695,20 @@ std::vector<std::string> DatabaseContext::Private::getInsertStatementsFor(
         frameReferenceEpoch =
             toString(dynamicDatum->frameReferenceEpoch().value());
     }
-    const auto anchor = *(datum->anchorDefinition());
+    const std::string anchor(*(datum->anchorDefinition()));
+    const util::optional<common::Measure> &anchorEpoch = datum->anchorEpoch();
     const auto sql = formatStatement(
         "INSERT INTO vertical_datum VALUES("
-        "'%q','%q','%q','%q',%s,%s,NULL,%Q,0);",
+        "'%q','%q','%q','%q',%s,%s,NULL,%Q,%s,0);",
         authName.c_str(), code.c_str(), datum->nameStr().c_str(),
         "", // description
         publicationDate.c_str(), frameReferenceEpoch.c_str(),
-        anchor.empty() ? nullptr : anchor.c_str());
+        anchor.empty() ? nullptr : anchor.c_str(),
+        anchorEpoch.has_value()
+            ? anchorEpochToStr(
+                  anchorEpoch->convertToUnit(common::UnitOfMeasure::YEAR))
+                  .c_str()
+            : "NULL");
     appendSql(sqlStatements, sql);
 
     identifyOrInsertUsages(datum, "vertical_datum", authName, code,
@@ -2904,7 +2935,7 @@ DatabaseContext::create(const std::string &databasePath,
     }
     if (!auxDbs.empty()) {
         dbCtxPrivate->attachExtraDatabases(auxDbs);
-        dbCtxPrivate->auxiliaryDatabasePaths_ = auxDbs;
+        dbCtxPrivate->auxiliaryDatabasePaths_ = std::move(auxDbs);
     }
     dbCtxPrivate->self_ = dbCtx.as_nullable();
     return dbCtx;
@@ -3312,14 +3343,18 @@ bool DatabaseContext::lookForGridInfo(
     url.clear();
     openLicense = false;
     directDownload = false;
+    gridAvailable = false;
 
-    fullFilename.resize(2048);
-    int errno_before = proj_context_errno(ctxt);
-    gridAvailable = NS_PROJ::FileManager::open_resource_file(
-                        ctxt, projFilename.c_str(), &fullFilename[0],
-                        fullFilename.size() - 1) != nullptr;
-    proj_context_errno_set(ctxt, errno_before);
-    fullFilename.resize(strlen(fullFilename.c_str()));
+    const auto resolveFullFilename = [ctxt, &fullFilename, &projFilename]() {
+        fullFilename.resize(2048);
+        const int errno_before = proj_context_errno(ctxt);
+        bool lGridAvailable = NS_PROJ::FileManager::open_resource_file(
+                                  ctxt, projFilename.c_str(), &fullFilename[0],
+                                  fullFilename.size() - 1) != nullptr;
+        proj_context_errno_set(ctxt, errno_before);
+        fullFilename.resize(strlen(fullFilename.c_str()));
+        return lGridAvailable;
+    };
 
     auto res =
         d->run("SELECT "
@@ -3351,7 +3386,7 @@ bool DatabaseContext::lookForGridInfo(
             old_proj_grid_name == projFilename) {
             std::string fullFilenameNewName;
             fullFilenameNewName.resize(2048);
-            errno_before = proj_context_errno(ctxt);
+            const int errno_before = proj_context_errno(ctxt);
             bool gridAvailableWithNewName =
                 pj_find_file(ctxt, proj_grid_name.c_str(),
                              &fullFilenameNewName[0],
@@ -3360,12 +3395,21 @@ bool DatabaseContext::lookForGridInfo(
             fullFilenameNewName.resize(strlen(fullFilenameNewName.c_str()));
             if (gridAvailableWithNewName) {
                 gridAvailable = true;
-                fullFilename = fullFilenameNewName;
+                fullFilename = std::move(fullFilenameNewName);
             }
         }
 
-        if (considerKnownGridsAsAvailable &&
+        if (!gridAvailable && considerKnownGridsAsAvailable &&
             (!packageName.empty() || (!url.empty() && openLicense))) {
+
+            // In considerKnownGridsAsAvailable mode, try to fetch the local
+            // file name if it exists, but do not attempt network access.
+            const auto network_was_enabled =
+                proj_context_is_network_enabled(ctxt);
+            proj_context_set_enable_network(ctxt, false);
+            (void)resolveFullFilename();
+            proj_context_set_enable_network(ctxt, network_was_enabled);
+
             gridAvailable = true;
         }
 
@@ -3379,7 +3423,13 @@ bool DatabaseContext::lookForGridInfo(
         }
         info.directDownload = directDownload;
         info.openLicense = openLicense;
+
+        if (!gridAvailable) {
+            gridAvailable = resolveFullFilename();
+        }
     } else {
+        gridAvailable = resolveFullFilename();
+
         if (starts_with(fullFilename, "http://") ||
             starts_with(fullFilename, "https://")) {
             url = fullFilename;
@@ -4187,7 +4237,7 @@ bool AuthorityFactory::Private::rejectOpDueToMissingGrid(
 
     struct DisableNetwork {
         const DatabaseContextNNPtr &m_dbContext;
-        bool m_old_network_enabled;
+        bool m_old_network_enabled = false;
 
         explicit DisableNetwork(const DatabaseContextNNPtr &l_context)
             : m_dbContext(l_context) {
@@ -4634,20 +4684,30 @@ std::string
 AuthorityFactory::identifyBodyFromSemiMajorAxis(double semi_major_axis,
                                                 double tolerance) const {
     auto res =
-        d->run("SELECT name, (ABS(semi_major_axis - ?) / semi_major_axis ) "
-               "AS rel_error FROM celestial_body WHERE rel_error <= ?",
+        d->run("SELECT DISTINCT name, "
+               "(ABS(semi_major_axis - ?) / semi_major_axis ) AS rel_error "
+               "FROM celestial_body WHERE rel_error <= ? "
+               "ORDER BY rel_error, name",
                {semi_major_axis, tolerance});
     if (res.empty()) {
         throw FactoryException("no match found");
     }
+    constexpr int IDX_NAME = 0;
     if (res.size() > 1) {
+        constexpr int IDX_REL_ERROR = 1;
+        // If the first object has a relative error of 0 and the next one
+        // a non-zero error, then use the first one.
+        if (res.front()[IDX_REL_ERROR] == "0" &&
+            (*std::next(res.begin()))[IDX_REL_ERROR] != "0") {
+            return res.front()[IDX_NAME];
+        }
         for (const auto &row : res) {
-            if (row[0] != res.front()[0]) {
+            if (row[IDX_NAME] != res.front()[IDX_NAME]) {
                 throw FactoryException("more than one match found");
             }
         }
     }
-    return res.front()[0];
+    return res.front()[IDX_NAME];
 }
 
 // ---------------------------------------------------------------------------
@@ -4762,7 +4822,8 @@ void AuthorityFactory::createGeodeticDatumOrEnsemble(
         "SELECT name, ellipsoid_auth_name, ellipsoid_code, "
         "prime_meridian_auth_name, prime_meridian_code, "
         "publication_date, frame_reference_epoch, "
-        "ensemble_accuracy, anchor, deprecated FROM geodetic_datum "
+        "ensemble_accuracy, anchor, anchor_epoch, deprecated "
+        "FROM geodetic_datum "
         "WHERE "
         "auth_name = ? AND code = ?",
         code);
@@ -4781,7 +4842,8 @@ void AuthorityFactory::createGeodeticDatumOrEnsemble(
         const auto &frame_reference_epoch = row[6];
         const auto &ensemble_accuracy = row[7];
         const auto &anchor = row[8];
-        const bool deprecated = row[9] == "1";
+        const auto &anchor_epoch = row[9];
+        const bool deprecated = row[10] == "1";
 
         std::string massagedName = name;
         if (turnEnsembleAsDatum) {
@@ -4824,6 +4886,9 @@ void AuthorityFactory::createGeodeticDatumOrEnsemble(
                 anchorOpt = anchor;
             if (!publication_date.empty()) {
                 props.set("PUBLICATION_DATE", publication_date);
+            }
+            if (!anchor_epoch.empty()) {
+                props.set("ANCHOR_EPOCH", anchor_epoch);
             }
             auto datum = frame_reference_epoch.empty()
                              ? datum::GeodeticReferenceFrame::create(
@@ -4873,7 +4938,7 @@ void AuthorityFactory::createVerticalDatumOrEnsemble(
     auto res =
         d->runWithCodeParam("SELECT name, publication_date, "
                             "frame_reference_epoch, ensemble_accuracy, anchor, "
-                            "deprecated FROM "
+                            "anchor_epoch, deprecated FROM "
                             "vertical_datum WHERE auth_name = ? AND code = ?",
                             code);
     if (res.empty()) {
@@ -4887,7 +4952,8 @@ void AuthorityFactory::createVerticalDatumOrEnsemble(
         const auto &frame_reference_epoch = row[2];
         const auto &ensemble_accuracy = row[3];
         const auto &anchor = row[4];
-        const bool deprecated = row[5] == "1";
+        const auto &anchor_epoch = row[5];
+        const bool deprecated = row[6] == "1";
         auto props = d->createPropertiesSearchUsages("vertical_datum", code,
                                                      name, deprecated);
         if (!turnEnsembleAsDatum && !ensemble_accuracy.empty()) {
@@ -4910,6 +4976,9 @@ void AuthorityFactory::createVerticalDatumOrEnsemble(
         } else {
             if (!publication_date.empty()) {
                 props.set("PUBLICATION_DATE", publication_date);
+            }
+            if (!anchor_epoch.empty()) {
+                props.set("ANCHOR_EPOCH", anchor_epoch);
             }
             if (d->authority() == "ESRI" &&
                 starts_with(code, "from_geogdatum_")) {
@@ -5708,7 +5777,8 @@ AuthorityFactory::createCompoundCRS(const std::string &code) const {
         auto props = d->createPropertiesSearchUsages("compound_crs", code, name,
                                                      deprecated);
         return crs::CompoundCRS::create(
-            props, std::vector<crs::CRSNNPtr>{horizCRS, vertCRS});
+            props, std::vector<crs::CRSNNPtr>{std::move(horizCRS),
+                                              std::move(vertCRS)});
     } catch (const std::exception &ex) {
         throw buildFactoryException("compoundCRS", d->authority(), code, ex);
     }
@@ -7507,7 +7577,7 @@ AuthorityFactory::createFromCRSCodesWithIntermediates(
 
             listTmp.emplace_back(
                 operation::ConcatenatedOperation::createComputeMetadata(
-                    {op1, op2}, false));
+                    {std::move(op1), std::move(op2)}, false));
         } catch (const std::exception &e) {
             // Mostly for debugging purposes when using an inconsistent
             // database
@@ -7563,7 +7633,7 @@ AuthorityFactory::createFromCRSCodesWithIntermediates(
 
             listTmp.emplace_back(
                 operation::ConcatenatedOperation::createComputeMetadata(
-                    {op1, op2->inverse()}, false));
+                    {std::move(op1), op2->inverse()}, false));
         } catch (const std::exception &e) {
             // Mostly for debugging purposes when using an inconsistent
             // database
@@ -7640,7 +7710,7 @@ AuthorityFactory::createFromCRSCodesWithIntermediates(
 
             listTmp.emplace_back(
                 operation::ConcatenatedOperation::createComputeMetadata(
-                    {op1->inverse(), op2}, false));
+                    {op1->inverse(), std::move(op2)}, false));
         } catch (const std::exception &e) {
             // Mostly for debugging purposes when using an inconsistent
             // database

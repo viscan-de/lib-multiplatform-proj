@@ -2,6 +2,7 @@ set(SQL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/sql")
 set(SQL_FILES
   "${SQL_DIR}/begin.sql"
   "${SQL_DIR}/proj_db_table_defs.sql"
+  "${SQL_DIR}/consistency_checks_triggers.sql"
   "${SQL_DIR}/conversion_triggers.sql"
   "${SQL_DIR}/customizations_early.sql"
   "${SQL_DIR}/metadata.sql"
@@ -36,6 +37,8 @@ set(SQL_FILES
   "${SQL_DIR}/nkg.sql"
   "${SQL_DIR}/iau.sql"
   "${SQL_DIR}/nrcan.sql"
+  # Below file not yet integrated to unclear licensing of referenced grid file
+  # "${SQL_DIR}/transformations_czechia_extra.sql"
   "${SQL_DIR}/grid_alternatives.sql"
   "${SQL_DIR}/grid_alternatives_generated_noaa.sql"
   "${SQL_DIR}/nadcon5_concatenated_operations.sql"

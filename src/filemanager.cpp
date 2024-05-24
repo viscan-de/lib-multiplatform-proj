@@ -1139,13 +1139,15 @@ void proj_context_set_sqlite3_vfs_name(PJ_CONTEXT *ctx, const char *name) {
 
 // ---------------------------------------------------------------------------
 
-/** Get the PROJ user writable directory for datumgrid files.
+/** Get the PROJ user writable directory for downloadable resource files, such
+ * as datum shift grids.
  *
  * @param ctx PROJ context, or NULL
  * @param create If set to TRUE, create the directory if it does not exist
  * already.
  * @return The path to the PROJ user writable directory.
  * @since 7.1
+ * @see proj_context_set_user_writable_directory()
  */
 
 const char *proj_context_get_user_writable_directory(PJ_CONTEXT *ctx,
@@ -1212,13 +1214,47 @@ const char *proj_context_get_user_writable_directory(PJ_CONTEXT *ctx,
         }
 #endif
         path += "/proj";
-        ctx->user_writable_directory = path;
+        ctx->user_writable_directory = std::move(path);
     }
     if (create != FALSE) {
         CreateDirectoryRecursively(ctx, ctx->user_writable_directory);
     }
     return ctx->user_writable_directory.c_str();
 }
+
+// ---------------------------------------------------------------------------
+
+/** Set the PROJ user writable directory for downloadable resource files, such
+ * as datum shift grids.
+ *
+ * If not explicitly set, the following locations are used:
+ * <ul>
+ * <li>on Windows, ${LOCALAPPDATA}/proj</li>
+ * <li>on macOS, ${HOME}/Library/Application Support/proj</li>
+ * <li>on other platforms (Linux), ${XDG_DATA_HOME}/proj if XDG_DATA_HOME is
+ * defined. Else ${HOME}/.local/share/proj</li>
+ * </ul>
+ *
+ * @param ctx PROJ context, or NULL
+ * @param path Path to the PROJ user writable directory. If set to NULL, the
+ *             default location will be used.
+ * @param create If set to TRUE, create the directory if it does not exist
+ * already.
+ * @since 9.5
+ * @see proj_context_get_user_writable_directory()
+ */
+
+void proj_context_set_user_writable_directory(PJ_CONTEXT *ctx, const char *path,
+                                              int create) {
+    if (!ctx)
+        ctx = pj_get_default_ctx();
+    ctx->user_writable_directory = path ? path : "";
+    if (!path || create) {
+        proj_context_get_user_writable_directory(ctx, create);
+    }
+}
+
+// ---------------------------------------------------------------------------
 
 /** Get the URL endpoint to query for remote grids.
  *
@@ -1241,15 +1277,6 @@ const char *proj_context_get_url_endpoint(PJ_CONTEXT *ctx) {
 // ---------------------------------------------------------------------------
 
 //! @cond Doxygen_Suppress
-
-// ---------------------------------------------------------------------------
-
-void pj_context_set_user_writable_directory(PJ_CONTEXT *ctx,
-                                            const std::string &path) {
-    if (!ctx)
-        ctx = pj_get_default_ctx();
-    ctx->user_writable_directory = path;
-}
 
 // ---------------------------------------------------------------------------
 
@@ -1664,7 +1691,7 @@ NS_PROJ::FileManager::open_resource_file(PJ_CONTEXT *ctx, const char *name,
         auto dbContext = getDBcontext(ctx);
         if (dbContext) {
             try {
-                auto filename = dbContext->getProjGridName(name);
+                const auto filename = dbContext->getProjGridName(name);
                 if (!filename.empty()) {
                     file.reset(reinterpret_cast<NS_PROJ::File *>(
                         pj_open_lib_internal(ctx, filename.c_str(), "rb",
@@ -1695,7 +1722,7 @@ NS_PROJ::FileManager::open_resource_file(PJ_CONTEXT *ctx, const char *name,
         auto dbContext = getDBcontext(ctx);
         if (dbContext) {
             try {
-                auto filename = dbContext->getOldProjGridName(name);
+                const auto filename = dbContext->getOldProjGridName(name);
                 if (!filename.empty()) {
                     file.reset(reinterpret_cast<NS_PROJ::File *>(
                         pj_open_lib_internal(ctx, filename.c_str(), "rb",

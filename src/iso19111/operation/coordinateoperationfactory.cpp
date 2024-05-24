@@ -38,6 +38,7 @@
 #include "proj/metadata.hpp"
 #include "proj/util.hpp"
 
+#include "proj/internal/datum_internal.hpp"
 #include "proj/internal/internal.hpp"
 #include "proj/internal/io_internal.hpp"
 #include "proj/internal/tracing.hpp"
@@ -1947,7 +1948,7 @@ findCandidateGeodCRSForDatum(const io::AuthorityFactoryPtr &authFactory,
                              const crs::GeodeticCRS *crs,
                              const datum::GeodeticReferenceFrameNNPtr &datum) {
     std::string preferredAuthName;
-    const auto crsIds = crs->identifiers();
+    const auto &crsIds = crs->identifiers();
     if (crsIds.size() == 1)
         preferredAuthName = *(crsIds.front()->codeSpace());
     return authFactory->createGeodeticCRSFromDatum(datum, preferredAuthName,
@@ -2410,7 +2411,7 @@ struct MyPROJStringExportableHorizNullVertical final
     : public io::IPROJStringExportable {
     CoordinateOperationPtr horizTransform{};
 
-    MyPROJStringExportableHorizNullVertical(
+    explicit MyPROJStringExportableHorizNullVertical(
         const CoordinateOperationPtr &horizTransformIn)
         : horizTransform(horizTransformIn) {}
 
@@ -2767,13 +2768,13 @@ CoordinateOperationFactory::Private::createOperationsGeogToGeog(
 
     const auto &src_pm = geogSrc->primeMeridian()->longitude();
     const auto &dst_pm = geogDst->primeMeridian()->longitude();
-    auto offset_pm =
+    const common::Angle offset_pm(
         (src_pm.unit() == dst_pm.unit())
             ? common::Angle(src_pm.value() - dst_pm.value(), src_pm.unit())
             : common::Angle(
                   src_pm.convertToUnit(common::UnitOfMeasure::DEGREE) -
                       dst_pm.convertToUnit(common::UnitOfMeasure::DEGREE),
-                  common::UnitOfMeasure::DEGREE);
+                  common::UnitOfMeasure::DEGREE));
 
     double vconvSrc = 1.0;
     const auto &srcCS = geogSrc->coordinateSystem();
@@ -3107,12 +3108,12 @@ void CoordinateOperationFactory::Private::createOperationsWithDatumPivot(
             }
         }
 
-        const auto opsSecond =
+        const std::vector<CoordinateOperationNNPtr> opsSecond(
             useOnlyDirectRegistryOp
                 ? findOpsInRegistryDirect(candidateSrcGeod, candidateDstGeod,
                                           context, resNonEmptyBeforeFiltering)
                 : createOperations(candidateSrcGeod, targetEpoch,
-                                   candidateDstGeod, targetEpoch, context);
+                                   candidateDstGeod, targetEpoch, context));
         const auto opsThird = createOperations(
             sourceAndTargetAre3D
                 ? candidateDstGeod->promoteTo3D(std::string(), dbContext)
@@ -3276,7 +3277,7 @@ void CoordinateOperationFactory::Private::createOperationsWithDatumPivot(
     // ... but when transforming between 2 IGNF CRS, we do just one single pass
     // by allowing directly all transformation. There is no strong reason for
     // that particular case, except that otherwise we'd get different results
-    // for thest test/cli/testIGNF script when transforming a point outside
+    // for test/cli/test_cs2cs_ignf.yaml when transforming a point outside
     // the area of validity... Not totally sure the behaviour we try to preserve
     // here with the particular case is fundamentally better than the general
     // case. The general case is needed typically for the RGNC91-93 -> RGNC15
@@ -3703,12 +3704,11 @@ void CoordinateOperationFactory::Private::createOperationsFromProj4Ext(
         projFormatter->ingestPROJString(tmpFormatter->toString());
     }
 
-    const auto PROJString = projFormatter->toString();
     auto properties = util::PropertyMap().set(
         common::IdentifiedObject::NAME_KEY,
         buildTransfName(sourceCRS->nameStr(), targetCRS->nameStr()));
     res.emplace_back(SingleOperation::createPROJBased(
-        properties, PROJString, sourceCRS, targetCRS, {}));
+        properties, projFormatter->toString(), sourceCRS, targetCRS, {}));
 }
 
 // ---------------------------------------------------------------------------
@@ -4181,7 +4181,7 @@ CoordinateOperationFactory::Private::createOperationsGeogToVertFromGeoid(
         for (const auto &model : models) {
             const auto &modelName = model->nameStr();
             const auto &modelIds = model->identifiers();
-            const auto transformations =
+            const std::vector<CoordinateOperationNNPtr> transformations(
                 !modelIds.empty()
                     ? std::vector<
                           CoordinateOperationNNPtr>{io::AuthorityFactory::create(
@@ -4198,7 +4198,7 @@ CoordinateOperationFactory::Private::createOperationsGeogToVertFromGeoid(
                           model, modelName.substr(strlen("PROJ ")))}
                     : authFactory->getTransformationsForGeoid(
                           modelName,
-                          context.context->getUsePROJAlternativeGridNames());
+                          context.context->getUsePROJAlternativeGridNames()));
             for (const auto &transf : transformations) {
                 if (dynamic_cast<crs::GeographicCRS *>(
                         transf->sourceCRS().get()) &&
@@ -4443,28 +4443,34 @@ void CoordinateOperationFactory::Private::createOperationsGeodToGeod(
 
     ENTER_FUNCTION();
 
-    if (geodSrc->ellipsoid()->celestialBody() !=
-        geodDst->ellipsoid()->celestialBody()) {
+    const auto &srcEllps = geodSrc->ellipsoid();
+    const auto &dstEllps = geodDst->ellipsoid();
+    if (srcEllps->celestialBody() == dstEllps->celestialBody() &&
+        srcEllps->celestialBody() != NON_EARTH_BODY) {
+        // Same celestial body, with a known name (that is not the generic
+        // NON_EARTH_BODY used when we can't guess it) ==> compatible
+    } else if ((srcEllps->celestialBody() != dstEllps->celestialBody() &&
+                srcEllps->celestialBody() != NON_EARTH_BODY &&
+                dstEllps->celestialBody() != NON_EARTH_BODY) ||
+               std::fabs(srcEllps->semiMajorAxis().getSIValue() -
+                         dstEllps->semiMajorAxis().getSIValue()) >
+                   REL_ERROR_FOR_SAME_CELESTIAL_BODY *
+                       dstEllps->semiMajorAxis().getSIValue()) {
         const char *envVarVal = getenv("PROJ_IGNORE_CELESTIAL_BODY");
-        if (envVarVal == nullptr) {
+        if (envVarVal == nullptr || ci_equal(envVarVal, "NO") ||
+            ci_equal(envVarVal, "FALSE") || ci_equal(envVarVal, "OFF")) {
             std::string osMsg(
                 "Source and target ellipsoid do not belong to the same "
                 "celestial body (");
-            osMsg += geodSrc->ellipsoid()->celestialBody();
+            osMsg += srcEllps->celestialBody();
             osMsg += " vs ";
-            osMsg += geodDst->ellipsoid()->celestialBody();
-            osMsg += "). You may override this check by setting the "
-                     "PROJ_IGNORE_CELESTIAL_BODY environment variable to YES.";
-            throw util::UnsupportedOperationException(osMsg.c_str());
-        } else if (ci_equal(envVarVal, "NO") || ci_equal(envVarVal, "FALSE") ||
-                   ci_equal(envVarVal, "OFF")) {
-            std::string osMsg(
-                "Source and target ellipsoid do not belong to the same "
-                "celestial body (");
-            osMsg += geodSrc->ellipsoid()->celestialBody();
-            osMsg += " vs ";
-            osMsg += geodDst->ellipsoid()->celestialBody();
+            osMsg += dstEllps->celestialBody();
             osMsg += ").";
+            if (envVarVal == nullptr) {
+                osMsg += " You may override this check by setting the "
+                         "PROJ_IGNORE_CELESTIAL_BODY environment variable "
+                         "to YES.";
+            }
             throw util::UnsupportedOperationException(osMsg.c_str());
         }
     }
@@ -4706,7 +4712,8 @@ void CoordinateOperationFactory::Private::
             // need it in practice.
             setCRSs(opSecondClone.get(), intermBoundCRS, targetCRS);
             res.emplace_back(ConcatenatedOperation::createComputeMetadata(
-                {opFirst, opSecondClone}, disallowEmptyIntersection));
+                {opFirst, std::move(opSecondClone)},
+                disallowEmptyIntersection));
         } catch (const InvalidOperationEmptyIntersection &) {
         }
     }
@@ -4766,7 +4773,7 @@ void CoordinateOperationFactory::Private::createOperationsBoundToGeog(
             auto baseCRS = std::dynamic_pointer_cast<crs::GeographicCRS>(
                 derivedGeogCRS->baseCRS().as_nullable());
             if (baseCRS) {
-                geogCRSOfBaseOfBoundSrc = baseCRS;
+                geogCRSOfBaseOfBoundSrc = std::move(baseCRS);
             }
         }
     }
@@ -5078,7 +5085,7 @@ void CoordinateOperationFactory::Private::createOperationsBoundToGeog(
                         }
                     }
                 } else {
-                    res = opsFirst;
+                    res = std::move(opsFirst);
                 }
             }
             return;
@@ -5886,7 +5893,7 @@ void CoordinateOperationFactory::Private::createOperationsCompoundToGeog(
                     }
                 }
             }
-            if (!foundRegisteredTransformWithAllGridsAvailable && srcGeogCRS &&
+            if (srcGeogCRS &&
                 !srcGeogCRS->_isEquivalentTo(
                     geogDst, util::IComparable::Criterion::EQUIVALENT) &&
                 !srcGeogCRS->is2DPartOf3D(NN_NO_CHECK(geogDst), dbContext)) {
@@ -5904,7 +5911,7 @@ void CoordinateOperationFactory::Private::createOperationsCompoundToGeog(
                     componentsSrc[1], util::optional<common::DataEpoch>(),
                     geogCRSTmp, util::optional<common::DataEpoch>(), context);
                 bool foundRegisteredTransform = false;
-                foundRegisteredTransformWithAllGridsAvailable = false;
+                bool foundRegisteredTransformWithAllGridsAvailable2 = false;
                 for (const auto &op : verticalTransformsTmp) {
                     if (hasIdentifiers(op) && dbContext) {
                         bool missingGrid = false;
@@ -5923,14 +5930,15 @@ void CoordinateOperationFactory::Private::createOperationsCompoundToGeog(
                         }
                         foundRegisteredTransform = true;
                         if (!missingGrid) {
-                            foundRegisteredTransformWithAllGridsAvailable =
+                            foundRegisteredTransformWithAllGridsAvailable2 =
                                 true;
                             break;
                         }
                     }
                 }
-                if (foundRegisteredTransformWithAllGridsAvailable) {
-                    verticalTransforms = verticalTransformsTmp;
+                if (foundRegisteredTransformWithAllGridsAvailable2 &&
+                    !foundRegisteredTransformWithAllGridsAvailable) {
+                    verticalTransforms = std::move(verticalTransformsTmp);
                 } else if (foundRegisteredTransform) {
                     verticalTransforms.insert(verticalTransforms.end(),
                                               verticalTransformsTmp.begin(),
@@ -6196,7 +6204,7 @@ void CoordinateOperationFactory::Private::createOperationsToGeod(
             setCRSs(newOp.get(), sourceCRS, intermGeog3DCRS);
             try {
                 res.emplace_back(ConcatenatedOperation::createComputeMetadata(
-                    {newOp, geog3DToTargetOps.front()},
+                    {std::move(newOp), geog3DToTargetOps.front()},
                     disallowEmptyIntersection));
             } catch (const InvalidOperationEmptyIntersection &) {
             }
@@ -6688,7 +6696,7 @@ void CoordinateOperationFactory::Private::createOperationsCompoundToCompound(
                       verticalTransform->nameStr().find(
                           "CGVD28 height to CGVD2013a(2002) height (1)") !=
                           std::string::npos))) {
-                    interpolationGeogCRS = nad83CSRSv7;
+                    interpolationGeogCRS = std::move(nad83CSRSv7);
                 }
             } catch (const std::exception &) {
             }
@@ -7259,7 +7267,7 @@ crs::CRSNNPtr CRS::getResolvedCRS(const crs::CRSNNPtr &crs,
                         extentOut = extentOut->intersection(
                             NN_NO_CHECK(componentExtent));
                     else if (componentExtent)
-                        extentOut = componentExtent;
+                        extentOut = std::move(componentExtent);
                 }
             }
         }

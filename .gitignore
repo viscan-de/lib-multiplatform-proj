@@ -1,3 +1,9 @@
+#Added by viscan
+.DS_Store
+/.libtiff
+/built
+
+
 # Editor temporary/working/backup
 *~
 *.bak
@@ -54,7 +60,6 @@ CTestTestfile.cmake
 cmake_install.cmake
 cmake/project-config*.cmake
 install_manifest.txt
-/googletest*
 
 # / (base)
 /*.manifest

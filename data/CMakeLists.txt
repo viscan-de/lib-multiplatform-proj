@@ -38,6 +38,8 @@ set(GRIDSHIFT_FILES ${GSB_FILES} ${GTX_FILES})
 
 file(GLOB SCHEMA_FILES *.json)
 
+file(GLOB GEOTIFF_FILES *.tif)
+
 set(ALL_SQL_IN "${CMAKE_CURRENT_BINARY_DIR}/all.sql.in")
 set(PROJ_DB "${CMAKE_CURRENT_BINARY_DIR}/proj.db")
 include(sql_filelist.cmake)
@@ -98,6 +100,10 @@ endforeach()
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/tests/egm96_15_downsampled.gtx ${CMAKE_CURRENT_BINARY_DIR}/for_tests/egm96_15.gtx COPYONLY)
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/tests/ntv2_0_downsampled.gsb ${CMAKE_CURRENT_BINARY_DIR}/for_tests/ntv2_0.gsb COPYONLY)
 
+# test_cs2cs_datumfile has a special case
+execute_process(COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/for_tests/dir with space")
+configure_file(${CMAKE_CURRENT_SOURCE_DIR}/tests/conus "${CMAKE_CURRENT_BINARY_DIR}/for_tests/dir with space/myconus" COPYONLY)
+
 #
 #install
 #
@@ -107,6 +113,7 @@ set(ALL_DATA_FILE
   ${GRIDSHIFT_FILES}
   ${PROJ_DB}
   ${SCHEMA_FILES}
+  ${GEOTIFF_FILES}
 )
 install(
   FILES ${ALL_DATA_FILE}

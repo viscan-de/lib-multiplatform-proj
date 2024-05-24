@@ -26,6 +26,8 @@ cd "$WORK_DIR"
 if test -f "$WORK_DIR/ccache.tar.gz"; then
     echo "Restoring ccache..."
     (cd $HOME && tar xzf "$WORK_DIR/ccache.tar.gz")
+else
+    mkdir -p $HOME/.ccache
 fi
 
 sudo apt-get install -y --no-install-recommends \
@@ -47,7 +49,7 @@ ccache -M 500M
 ccache -s
 
 MINGW_ARCH=x86_64-w64-mingw32
-MINGW_PREFIX=/usr/lib/gcc/$MINGW_ARCH/7.3-posix
+MINGW_PREFIX=/usr/lib/gcc/$MINGW_ARCH/10-posix
 
 export CC="$MINGW_ARCH-gcc"
 export CXX="$MINGW_ARCH-g++"
@@ -64,11 +66,11 @@ WINE_SYSDIR=$WINE_PREFIX/drive_c/windows
 wine64 cmd /c dir
 ln -s $MINGW_PREFIX/libstdc++-6.dll $WINE_SYSDIR
 ln -s $MINGW_PREFIX/libgcc_s_seh-1.dll $WINE_SYSDIR
-ln -s $MINGW_PREFIX/libgcc_s_sjlj-1.dll $WINE_SYSDIR
+# ln -s $MINGW_PREFIX/libgcc_s_sjlj-1.dll $WINE_SYSDIR
 ln -s /usr/$MINGW_ARCH/lib/libwinpthread-1.dll $WINE_SYSDIR
 
 # build zlib
-wget https://github.com/madler/zlib/archive/v1.2.11.tar.gz
+wget -q https://github.com/madler/zlib/archive/v1.2.11.tar.gz
 tar xzf v1.2.11.tar.gz
 (cd zlib-1.2.11 && \
   sudo make install -f win32/Makefile.gcc SHARED_MODE=1 \
@@ -79,13 +81,13 @@ tar xzf v1.2.11.tar.gz
 ln -s /usr/$MINGW_ARCH/bin/zlib1.dll $WINE_SYSDIR
 
 # build libtiff
-wget http://download.osgeo.org/libtiff/tiff-4.1.0.tar.gz
+wget -q http://download.osgeo.org/libtiff/tiff-4.1.0.tar.gz
 tar xzf tiff-4.1.0.tar.gz
 (cd tiff-4.1.0 && ./configure --host=$MINGW_ARCH --prefix=/usr/$MINGW_ARCH && make && sudo make install)
 ln -s /usr/$MINGW_ARCH/bin/libtiff-5.dll $WINE_SYSDIR
 
 # build sqlite3
-wget https://sqlite.org/2020/sqlite-autoconf-3330000.tar.gz
+wget -q https://sqlite.org/2020/sqlite-autoconf-3330000.tar.gz
 tar xzf sqlite-autoconf-3330000.tar.gz
 # Build with SQLITE_DQS=0 to ensure we properly use single quotes and double quotes (cf issue #2480)
 (cd sqlite-autoconf-3330000 &&
@@ -93,6 +95,7 @@ CFLAGS="-DSQLITE_DQS=0" ./configure --host=$MINGW_ARCH --prefix=/usr/$MINGW_ARCH
 ln -s /usr/$MINGW_ARCH/bin/libsqlite3-0.dll $WINE_SYSDIR
 
 # build proj
+rm -rf build
 mkdir build
 cd build
 cmake -G "Unix Makefiles" \
@@ -122,4 +125,4 @@ ccache -s
 
 echo "Saving ccache..."
 rm -f "$WORK_DIR/ccache.tar.gz"
-(cd $HOME && tar czf "$WORK_DIR/ccache.tar.gz" .ccache)
+(cd $HOME && test ! -e .ccache || tar czf "$WORK_DIR/ccache.tar.gz" .ccache)

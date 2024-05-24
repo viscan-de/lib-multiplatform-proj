@@ -77,6 +77,9 @@
     "Lambert Conic Conformal (2SP Michigan)"
 #define EPSG_CODE_METHOD_LAMBERT_CONIC_CONFORMAL_2SP_MICHIGAN 1051
 
+#define EPSG_NAME_METHOD_AZIMUTHAL_EQUIDISTANT "Azimuthal Equidistant"
+#define EPSG_CODE_METHOD_AZIMUTHAL_EQUIDISTANT 1125
+
 #define EPSG_NAME_METHOD_MODIFIED_AZIMUTHAL_EQUIDISTANT                        \
     "Modified Azimuthal Equidistant"
 #define EPSG_CODE_METHOD_MODIFIED_AZIMUTHAL_EQUIDISTANT 9832
@@ -169,6 +172,13 @@
 
 #define EPSG_NAME_METHOD_KROVAK "Krovak"
 #define EPSG_CODE_METHOD_KROVAK 9819
+
+#define EPSG_NAME_METHOD_KROVAK_MODIFIED "Krovak Modified"
+#define EPSG_CODE_METHOD_KROVAK_MODIFIED 1042
+
+#define EPSG_NAME_METHOD_KROVAK_MODIFIED_NORTH_ORIENTED                        \
+    "Krovak Modified (North Orientated)"
+#define EPSG_CODE_METHOD_KROVAK_MODIFIED_NORTH_ORIENTED 1043
 
 #define EPSG_NAME_METHOD_LAMBERT_AZIMUTHAL_EQUAL_AREA                          \
     "Lambert Azimuthal Equal Area"
@@ -590,14 +600,27 @@
     "Point motion velocity grid file"
 
 /* ------------------------------------------------------------------------ */
+
+#define EPSG_NAME_METHOD_NEW_ZEALAND_DEFORMATION_MODEL                         \
+    "New Zealand Deformation Model"
+#define EPSG_CODE_METHOD_NEW_ZEALAND_DEFORMATION_MODEL 1079
+
+/* ------------------------------------------------------------------------ */
+
+/* Has been renamed to
+ * EPSG_NAME_METHOD_GEOGRAPHIC3D_OFFSET_BY_VELOCITY_GRID_NTV2_VEL */
 #define EPSG_NAME_METHOD_GEOGRAPHIC3D_OFFSET_BY_VELOCITY_GRID_NRCAN            \
     "Geographic3D Offset by velocity grid (NRCan byn)"
 #define EPSG_CODE_METHOD_GEOGRAPHIC3D_OFFSET_BY_VELOCITY_GRID_NRCAN 1114
 
+#define EPSG_NAME_METHOD_GEOGRAPHIC3D_OFFSET_BY_VELOCITY_GRID_NTV2_VEL         \
+    "Geographic3D Offset by velocity grid (NTv2_Vel)"
+#define EPSG_CODE_METHOD_GEOGRAPHIC3D_OFFSET_BY_VELOCITY_GRID_NTV2_VEL 1114
+
 /* ------------------------------------------------------------------------ */
 
 #define EPSG_NAME_METHOD_VERTICAL_OFFSET_BY_VELOCITY_GRID_NRCAN                \
-    "Vertical Offset by velocity grid (NRCan byn)"
+    "Vertical Offset by velocity grid (NRCan NTv2_Vel)"
 #define EPSG_CODE_METHOD_VERTICAL_OFFSET_BY_VELOCITY_GRID_NRCAN 1113
 
 /* ------------------------------------------------------------------------ */
@@ -637,12 +660,22 @@
 #define EPSG_NAME_METHOD_VERTICALGRID_PL_TXT                                   \
     "Vertical Offset by Grid Interpolation (PL txt)"
 
+/* has been deprecated by
+ * EPSG_CODE_METHOD_VERTICALCHANGE_BY_GEOID_GRID_DIFFERENCE_NRCAN */
 #define EPSG_CODE_METHOD_VERTICALGRID_NRCAN_BYN 1112
 #define EPSG_NAME_METHOD_VERTICALGRID_NRCAN_BYN                                \
     "Vertical Offset by Grid Interpolation (NRCan byn)"
 
 #define EPSG_NAME_PARAMETER_VERTICAL_OFFSET_FILE "Vertical offset file"
 #define EPSG_CODE_PARAMETER_VERTICAL_OFFSET_FILE 8732
+
+#define EPSG_CODE_METHOD_VERTICALCHANGE_BY_GEOID_GRID_DIFFERENCE_NRCAN 1126
+#define EPSG_NAME_METHOD_VERTICALCHANGE_BY_GEOID_GRID_DIFFERENCE_NRCAN         \
+    "Vertical change by geoid grid difference (NRCan)"
+
+#define EPSG_NAME_PARAMETER_GEOID_MODEL_DIFFERENCE_FILE                        \
+    "Geoid model difference file"
+#define EPSG_CODE_PARAMETER_GEOID_MODEL_DIFFERENCE_FILE 1063
 
 /* ------------------------------------------------------------------------ */
 
@@ -783,6 +816,17 @@
 
 #define EPSG_CODE_METHOD_HEIGHT_DEPTH_REVERSAL 1068
 #define EPSG_NAME_METHOD_HEIGHT_DEPTH_REVERSAL "Height Depth Reversal"
+
+/* ------------------------------------------------------------------------ */
+
+#define EPSG_CODE_METHOD_CARTESIAN_GRID_OFFSETS 9656
+#define EPSG_NAME_METHOD_CARTESIAN_GRID_OFFSETS "Cartesian Grid Offsets"
+
+#define EPSG_CODE_PARAMETER_EASTING_OFFSET 8728
+#define EPSG_NAME_PARAMETER_EASTING_OFFSET "Easting offset"
+
+#define EPSG_CODE_PARAMETER_NORTHING_OFFSET 8729
+#define EPSG_NAME_PARAMETER_NORTHING_OFFSET "Northing offset"
 
 /* ------------------------------------------------------------------------ */
 

@@ -197,7 +197,7 @@ PJ *pj_obj_create(PJ_CONTEXT *ctx, const BaseObjectNNPtr &objIn) {
         auto dbContext = getDBcontextNoException(ctx, __FUNCTION__);
         try {
             auto formatter = PROJStringFormatter::create(
-                PROJStringFormatter::Convention::PROJ_5, dbContext);
+                PROJStringFormatter::Convention::PROJ_5, std::move(dbContext));
             auto projString = coordop->exportToPROJString(formatter.get());
             if (proj_context_is_network_enabled(ctx)) {
                 ctx->defer_grid_opening = true;
@@ -380,7 +380,7 @@ const char *proj_context_get_database_path(PJ_CONTEXT *ctx) {
     try {
         // temporary variable must be used as getDBcontext() might create
         // ctx->cpp_context
-        auto osPath(getDBcontext(ctx)->getPath());
+        const std::string osPath(getDBcontext(ctx)->getPath());
         ctx->get_cpp_context()->lastDbPath_ = osPath;
         return ctx->cpp_context->lastDbPath_.c_str();
     } catch (const std::exception &e) {
@@ -603,6 +603,14 @@ PJ *proj_create(PJ_CONTEXT *ctx, const char *text) {
             proj_context_errno_set(ctx, PROJ_ERR_INVALID_OP_WRONG_SYNTAX);
         }
         proj_log_error(ctx, __FUNCTION__, e.what());
+    } catch (const NoSuchAuthorityCodeException &e) {
+        proj_log_error(ctx, __FUNCTION__,
+                       std::string(e.what())
+                           .append(": ")
+                           .append(e.getAuthority())
+                           .append(":")
+                           .append(e.getAuthorityCode())
+                           .c_str());
     } catch (const std::exception &e) {
         proj_log_error(ctx, __FUNCTION__, e.what());
     }
@@ -618,6 +626,12 @@ PJ *proj_create(PJ_CONTEXT *ctx, const char *text) {
  * The returned object must be unreferenced with proj_destroy() after use.
  * It should be used by at most one thread at a time.
  *
+ * The distinction between warnings and grammar errors is somewhat artificial
+ * and does not tell much about the real criticity of the non-compliance.
+ * Some warnings may be more concerning than some grammar errors. Human
+ * expertise (or, by the time this comment will be read, specialized AI) is
+ * generally needed to perform that assessment.
+ *
  * @param ctx PROJ context, or NULL for default context
  * @param wkt WKT string (must not be NULL)
  * @param options null-terminated list of options, or NULL. Currently
@@ -632,8 +646,8 @@ PJ *proj_create(PJ_CONTEXT *ctx, const char *text) {
  * </ul>
  * @param out_warnings Pointer to a PROJ_STRING_LIST object, or NULL.
  * If provided, *out_warnings will contain a list of warnings, typically for
- * non recognized projection method or parameters. It must be freed with
- * proj_string_list_destroy().
+ * non recognized projection method or parameters, or other issues found during
+ * WKT analys. It must be freed with proj_string_list_destroy().
  * @param out_grammar_errors Pointer to a PROJ_STRING_LIST object, or NULL.
  * If provided, *out_grammar_errors will contain a list of errors regarding the
  * WKT grammar. It must be freed with proj_string_list_destroy().
@@ -682,41 +696,32 @@ PJ *proj_create_from_wkt(PJ_CONTEXT *ctx, const char *wkt,
         }
         auto obj = parser.createFromWKT(wkt);
 
-        std::vector<std::string> warningsFromParsing;
         if (out_grammar_errors) {
-            auto rawWarnings = parser.warningList();
-            std::vector<std::string> grammarWarnings;
-            for (const auto &msg : rawWarnings) {
-                if (msg.find("Default it to") != std::string::npos) {
-                    warningsFromParsing.push_back(msg);
-                } else {
-                    grammarWarnings.push_back(msg);
-                }
-            }
-            if (!grammarWarnings.empty()) {
-                *out_grammar_errors = to_string_list(grammarWarnings);
+            auto grammarErrors = parser.grammarErrorList();
+            if (!grammarErrors.empty()) {
+                *out_grammar_errors = to_string_list(grammarErrors);
             }
         }
 
         if (out_warnings) {
+            auto warnings = parser.warningList();
             auto derivedCRS = dynamic_cast<const crs::DerivedCRS *>(obj.get());
             if (derivedCRS) {
-                auto warnings =
+                auto extraWarnings =
                     derivedCRS->derivingConversionRef()->validateParameters();
-                warnings.insert(warnings.end(), warningsFromParsing.begin(),
-                                warningsFromParsing.end());
-                if (!warnings.empty()) {
-                    *out_warnings = to_string_list(warnings);
-                }
+                warnings.insert(warnings.end(), extraWarnings.begin(),
+                                extraWarnings.end());
             } else {
                 auto singleOp =
                     dynamic_cast<const operation::SingleOperation *>(obj.get());
                 if (singleOp) {
-                    auto warnings = singleOp->validateParameters();
-                    if (!warnings.empty()) {
-                        *out_warnings = to_string_list(warnings);
-                    }
+                    auto extraWarnings = singleOp->validateParameters();
+                    warnings.insert(warnings.end(), extraWarnings.begin(),
+                                    extraWarnings.end());
                 }
+            }
+            if (!warnings.empty()) {
+                *out_warnings = to_string_list(warnings);
             }
         }
 
@@ -794,6 +799,14 @@ PJ *proj_create_from_database(PJ_CONTEXT *ctx, const char *auth_name,
             break;
         }
         return pj_obj_create(ctx, NN_NO_CHECK(obj));
+    } catch (const NoSuchAuthorityCodeException &e) {
+        proj_log_error(ctx, __FUNCTION__,
+                       std::string(e.what())
+                           .append(": ")
+                           .append(e.getAuthority())
+                           .append(":")
+                           .append(e.getAuthorityCode())
+                           .c_str());
     } catch (const std::exception &e) {
         proj_log_error(ctx, __FUNCTION__, e.what());
     }
@@ -1629,7 +1642,7 @@ const char *proj_as_wkt(PJ_CONTEXT *ctx, const PJ *obj, PJ_WKT_TYPE type,
 
     try {
         auto dbContext = getDBcontextNoException(ctx, __FUNCTION__);
-        auto formatter = WKTFormatter::create(convention, dbContext);
+        auto formatter = WKTFormatter::create(convention, std::move(dbContext));
         for (auto iter = options; iter && iter[0]; ++iter) {
             const char *value;
             if ((value = getOptionValue(*iter, "MULTILINE="))) {
@@ -1735,7 +1748,8 @@ const char *proj_as_proj_string(PJ_CONTEXT *ctx, const PJ *obj,
         static_cast<PROJStringFormatter::Convention>(type);
     auto dbContext = getDBcontextNoException(ctx, __FUNCTION__);
     try {
-        auto formatter = PROJStringFormatter::create(convention, dbContext);
+        auto formatter =
+            PROJStringFormatter::create(convention, std::move(dbContext));
         for (auto iter = options; iter && iter[0]; ++iter) {
             const char *value;
             if ((value = getOptionValue(*iter, "MULTILINE="))) {
@@ -1807,7 +1821,7 @@ const char *proj_as_projjson(PJ_CONTEXT *ctx, const PJ *obj,
 
     auto dbContext = getDBcontextNoException(ctx, __FUNCTION__);
     try {
-        auto formatter = JSONFormatter::create(dbContext);
+        auto formatter = JSONFormatter::create(std::move(dbContext));
         for (auto iter = options; iter && iter[0]; ++iter) {
             const char *value;
             if ((value = getOptionValue(*iter, "MULTILINE="))) {
@@ -1938,8 +1952,6 @@ int proj_get_area_of_use(PJ_CONTEXT *ctx, const PJ *obj,
 // ---------------------------------------------------------------------------
 
 /** \brief Return the area of use of an object.
- *
- * In case of multiple usages, this will be the one of first usage.
  *
  * @param ctx PROJ context, or NULL for default context
  * @param obj Object (must not be NULL)
@@ -3458,7 +3470,7 @@ PJ *proj_create_geographic_crs(PJ_CONTEXT *ctx, const char *crs_name,
                                double prime_meridian_offset,
                                const char *pm_angular_units,
                                double pm_angular_units_conv,
-                               PJ *ellipsoidal_cs) {
+                               const PJ *ellipsoidal_cs) {
 
     SANITIZE_CTX(ctx);
     auto cs = std::dynamic_pointer_cast<EllipsoidalCS>(ellipsoidal_cs->iso_obj);
@@ -3497,8 +3509,8 @@ PJ *proj_create_geographic_crs(PJ_CONTEXT *ctx, const char *crs_name,
  * proj_destroy(), or NULL in case of error.
  */
 PJ *proj_create_geographic_crs_from_datum(PJ_CONTEXT *ctx, const char *crs_name,
-                                          PJ *datum_or_datum_ensemble,
-                                          PJ *ellipsoidal_cs) {
+                                          const PJ *datum_or_datum_ensemble,
+                                          const PJ *ellipsoidal_cs) {
 
     SANITIZE_CTX(ctx);
     if (datum_or_datum_ensemble == nullptr) {
@@ -3812,7 +3824,7 @@ PJ *proj_create_vertical_crs_ex(
  * proj_destroy(), or NULL in case of error.
  */
 PJ *proj_create_compound_crs(PJ_CONTEXT *ctx, const char *crs_name,
-                             PJ *horiz_crs, PJ *vert_crs) {
+                             const PJ *horiz_crs, const PJ *vert_crs) {
 
     SANITIZE_CTX(ctx);
     if (!horiz_crs || !vert_crs) {
@@ -4518,14 +4530,12 @@ PJ *proj_create_conversion(PJ_CONTEXT *ctx, const char *name,
  * proj_destroy(), or NULL in case of error.
  */
 
-PJ *proj_create_transformation(PJ_CONTEXT *ctx, const char *name,
-                               const char *auth_name, const char *code,
-                               PJ *source_crs, PJ *target_crs,
-                               PJ *interpolation_crs, const char *method_name,
-                               const char *method_auth_name,
-                               const char *method_code, int param_count,
-                               const PJ_PARAM_DESCRIPTION *params,
-                               double accuracy) {
+PJ *proj_create_transformation(
+    PJ_CONTEXT *ctx, const char *name, const char *auth_name, const char *code,
+    const PJ *source_crs, const PJ *target_crs, const PJ *interpolation_crs,
+    const char *method_name, const char *method_auth_name,
+    const char *method_code, int param_count,
+    const PJ_PARAM_DESCRIPTION *params, double accuracy) {
     SANITIZE_CTX(ctx);
     if (!source_crs || !target_crs) {
         proj_context_errno_set(ctx, PROJ_ERR_OTHER_API_MISUSE);
@@ -4681,12 +4691,13 @@ static CoordinateSystemAxisNNPtr createAxis(const PJ_AXIS_DESCRIPTION &axis) {
         unit_type = UnitOfMeasure::Type::PARAMETRIC;
         break;
     }
-    auto unit = axis.unit_type == PJ_UT_ANGULAR
-                    ? createAngularUnit(axis.unit_name, axis.unit_conv_factor)
-                : axis.unit_type == PJ_UT_LINEAR
-                    ? createLinearUnit(axis.unit_name, axis.unit_conv_factor)
-                    : UnitOfMeasure(axis.unit_name ? axis.unit_name : "unnamed",
-                                    axis.unit_conv_factor, unit_type);
+    const common::UnitOfMeasure unit(
+        axis.unit_type == PJ_UT_ANGULAR
+            ? createAngularUnit(axis.unit_name, axis.unit_conv_factor)
+        : axis.unit_type == PJ_UT_LINEAR
+            ? createLinearUnit(axis.unit_name, axis.unit_conv_factor)
+            : UnitOfMeasure(axis.unit_name ? axis.unit_name : "unnamed",
+                            axis.unit_conv_factor, unit_type));
 
     return CoordinateSystemAxis::create(
         createPropertyMapName(axis.name),
@@ -5208,7 +5219,7 @@ PJ *proj_create_conversion_two_point_equidistant(
  * linear_unit_conv_factor).
  * Angular parameters are expressed in (ang_unit_name, ang_unit_conv_factor).
  *
- * @deprecated. Replaced by proj_create_conversion_tunisia_mining_grid
+ * @since 9.2
  */
 PJ *proj_create_conversion_tunisia_mining_grid(
     PJ_CONTEXT *ctx, double center_lat, double center_long,
@@ -5242,7 +5253,7 @@ PJ *proj_create_conversion_tunisia_mining_grid(
  * linear_unit_conv_factor).
  * Angular parameters are expressed in (ang_unit_name, ang_unit_conv_factor).
  *
- * @since 9.2
+ * @deprecated Replaced by proj_create_conversion_tunisia_mining_grid
  */
 PJ *proj_create_conversion_tunisia_mapping_grid(
     PJ_CONTEXT *ctx, double center_lat, double center_long,
@@ -9135,7 +9146,7 @@ PJ *proj_normalize_for_visualization(PJ_CONTEXT *ctx, const PJ *obj) {
                         alt.idxInOriginalList, minxSrc, minySrc, maxxSrc,
                         maxySrc, minxDst, minyDst, maxxDst, maxyDst,
                         pjNormalized, co->nameStr(), alt.accuracy,
-                        alt.pseudoArea, alt.isOffshore,
+                        alt.pseudoArea, alt.areaName.c_str(),
                         alt.pjSrcGeocentricToLonLat,
                         alt.pjDstGeocentricToLonLat);
                 }
