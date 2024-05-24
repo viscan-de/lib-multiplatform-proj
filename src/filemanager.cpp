@@ -797,8 +797,13 @@ std::unique_ptr<File> FileStdio::open(PJ_CONTEXT *ctx, const char *filename,
                               : access == FileAccess::READ_UPDATE ? "r+b"
                                                                          : "w+b");
     if (fp == nullptr) {
-         std::cout<<"FileStdio::open failed for file \""<<std::string(filename)<<"\". New file created."<<std::endl;
-    } 
+        std::cout<<"FileStdio::open failed for file \""<<std::string(filename)<<"\". Access rights: "<<
+          access == FileAccess::READ_ONLY     ? "rb"
+           : access == FileAccess::READ_UPDATE ? "r+b"
+           : "w+b"<<std::endl;
+    } else {
+        std::cout<<"FileStdio::opened \""<<std::string(filename) <<"\""<<std::endl;
+    }
     return std::unique_ptr<File>(fp ? new FileStdio(filename, ctx, fp)
                                    : nullptr);  
 }
