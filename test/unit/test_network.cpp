@@ -2073,4 +2073,50 @@ TEST(networking, do_not_attempt_network_access_known_available_network_on) {
 
 #endif
 
+// ---------------------------------------------------------------------------
+
+#ifdef CURL_ENABLED
+
+TEST(networking, do_not_attempt_network_access_known_available_network_on) {
+
+    // Check that proj_create_operations() itself does not trigger network
+    // activity in enable_network == true and
+    // PROJ_GRID_AVAILABILITY_KNOWN_AVAILABLE mode when all grids are known.
+
+    const auto doTest = [](PJ_CONTEXT *ctxt) {
+        auto factory_context =
+            proj_create_operation_factory_context(ctxt, nullptr);
+        proj_operation_factory_context_set_grid_availability_use(
+            ctxt, factory_context, PROJ_GRID_AVAILABILITY_KNOWN_AVAILABLE);
+        proj_operation_factory_context_set_spatial_criterion(
+            ctxt, factory_context, PROJ_SPATIAL_CRITERION_PARTIAL_INTERSECTION);
+        auto from = proj_create(ctxt, "EPSG:4326");
+        auto to = proj_create(ctxt, "EPSG:4267");
+        auto pj_operations =
+            proj_create_operations(ctxt, from, to, factory_context);
+        proj_destroy(from);
+        proj_destroy(to);
+        auto num_operations = proj_list_get_count(pj_operations);
+        EXPECT_GE(num_operations, 10);
+        proj_operation_factory_context_destroy(factory_context);
+        proj_list_destroy(pj_operations);
+    };
+
+    auto ctx = proj_context_create();
+    proj_context_set_enable_network(ctx, true);
+
+    // Check that we don't trigger any network activity
+    bool networkActivity = false;
+    ASSERT_TRUE(proj_context_set_network_callbacks(
+        ctx, dummy_open_cbk, dummy_close_cbk, dummy_get_header_value_cbk,
+        dummy_read_range_cbk, &networkActivity));
+
+    doTest(ctx);
+    EXPECT_FALSE(networkActivity);
+
+    proj_context_destroy(ctx);
+}
+
+#endif
+
 } // namespace
