@@ -192,6 +192,8 @@ jobs:
         cd libtiff/lib
         cp ${{ steps.strings.outputs.build-output-dir }}/lib/*.a ./
         cp /usr/lib/x86_64-linux-gnu/libdeflate.a ./
+        cp /usr/lib/x86_64-linux-gnu/liblzma.a ./
+        cp /usr/lib/x86_64-linux-gnu/libjbig.a ./
         ls -oh
         for f in * ; do libsfound="$libsfound\naddlib $f\n" ; done
         printf "create libprojcomplete.a\n$libsfound\nsave\nend" > libprojcomplete.mri
