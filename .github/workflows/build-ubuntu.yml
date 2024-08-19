@@ -24,15 +24,15 @@ jobs:
       #
       # To add more build types (Release, Debug, RelWithDebInfo, etc.) customize the build_type list.
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-20.04, windows-latest, macos-latest]
         build_type: [Release]
         c_compiler: [gcc, clang, cl, clang_ios_os, clang_ios_sim]
         include:
-          - os: ubuntu-latest
+          - os: ubuntu-20.04
             c_compiler: gcc
             cpp_compiler: g++
             env: posix
-          - os: ubuntu-latest
+          - os: ubuntu-20.04
             c_compiler: clang
             cpp_compiler: clang++
             env: posix
@@ -55,15 +55,15 @@ jobs:
             c_compiler: gcc
           - os: windows-latest
             c_compiler: clang
-          - os: ubuntu-latest
+          - os: ubuntu-20.04
             c_compiler: cl
           - os: macos-latest
             c_compiler: cl
           - os: macos-latest
             c_compiler: gcc
-          - os: ubuntu-latest
+          - os: ubuntu-20.04
             c_compiler: clang_ios_os
-          - os: ubuntu-latest
+          - os: ubuntu-20.04
             c_compiler: clang_ios_sim
           - os: windows-latest
             c_compiler: clang_ios_os
@@ -77,14 +77,14 @@ jobs:
     - name: Check out libtiff (Mac & Linux)
       # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
       # See https://cmake.org/cmake/help/latest/variable/CMAKE_BUILD_TYPE.html?highlight=cmake_build_type
-      if: ${{ matrix.os == 'macos-latest' || matrix.os == 'ubuntu-latest' }}
+      if: ${{ matrix.os == 'macos-latest' || matrix.os == 'ubuntu-20.04' }}
       uses: actions/checkout@master
       with:
         path: ./.libtiff
         repository: viscan-de/lib-multiplatform-tiff
 
     - name: Build libtiff (Mac & Linux)
-      if: ${{ matrix.os == 'macos-latest' || matrix.os == 'ubuntu-latest' }}
+      if: ${{ matrix.os == 'macos-latest' || matrix.os == 'ubuntu-20.04' }}
       run: |
         cd .libtiff
         make platform=${{ matrix.env }} cxx=${{ matrix.cpp_compiler}} cc=${{ matrix.c_compiler}}
@@ -176,7 +176,7 @@ jobs:
         fi
 
     - name: Combine static libraries (Linux)
-      if: ${{ matrix.os == 'ubuntu-latest' }}
+      if: ${{ matrix.os == 'ubuntu-20.04' }}
       run: |
         rootsrcdir="$(pwd)"
         cd libtiff/lib
