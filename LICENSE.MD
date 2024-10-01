@@ -12,32 +12,34 @@ done by Gerald Evenden.
 
 Copyright information can be found in source files.
 
- --------------
+--------------
 
- Permission is hereby granted, free of charge, to any person obtaining a
- copy of this software and associated documentation files (the "Software"),
- to deal in the Software without restriction, including without limitation
- the rights to use, copy, modify, merge, publish, distribute, sublicense,
- and/or sell copies of the Software, and to permit persons to whom the
- Software is furnished to do so, subject to the following conditions:
+Permission is hereby granted, free of charge, to any person obtaining a
+copy of this software and associated documentation files (the "Software"),
+to deal in the Software without restriction, including without limitation
+the rights to use, copy, modify, merge, publish, distribute, sublicense,
+and/or sell copies of the Software, and to permit persons to whom the
+Software is furnished to do so, subject to the following conditions:
 
- The above copyright notice and this permission notice shall be included
- in all copies or substantial portions of the Software.
+The above copyright notice and this permission notice shall be included
+in all copies or substantial portions of the Software.
 
- THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
- THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- DEALINGS IN THE SOFTWARE.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
 
 ## libjpeg
 The Independent JPEG Group's JPEG software
-==========================================
+\
+\==========================================
 
 README for release 8b of 16-May-2010
-====================================
+\
+\====================================
 
 This distribution contains the eighth public release of the Independent JPEG
 Group's free JPEG software.  You are welcome to redistribute this software and
@@ -52,7 +54,8 @@ IJG is not affiliated with the official ISO JPEG standards committee.
 
 
 DOCUMENTATION ROADMAP
-=====================
+\
+\=====================
 
 This file contains the following sections:
 
@@ -90,7 +93,8 @@ the order listed) before diving into the code.
 
 
 OVERVIEW
-========
+\
+\========
 
 This package contains C software to implement JPEG image encoding, decoding,
 and transcoding.  JPEG (pronounced "jay-peg") is a standardized compression
@@ -131,7 +135,8 @@ documentation, as described under LEGAL ISSUES.
 
 
 LEGAL ISSUES
-============
+\
+\============
 
 In plain English:
 
@@ -209,7 +214,8 @@ We are required to state that
 
 
 REFERENCES
-==========
+\
+\==========
 
 We recommend reading one or more of these references before trying to
 understand the innards of the JPEG software.
@@ -284,7 +290,8 @@ uses our library to implement TIFF/JPEG per the Note.
 
 
 ARCHIVE LOCATIONS
-=================
+\
+\=================
 
 The "official" archive site for this software is www.ijg.org.
 The most recent released version can always be found there in
@@ -304,7 +311,8 @@ with body
 
 
 ACKNOWLEDGMENTS
-===============
+\
+\===============
 
 Thank to Juergen Bruder for providing me with a copy of the common DCT
 algorithm article, only to find out that I had come to the same result
@@ -337,7 +345,8 @@ design and development of this singular software package.
 
 
 FILE FORMAT WARS
-================
+\
+\================
 
 The ISO JPEG standards committee actually promotes different formats like
 "JPEG 2000" or "JPEG XR" which are incompatible with original DCT-based
@@ -352,7 +361,8 @@ image files indefinitely.)
 
 
 TO DO
-=====
+\
+\=====
 
 Version 8 is the first release of a new generation JPEG standard
 to overcome the limitations of the original JPEG specification.
@@ -389,10 +399,12 @@ SOFTWARE.
 
 ## libpng
 COPYRIGHT NOTICE, DISCLAIMER, and LICENSE
-=========================================
+\
+\=========================================
 
 PNG Reference Library License version 2
----------------------------------------
+\
+\---------------------------------------
 
  * Copyright (c) 1995-2024 The PNG Reference Library Authors.
  * Copyright (c) 2018-2024 Cosmin Truta.
@@ -427,7 +439,8 @@ subject to the following restrictions:
 
 
 PNG Reference Library License version 1 (for libpng 0.5 through 1.6.35)
------------------------------------------------------------------------
+\
+\-----------------------------------------------------------------------
 
 libpng versions 1.0.7, July 1, 2000, through 1.6.35, July 15, 2018 are
 Copyright (c) 2000-2002, 2004, 2006-2018 Glenn Randers-Pehrson, are
