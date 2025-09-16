@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.10)
 project(CPP_APP LANGUAGES CXX)
 
 # Required for (e.g.) g++-4.8

@@ -226,7 +226,7 @@ if [ "$BUILD_NAME" != "linux_gcc8" -a "$BUILD_NAME" != "linux_gcc_32bit" ]; then
     echo '#include "proj.h"' > mytest.c
     echo 'int main() { proj_info(); return 0; }' >> mytest.c
 
-    echo 'cmake_minimum_required(VERSION 3.9)' > CMakeLists.txt
+    echo 'cmake_minimum_required(VERSION 3.10)' > CMakeLists.txt
     echo 'project(mytest)' >> CMakeLists.txt
     echo 'add_subdirectory(external/PROJ)' >> CMakeLists.txt
     echo 'add_executable(mytest mytest.c)' >> CMakeLists.txt
