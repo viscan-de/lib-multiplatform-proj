@@ -256,33 +256,61 @@ jobs:
           rm -rf ./${{ matrix.build_type }}
         fi
 
+    #- name: Combine static libraries (Linux)
+    #  if: ${{ matrix.os == 'ubuntu-latest' }}
+    #  run: |
+    #    cp ./libtiff/lib/*.a ${{ steps.strings.outputs.build-output-dir }}/lib/
+    #    cd ${{ steps.strings.outputs.build-output-dir }}/lib
+    #    cp /usr/lib/x86_64-linux-gnu/libdeflate.a ./
+    #    cp /usr/lib/x86_64-linux-gnu/liblzma.a ./
+    #    cp /usr/lib/x86_64-linux-gnu/libjbig.a ./
+    #    ls -oh
+    #    for f in * ; do libsfound="$libsfound\naddlib $f\n" ; done
+    #    printf "create _libproj.a\n$libsfound\nsave\nend" > libproj-complete.mri
+    #    ar -M <libproj-complete.mri
+    #    rm libproj-complete.mri
+    #    rm lib*.a
+    #    mv _libproj.a libproj.a
+    #    ls -oh
+
+    #- name: Combine static libraries (Mac)
+    #  if: ${{ matrix.os == 'macos-latest' }}
+    #  run: |
+    #    cp ./libtiff/lib/*.a ${{ steps.strings.outputs.build-output-dir }}/lib/
+    #    cd ${{ steps.strings.outputs.build-output-dir }}/lib
+    #    for f in * ; do libsfound="$libsfound $f" ; done
+    #    xcrun libtool -static -o _libproj.a $libsfound
+    #    rm lib*.a
+    #    mv _libproj.a libproj.a
+    #    ls -oh
+
+
     - name: Combine static libraries (Linux)
       if: ${{ matrix.os == 'ubuntu-latest' }}
       run: |
-        cp ./libtiff/lib/*.a ${{ steps.strings.outputs.build-output-dir }}/lib/
-        cd ${{ steps.strings.outputs.build-output-dir }}/lib
-        cp /usr/lib/x86_64-linux-gnu/libdeflate.a ./
-        cp /usr/lib/x86_64-linux-gnu/liblzma.a ./
-        cp /usr/lib/x86_64-linux-gnu/libjbig.a ./
-        ls -oh
+        rootsrcdir="$(pwd)"
+        cd libtiff/lib
+        cp ${{ steps.strings.outputs.build-output-dir }}/lib/*.a ./
+        
         for f in * ; do libsfound="$libsfound\naddlib $f\n" ; done
-        printf "create _libproj.a\n$libsfound\nsave\nend" > libproj-complete.mri
-        ar -M <libproj-complete.mri
-        rm libproj-complete.mri
-        rm lib*.a
-        mv _libproj.a libproj.a
-        ls -oh
+        printf "create libprojcomplete.a\n$libsfound\nsave\nend" > libprojcomplete.mri
+        cat libprojcomplete.mri
+        ar -M <libprojcomplete.mri
+        cp libprojcomplete.a ${{ steps.strings.outputs.build-output-dir }}/lib/libproj.a
+        ls -oh ${{ steps.strings.outputs.build-output-dir }}/lib/
 
-    - name: Combine static libraries (Mac)
+    - name: Combine static libraries (Mac OS)
       if: ${{ matrix.os == 'macos-latest' }}
       run: |
-        cp ./libtiff/lib/*.a ${{ steps.strings.outputs.build-output-dir }}/lib/
-        cd ${{ steps.strings.outputs.build-output-dir }}/lib
+        rootsrcdir="$(pwd)"
+        cd libtiff/lib
+        cp ${{ steps.strings.outputs.build-output-dir }}/lib/*.a ./
+        
         for f in * ; do libsfound="$libsfound $f" ; done
-        xcrun libtool -static -o _libproj.a $libsfound
-        rm lib*.a
-        mv _libproj.a libproj.a
-        ls -oh
+        xcrun libtool -static -o libprojcomplete.a $libsfound
+        ls -oh ./
+        cp libprojcomplete.a ${{ steps.strings.outputs.build-output-dir }}/lib/libproj.a
+        ls -oh ${{ steps.strings.outputs.build-output-dir }}/lib/
 
     #- name: Add msbuild to PATH
     #  if: ${{ matrix.os == 'windows-latest' }}
