@@ -131,10 +131,7 @@ jobs:
         cd zstd
         make -j$(nproc) CFLAGS="-fPIC" CXXFLAGS="-fPIC" lib
         mkdir ${{ steps.strings.outputs.build-output-dir }}/lib
-        mkdir ${{ steps.strings.outputs.build-output-dir }}/include
-        mkdir ${{ steps.strings.outputs.build-output-dir }}/lib/zstd
         cp lib/libzstd.a ${{ steps.strings.outputs.build-output-dir }}/lib/
-        cp -r include ${{ steps.strings.outputs.build-output-dir }}/include/zstd
 
     - name: Configure CMake
       # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
@@ -143,7 +140,7 @@ jobs:
       run: >
         cmake -B ${{ steps.strings.outputs.build-output-dir }}
         -DZSTD_LIBRARY=${{ steps.strings.outputs.build-output-dir }}/lib/libzstd.a
-        -DZSTD_INCLUDE_DIR=${{ steps.strings.outputs.build-output-dir }}/include/zstd
+        -DZSTD_INCLUDE_DIR=${{ github.workspace }}/zstd/lib
         -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }}
         -DCMAKE_C_COMPILER=${{ matrix.c_compiler }}
         -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
