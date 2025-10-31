@@ -121,6 +121,7 @@ jobs:
       shell: bash
       run: |
         #echo "build-output-dir=${{ github.workspace }}/build" >> "$GITHUB_OUTPUT"
+        mkdir "${{ github.workspace }}/build"
         echo "build-output-dir=$(echo "${{ github.workspace }}/build" | sed -e 's/\\/\//g')" >> "$GITHUB_OUTPUT"
 
     - name: Build Zstd with -fPIC
@@ -129,6 +130,7 @@ jobs:
         git clone https://github.com/facebook/zstd.git
         cd zstd
         make -j$(nproc) CFLAGS="-fPIC" CXXFLAGS="-fPIC" lib
+        /home/runner/work/lib-multiplatform-proj/lib-multiplatform-proj/build/
         mkdir ${{ steps.strings.outputs.build-output-dir }}/lib
         mkdir ${{ steps.strings.outputs.build-output-dir }}/include
         mkdir ${{ steps.strings.outputs.build-output-dir }}/lib/zstd
