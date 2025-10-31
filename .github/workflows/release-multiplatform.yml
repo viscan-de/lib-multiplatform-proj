@@ -203,19 +203,21 @@ jobs:
         cd ..
 
         # 3. Re‑compile liblzma static with -fPIC
-        git clone https://git.tukaani.org/xz.git xz-lzma
+        git clone https://github.com/tukaani-project/xz.git xz-lzma
         cd xz-lzma
-        ./configure --disable-shared --enable-static LDFLAGS=-all-static CFLAGS="-fPIC" CXXFLAGS="-fPIC"
-        make -j$(nproc)
-        cp liblzma/.libs/liblzma.a "$WORKDIR/lib/liblzma.a"
+        ./autogen.sh
+        ./configure --disable-shared --enable-static CFLAGS="-fPIC" CXXFLAGS="-fPIC"
+        make -j$(nproc) build/liblzma.a
+        cp build/liblzma.a "$WORKDIR/lib/liblzma.a"
         cd ..
 
         # 4. Re‑compile libjbig static with -fPIC
         git clone https://github.com/agl/libjbig.git libjbig
         cd libjbig
+        ./autogen.sh
         ./configure --disable-shared --enable-static CFLAGS="-fPIC" CXXFLAGS="-fPIC"
-        make -j$(nproc)
-        cp libjbig.a "$WORKDIR/lib/libjbig.a"
+        make -j$(nproc) build/libjbig.a
+        cp build/libjbig.a "$WORKDIR/lib/libjbig.a"
         cd ..
 
         # 5. List stored libs for debugging
