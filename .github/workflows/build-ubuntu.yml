@@ -129,6 +129,9 @@ jobs:
         git clone https://github.com/facebook/zstd.git
         cd zstd
         make -j$(nproc) CFLAGS="-fPIC" CXXFLAGS="-fPIC" lib
+        mkdir ${{ steps.strings.outputs.build-output-dir }}/lib
+        mkdir ${{ steps.strings.outputs.build-output-dir }}/include
+        mkdir ${{ steps.strings.outputs.build-output-dir }}/lib/zstd
         cp lib/libzstd.a ${{ steps.strings.outputs.build-output-dir }}/lib/
         cp -r include ${{ steps.strings.outputs.build-output-dir }}/include/zstd
 
