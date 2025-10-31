@@ -199,7 +199,7 @@ jobs:
         cd libdeflate
         cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DBUILD_SHARED_LIBS=OFF
         cmake --build build --config Release -- -j$(nproc)
-        cp build/liblibdeflate.a "$WORKDIR/lib/"
+        cp build/libdeflate.a "$WORKDIR/lib/"
         cd ..
 
         # 3. Re‑compile liblzma static with -fPIC
