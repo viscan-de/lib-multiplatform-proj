@@ -179,14 +179,47 @@ jobs:
         echo "tag=${GITHUB_REF#refs/*/}" >> $GITHUB_OUTPUT
         mkdir "${{ github.workspace }}/build"
         
-    - name: Build Zstd with -fPIC
+    - name: Build libraries with -fPIC for static linking (Linux)
       if: ${{ matrix.os == 'ubuntu-latest' }}
       run: |
+        set -e
+        WORKDIR="${{ steps.strings.outputs.build-output-dir }}"
+        mkdir -p "$WORKDIR/lib" "$WORKDIR/include"
+
+        # 1. Build Zstd static with -fPIC
         git clone https://github.com/facebook/zstd.git
         cd zstd
         make -j$(nproc) CFLAGS="-fPIC" CXXFLAGS="-fPIC" lib
-        mkdir ${{ steps.strings.outputs.build-output-dir }}/lib
-        cp lib/libzstd.a ${{ steps.strings.outputs.build-output-dir }}/lib/
+        cp lib/libzstd.a "$WORKDIR/lib/"
+        cp -r lib $WORKDIR/include/zstd_headers
+        cd ..
+
+        # 2. Build libdeflate static with -fPIC
+        git clone https://github.com/ebiggers/libdeflate.git
+        cd libdeflate
+        cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DBUILD_SHARED_LIBS=OFF
+        cmake --build build --config Release -- -j$(nproc)
+        cp build/liblibdeflate.a "$WORKDIR/lib/"
+        cd ..
+
+        # 3. Re‑compile liblzma static with -fPIC
+        git clone https://git.tukaani.org/xz.git xz-lzma
+        cd xz-lzma
+        ./configure --disable-shared --enable-static LDFLAGS=-all-static CFLAGS="-fPIC" CXXFLAGS="-fPIC"
+        make -j$(nproc)
+        cp liblzma/.libs/liblzma.a "$WORKDIR/lib/liblzma.a"
+        cd ..
+
+        # 4. Re‑compile libjbig static with -fPIC
+        git clone https://github.com/agl/libjbig.git libjbig
+        cd libjbig
+        ./configure --disable-shared --enable-static CFLAGS="-fPIC" CXXFLAGS="-fPIC"
+        make -j$(nproc)
+        cp libjbig.a "$WORKDIR/lib/libjbig.a"
+        cd ..
+
+        # 5. List stored libs for debugging
+        ls -lah "$WORKDIR/lib"
 
     - name: Configure CMake Linux
       # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
@@ -307,10 +340,12 @@ jobs:
         rootsrcdir="$(pwd)"
         cd libtiff/lib
         cp ${{ steps.strings.outputs.build-output-dir }}/lib/*.a ./
-        cp /usr/lib/x86_64-linux-gnu/libdeflate.a ./
-        cp /usr/lib/x86_64-linux-gnu/liblzma.a ./
-        cp /usr/lib/x86_64-linux-gnu/libjbig.a ./
+        #cp /usr/lib/x86_64-linux-gnu/libdeflate.a ./
+        #cp /usr/lib/x86_64-linux-gnu/liblzma.a ./
+        #cp /usr/lib/x86_64-linux-gnu/libjbig.a ./
         #cp /usr/lib/x86_64-linux-gnu/libzstd.a ./
+
+        rm ${{ steps.strings.outputs.build-output-dir }}/lib/*.a
         
         for f in * ; do libsfound="$libsfound\naddlib $f\n" ; done
         printf "create libprojcomplete.a\n$libsfound\nsave\nend" > libprojcomplete.mri
