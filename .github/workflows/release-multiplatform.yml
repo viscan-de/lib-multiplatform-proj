@@ -212,12 +212,10 @@ jobs:
         cd ..
 
         # 4. Re‑compile libjbig static with -fPIC
-        git clone https://github.com/agl/libjbig.git libjbig
+        git clone https://www.cl.cam.ac.uk/~mgk25/git/jbigkit libjbig
         cd libjbig
-        ./autogen.sh
-        ./configure --disable-shared --enable-static CFLAGS="-fPIC" CXXFLAGS="-fPIC"
-        make -j$(nproc)
-        cp .libs/libjbig.a "$WORKDIR/lib/libjbig.a"
+        make -j$(nproc) CFLAGS="-g -O -Wall -ansi -pedantic -fPIC"
+        cp libjbig/libjbig.a "$WORKDIR/lib/libjbig.a"
         cd ..
 
         # 5. List stored libs for debugging
