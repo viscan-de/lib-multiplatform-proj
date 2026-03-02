@@ -1799,6 +1799,23 @@ PJ PROJ_DLL *proj_create_linear_affine_parametric_conversion(
     double B2, const char *B2_unit_name, double B2_unit_conv_factor);
 /* clang-format on */
 
+/* clang-format off */
+PJ PROJ_DLL *proj_create_linear_3D_affine_parametric_conversion(
+    PJ_CONTEXT *ctx, const char* name,
+    double A0, const char *A0_unit_name, double A0_unit_conv_factor,
+    double A1, const char *A1_unit_name, double A1_unit_conv_factor,
+    double A2, const char *A2_unit_name, double A2_unit_conv_factor,
+    double A3, const char *A3_unit_name, double A3_unit_conv_factor,
+    double B0, const char *B0_unit_name, double B0_unit_conv_factor,
+    double B1, const char *B1_unit_name, double B1_unit_conv_factor,
+    double B2, const char *B2_unit_name, double B2_unit_conv_factor,
+    double B3, const char *B3_unit_name, double B3_unit_conv_factor,
+    double C0, const char *C0_unit_name, double C0_unit_conv_factor,
+    double C1, const char *C1_unit_name, double C1_unit_conv_factor,
+    double C2, const char *C2_unit_name, double C2_unit_conv_factor,
+    double C3, const char *C3_unit_name, double C3_unit_conv_factor);
+/* clang-format on */
+
 PJ PROJ_DLL *proj_create_transformation(
     PJ_CONTEXT *ctx, const char *name, const char *auth_name, const char *code,
     const PJ *source_crs, const PJ *target_crs, const PJ *interpolation_crs,
