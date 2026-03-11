@@ -12202,3 +12202,31 @@ TEST(operation, compoundCRS_to_compoundCRS_context_extent_use_none) {
     // silently filtered, so we expect strictly more results.
     EXPECT_GT(countNone, countDefault);
 }
+
+// ---------------------------------------------------------------------------
+
+TEST(operation, createOperation_ETRF2000_to_Amersfoort) {
+    auto dbContext = DatabaseContext::create();
+    auto authFactory = AuthorityFactory::create(dbContext, std::string());
+    auto authFactoryEPSG = AuthorityFactory::create(dbContext, "EPSG");
+    auto ctxt = CoordinateOperationContext::create(authFactory, nullptr, 0.0);
+    ctxt->setSpatialCriterion(
+        CoordinateOperationContext::SpatialCriterion::PARTIAL_INTERSECTION);
+    ctxt->setGridAvailabilityUse(
+        CoordinateOperationContext::GridAvailabilityUse::
+            IGNORE_GRID_AVAILABILITY);
+    auto list = CoordinateOperationFactory::create()->createOperations(
+        // ETRF2000
+        authFactoryEPSG->createCoordinateReferenceSystem("9067"),
+        // Amersfoort
+        authFactoryEPSG->createCoordinateReferenceSystem("4289"), ctxt);
+    ASSERT_GE(list.size(), 1U);
+    // We check that we go through ETRS89-NLD [AGRS2010] to use the most
+    // precise "Amersfoort to ETRS89-NLD [AGRS2010] (9)" operation.
+    EXPECT_EQ(list[0]->nameStr(),
+              "Conversion from ETRF2000 (geog2D) to ETRF2000 (geocentric) + "
+              "Inverse of ETRS89-NLD [AGRS2010] to ETRF2000 (1) + "
+              "Conversion from ETRS89-NLD [AGRS2010] (geocentric) to "
+              "ETRS89-NLD [AGRS2010] (geog2D) + "
+              "Inverse of Amersfoort to ETRS89-NLD [AGRS2010] (9)");
+}
