@@ -1,3 +1,12 @@
+# macOS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+.AppleDouble
+.LSOverride
+
 # Editor temporary/working/backup
 *~
 *.bak

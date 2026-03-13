@@ -264,10 +264,13 @@ jobs:
       # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
       # See https://cmake.org/cmake/help/latest/variable/CMAKE_BUILD_TYPE.html?highlight=cmake_build_type
       if: ${{ matrix.os == 'macos-latest' && matrix.env != 'macos' }}
+      env:
+        IOS_DEPLOYMENT_TARGET: "13.0" 
       run: >
         CMAKE_BUILD_PARALLEL_LEVEL=4 && cmake -GXcode -B ${{ steps.strings.outputs.build-output-dir }} 
         -DCMAKE_TOOLCHAIN_FILE=./ios.cmake 
         -DIOS_PLATFORM=${{ matrix.ios_platform }}
+        -DIOS_DEPLOYMENT_TARGET=$IOS_DEPLOYMENT_TARGET
         -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
         -DCMAKE_BUILDENV_GITHUB=ON
         -DBUILD_APPS=OFF 

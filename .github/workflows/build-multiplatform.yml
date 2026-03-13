@@ -118,7 +118,7 @@ jobs:
         #echo "build-output-dir=${{ github.workspace }}/build" >> "$GITHUB_OUTPUT"
         echo "build-output-dir=$(echo "${{ github.workspace }}/build" | sed -e 's/\\/\//g')" >> "$GITHUB_OUTPUT"
 
-    - name: Configure CMake
+    - name: Configure CMake for Linux and Mac OS
       # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
       # See https://cmake.org/cmake/help/latest/variable/CMAKE_BUILD_TYPE.html?highlight=cmake_build_type
       if: ${{ matrix.c_compiler != 'clang_ios_sim' &&  matrix.c_compiler != 'clang_ios_os' && matrix.os != 'windows-latest' }}
