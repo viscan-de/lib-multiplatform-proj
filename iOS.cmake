@@ -5,8 +5,12 @@ set (UNIX True)
 set (APPLE True)
 set (IOS True)
 
-# Required as of cmake 2.8.10
-set (CMAKE_OSX_DEPLOYMENT_TARGET "" CACHE STRING "Force unset of the deployment target for iOS" FORCE)
+# Set iOS deployment target - defaults to 13.0 if not specified via -DIOS_DEPLOYMENT_TARGET
+if (NOT IOS_DEPLOYMENT_TARGET)
+    set (IOS_DEPLOYMENT_TARGET "13.0")
+endif ()
+# CMAKE_OSX_DEPLOYMENT_TARGET maps to IPHONEOS_DEPLOYMENT_TARGET in the Xcode generator
+set (CMAKE_OSX_DEPLOYMENT_TARGET "${IOS_DEPLOYMENT_TARGET}" CACHE STRING "Minimum iOS deployment version" FORCE)
 
 # Determine the cmake host system version so we know where to find the iOS SDKs
 find_program (CMAKE_UNAME uname /bin /usr/bin /usr/local/bin)
@@ -73,6 +77,10 @@ set (CMAKE_CXX_OSX_CURRENT_VERSION_FLAG "${CMAKE_C_OSX_CURRENT_VERSION_FLAG}")
 if (IOS_DEPLOYMENT_TARGET)
   set(XCODE_IOS_PLATFORM_VERSION_FLAGS "-m${XCODE_IOS_PLATFORM}-version-min=${IOS_DEPLOYMENT_TARGET}")
 endif()
+
+# Explicitly set the Xcode build setting so the Xcode generator writes the correct
+# IPHONEOS_DEPLOYMENT_TARGET into the .xcodeproj (takes precedence over any SDK default)
+set (CMAKE_XCODE_ATTRIBUTE_IPHONEOS_DEPLOYMENT_TARGET "${IOS_DEPLOYMENT_TARGET}")
 
 # Hidden visibilty is required for cxx on iOS 
 set (CMAKE_C_FLAGS_INIT "${XCODE_IOS_PLATFORM_VERSION_FLAGS}")
