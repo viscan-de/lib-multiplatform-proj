@@ -115,7 +115,7 @@ jobs:
           echo "ARCH=$ARCH" >> $GITHUB_OUTPUT
 
       - name: Build docs image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         if: matrix.container == 'proj-docs'
         with:
           push: ${{ env.PUSH_PACKAGES == 'true' }}
@@ -152,7 +152,7 @@ jobs:
           echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Build image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         id: push
         if: matrix.container == 'proj'
         with:
