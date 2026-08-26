@@ -42,12 +42,12 @@ jobs:
     - name: Setup
       shell: bash -l {0}
       run: |
-          source ./scripts/ci/conda/setup.sh
+          source ./ci/conda/setup.sh
 
     - name: Build
       shell: bash -l {0}
       run: |
-          source ../scripts/ci/conda/compile.sh
+          source ../ci/conda/compile.sh
       working-directory: ./proj.4-feedstock
 
 

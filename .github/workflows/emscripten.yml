@@ -27,7 +27,7 @@ jobs:
         uses: actions/checkout@v7.0.1
 
       - name: Build docker
-        run: docker build -t proj-emscripten-builder scripts/ci/emscripten/
+        run: docker build -t proj-emscripten-builder ci/emscripten/
 
       - name: Artifacts folder
         run: mkdir -p "$PWD"/wasm_out
@@ -51,7 +51,7 @@ jobs:
         run: |
           mkdir -p "$PWD"/out_node
           cp wasm_out/projModule.* out_node
-          cp scripts/ci/emscripten/proj.ems.tests.js out_node
+          cp ci/emscripten/proj.ems.tests.js out_node
 
       - name: Run docker tests
         run: |

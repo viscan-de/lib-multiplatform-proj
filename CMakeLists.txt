@@ -520,6 +520,7 @@ if(PROJECT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR)
     \\.deps
     /autogen\\.sh
     /autom4te\\.cache
+    /ci/
     /CODE_OF_CONDUCT.md
     /CONTRIBUTING.md
     /disabled_workflows/

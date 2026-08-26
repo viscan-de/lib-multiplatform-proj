@@ -28,7 +28,7 @@ fi
 ccache -M 500M
 
 # -fno-use-cxa-atexit is needed to build with -coverage
-CC="clang-10" CXX="clang++-10" CFLAGS="-Werror -fsanitize=address -fno-use-cxa-atexit" CXXFLAGS="-Werror -fsanitize=address -fno-use-cxa-atexit" LDFLAGS="-fsanitize=address" ./travis/install.sh
+CC="clang-10" CXX="clang++-10" CFLAGS="-Werror -fsanitize=address -fno-use-cxa-atexit" CXXFLAGS="-Werror -fsanitize=address -fno-use-cxa-atexit" LDFLAGS="-fsanitize=address" ./ci/install.sh
 
 echo "Saving ccache..."
 rm -f "$WORK_DIR/ccache.tar.gz"

@@ -25,4 +25,4 @@ jobs:
         uses: actions/checkout@v7.0.1
 
       - name: Run
-        run: .github/workflows/clang_static_analyzer/start.sh
+        run: ci/clang_static_analyzer/start.sh

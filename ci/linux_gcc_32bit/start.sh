@@ -43,7 +43,7 @@ fi
 
 ccache -M 500M
 
-CFLAGS="-Werror $CFLAGS" CXXFLAGS="-Werror $CXXFLAGS" CMAKE_BUILD_TYPE=RelWithDebInfo ./travis/install.sh
+CFLAGS="-Werror $CFLAGS" CXXFLAGS="-Werror $CXXFLAGS" CMAKE_BUILD_TYPE=RelWithDebInfo ./ci/install.sh
 
 echo "Saving ccache..."
 rm -f "$WORK_DIR/ccache.tar.gz"
