@@ -1109,7 +1109,7 @@ INSERT INTO "extent" VALUES('EPSG','2127','Europe - 12°E to 18°E and ETRS89 by
 INSERT INTO "extent" VALUES('EPSG','2128','Europe - 18°E to 24°E and ETRS89 by country','Europe between 18°E and 24°E: Bulgaria; Croatia; Italy - onshore and offshore; Norway including Svalbard - onshore and offshore.',34.76,84.01,18.0,24.01,0);
 INSERT INTO "extent" VALUES('EPSG','2129','Europe - 24°E to 30°E and ETRS89 by country','Europe between 24°E and 30°E: Bulgaria - onshore and offshore; Norway including Svalbard - onshore and offshore.',41.24,84.01,24.0,30.01,0);
 INSERT INTO "extent" VALUES('EPSG','2130','Europe - 30°E to 36°E and ETRS89 by country','Europe between 30°E and 36°E: Bulgaria - offshore; Norway including Svalbard - onshore and offshore.',42.56,84.01,30.0,36.01,0);
-INSERT INTO "extent" VALUES('EPSG','2131','Europe - 36°E to 42°E and ETRS89 by country','Europe between 36°E and 42°E: Norway including Svalbard - offshore.',72.99,79.07,36.0,38.01,0);
+INSERT INTO "extent" VALUES('EPSG','2131','Europe - 36°E to 42°E and ETRS89 by country','Europe between 36°E and 42°E: Norway including Svalbard - offshore.',72.99,79.07,36.0,38.0,0);
 INSERT INTO "extent" VALUES('EPSG','2132','Europe - 42°E to 48°E and ETRS89 by country','Europe - between 42°E and 48°E.',37.0,41.65,42.0,48.0,1);
 INSERT INTO "extent" VALUES('EPSG','2133','USA - 168°W to 162°W - AK, OCS','United States (USA) - between 168°W and 162°W - Alaska and offshore continental shelf (OCS).',49.52,74.29,-168.0,-161.99,0);
 INSERT INTO "extent" VALUES('EPSG','2134','USA - 162°W to 156°W - AK, OCS','United States (USA) - between 162°W and 156°W - Alaska and offshore continental shelf (OCS).',50.98,74.71,-162.0,-155.99,0);
@@ -1311,7 +1311,7 @@ INSERT INTO "extent" VALUES('EPSG','2328','Syria - Shaddadeh area','Syria - Shad
 INSERT INTO "extent" VALUES('EPSG','2329','Syria - Deir area','Syria - Deir area (35°22''N, 40°06''E)',34.49,35.9,39.3,40.81,0);
 INSERT INTO "extent" VALUES('EPSG','2330','Europe - North Sea','Denmark - North Sea; Germany - North Sea; Netherlands - offshore; Norway - North Sea south of 62°N; United Kingdom (UKCS) - North Sea south of 62°N.',51.03,62.0,-5.05,10.86,0);
 INSERT INTO "extent" VALUES('EPSG','2331','Norway - offshore north of 65°N','Norway - offshore north of 65°N.',65.0,72.0,-0.5,32.02,1);
-INSERT INTO "extent" VALUES('EPSG','2332','Norway - offshore north of 65°N; Svalbard','Norway - offshore north of 65°N. Also Svalbard.',65.0,84.73,-3.35,38.01,0);
+INSERT INTO "extent" VALUES('EPSG','2332','Norway - offshore north of 65°N; Svalbard','Norway - offshore north of 65°N. Also Svalbard.',65.0,84.73,-3.35,38.0,0);
 INSERT INTO "extent" VALUES('EPSG','2333','Norway - offshore 62°N to 65°N and west of 5°E','Norway - offshore between 62°N and 65°N and west of 5°E.',62.0,65.01,-0.49,5.01,0);
 INSERT INTO "extent" VALUES('EPSG','2334','Norway - North Sea - offshore south of 62°N','Norway - offshore south of 62°N - North Sea.',56.08,62.01,1.37,10.81,0);
 INSERT INTO "extent" VALUES('EPSG','2335','Spain - Balearic Islands','Spain - Balearic Islands.',38.59,40.15,1.12,4.39,0);
@@ -3037,7 +3037,7 @@ INSERT INTO "extent" VALUES('EPSG','4054','Arctic - 84°30''N to 79°30''N, 33°
 INSERT INTO "extent" VALUES('EPSG','4055','Arctic - 84°30''N to 79°30''N, 73°E to 113°E','Arctic - between 84°30''N and 79°30''N, approximately 73°E to approximately 113°E. May be extended westwards or eastwards within the latitude limits.',79.5,84.51,73.0,113.01,0);
 INSERT INTO "extent" VALUES('EPSG','4056','Arctic - 84°30''N to 79°30''N, 113°E to 153°E','Arctic - between 84°30''N and 79°30''N, approximately 113°E to approximately 153°E. May be extended westwards or eastwards within the latitude limits.',79.5,84.51,113.0,153.01,0);
 INSERT INTO "extent" VALUES('EPSG','4057','Arctic - 84°30''N to 79°30''N, 146°E to 174°W','Arctic - between 84°30''N and 79°30''N, approximately 146°E to approximately 174°W. May be extended westwards or eastwards within the latitude limits.',79.5,84.51,146.0,-173.99,0);
-INSERT INTO "extent" VALUES('EPSG','4058','Arctic - 81°10''N to 76°10''N, 4°W to 38°E','Arctic (Norway (Svalbard) onshore and offshore) - between 81°10''N and 76°10''N.',76.16,81.17,-3.35,38.01,0);
+INSERT INTO "extent" VALUES('EPSG','4058','Arctic - 81°10''N to 76°10''N, 4°W to 38°E','Arctic (Norway (Svalbard) onshore and offshore) - between 81°10''N and 76°10''N.',76.16,81.17,-3.35,38.0,0);
 INSERT INTO "extent" VALUES('EPSG','4059','Arctic - 81°10''N to 76°10''N, 35°E to 67°E','Arctic (Russia onshore and offshore) - between 81°10''N and 76°10''N, approximately 35°E to approximately 67°E. May be extended eastwards within the latitude limits.',76.16,81.17,34.99,67.01,0);
 INSERT INTO "extent" VALUES('EPSG','4060','Arctic - 81°10''N to 76°10''N, 67°E to 98°E','Arctic (Russia onshore and offshore) - between 81°10''N and 76°10''N, approximately 67°E to approximately 98°E. May be extended westwards or eastwards within the latitude limits.',76.16,81.17,67.0,98.01,0);
 INSERT INTO "extent" VALUES('EPSG','4061','Arctic - 81°10''N to 76°10''N, 98°E to 129°E','Arctic (Russia onshore and offshore) - between 81°10''N and 76°10''N, approximately 98°E to approximately 129°E. May be extended westwards or eastwards within the latitude limits.',76.16,81.17,98.0,129.01,0);

@@ -1089,7 +1089,7 @@ INSERT INTO "usage" VALUES('EPSG','25756','compound_crs','EPSG','11452','EPSG','
 INSERT INTO "compound_crs" VALUES('EPSG','11453','GR96 + GLMSL(2025) depth',NULL,'EPSG','4747','EPSG','11451',0);
 INSERT INTO "usage" VALUES('EPSG','25757','compound_crs','EPSG','11453','EPSG','4776','EPSG','1272');
 INSERT INTO "compound_crs" VALUES('EPSG','11460','NZGD2000 / New Zealand Transverse Mercator 2000 + NZVD2016 height',NULL,'EPSG','2193','EPSG','7839',0);
-INSERT INTO "usage" VALUES('EPSG','25773','compound_crs','EPSG','11460','EPSG','1175','EPSG','1026');
+INSERT INTO "usage" VALUES('EPSG','25773','compound_crs','EPSG','11460','EPSG','3973','EPSG','1026');
 INSERT INTO "compound_crs" VALUES('EPSG','11465','Dart+26 Grid + Malin Head height',NULL,'EPSG','11464','EPSG','5731',0);
 INSERT INTO "usage" VALUES('EPSG','26016','compound_crs','EPSG','11465','EPSG','4858','EPSG','1141');
 INSERT INTO "compound_crs" VALUES('EPSG','11470','SZCTW Grid + ODN height',NULL,'EPSG','11469','EPSG','5701',0);
@@ -1156,6 +1156,8 @@ INSERT INTO "compound_crs" VALUES('EPSG','12245','ETRS89-ITA [RDN2008] + Genoa 1
 INSERT INTO "usage" VALUES('EPSG','27140','compound_crs','EPSG','12245','EPSG','3736','EPSG','1270');
 INSERT INTO "compound_crs" VALUES('EPSG','12248','ETRS89-ITA [RDN2008] + Cagliari 1956 height',NULL,'EPSG','6706','EPSG','9722',0);
 INSERT INTO "usage" VALUES('EPSG','27143','compound_crs','EPSG','12248','EPSG','2339','EPSG','1270');
+INSERT INTO "compound_crs" VALUES('EPSG','12293','ETRS89-BEL [BEREF2011] / Belgian Lambert 2008 + Ostend height',NULL,'EPSG','11219','EPSG','5710',0);
+INSERT INTO "usage" VALUES('EPSG','27423','compound_crs','EPSG','12293','EPSG','1347','EPSG','1142');
 INSERT INTO "compound_crs" VALUES('EPSG','20001','ETRS89 + SVD2006 height',NULL,'EPSG','4258','EPSG','20000',0);
 INSERT INTO "usage" VALUES('EPSG','17956','compound_crs','EPSG','20001','EPSG','4860','EPSG','1026');
 INSERT INTO "compound_crs" VALUES('EPSG','20003','MWC18 Grid + ODN height',NULL,'EPSG','20002','EPSG','5701',0);
