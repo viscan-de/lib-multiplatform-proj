@@ -12190,7 +12190,7 @@ TEST(operation, createOperation_ETRS89_XXX_to_ETRS89_YYY_using_ETRF2000) {
     EXPECT_STREQ(list[0]->nameStr().c_str(),
                  "Conversion from ETRS89-PRT [1995] (geog2D) to "
                  "ETRS89-PRT [1995] (geocentric) + "
-                 "ETRS89-PRT [1995] to ETRF2000 (1) + "
+                 "ETRS89-PRT [1995] to ETRF2000 (2) + "
                  "Inverse of ETRS89-ESP [ERGNSS] to ETRF2000 (1) + "
                  "Conversion from ETRS89-ESP [ERGNSS] (geocentric) to "
                  "ETRS89-ESP [ERGNSS] (geog2D)");
@@ -12202,7 +12202,7 @@ TEST(operation, createOperation_ETRS89_XXX_to_ETRS89_YYY_using_ETRF2000) {
               "+step +proj=cart +ellps=GRS80 "
               "+step +proj=helmert +x=0.0063 +y=0.00294 +z=0.01726 "
               "+rx=-0.0007616 +ry=-6.4e-05 +rz=-0.0008768 +s=-0.001534 "
-              "+dx=0 +dy=6e-05 +dz=0.0014 +drx=-0.000119 +dry=-1e-05 "
+              "+dx=0 +dy=0.0006 +dz=0.0014 +drx=-0.000119 +dry=-1e-05 "
               "+drz=-0.000162 +ds=-1e-05 +t_epoch=1995.4 "
               "+convention=position_vector "
               "+step +inv +proj=cart +ellps=GRS80 "

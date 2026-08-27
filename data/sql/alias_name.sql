@@ -8675,3 +8675,5 @@ INSERT INTO "alias_name" VALUES('compound_crs','EPSG','9290','ETRS89 + MSL NL de
 INSERT INTO "alias_name" VALUES('compound_crs','EPSG','9289','ETRS89 + LAT NL depth','EPSG');
 INSERT INTO "alias_name" VALUES('compound_crs','EPSG','12216','ETRS89 + MSL NL depth','EPSG');
 INSERT INTO "alias_name" VALUES('compound_crs','EPSG','12215','ETRS89 + LAT NL depth','EPSG');
+INSERT INTO "alias_name" VALUES('compound_crs','EPSG','12293','ETRS89 / Lambert 2008 + Oostende height','EPSG');
+INSERT INTO "alias_name" VALUES('compound_crs','EPSG','12293','ETRS89 / Belgian Lambert 2008 + Ostend height','EPSG');
