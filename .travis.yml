@@ -39,9 +39,9 @@ matrix:
   allow_failures:
       - env: BUILD_NAME=mingw32
 
-before_install: ./travis/${BUILD_NAME}/before_install.sh
+before_install: ./ci/${BUILD_NAME}/before_install.sh
 
-install: ./travis/${BUILD_NAME}/install.sh
+install: ./ci/${BUILD_NAME}/install.sh
 
 script:
   - echo "done"

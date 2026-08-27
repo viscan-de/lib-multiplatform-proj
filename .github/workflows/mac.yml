@@ -38,7 +38,7 @@ jobs:
       - uses: mamba-org/setup-micromamba@v3
         with:
           init-shell: bash
-          environment-file: .github/workflows/mac/environment.yml
+          environment-file: ci/mac/environment.yml
 
       - name: Cache
         uses: actions/cache@v6.1.0
@@ -51,13 +51,13 @@ jobs:
       - name: Install Requirements
         shell: bash -l {0}
         run: |
-          source .github/workflows/mac/before_install.sh
+          source ci/mac/before_install.sh
 
       - name: Build
         shell: bash -l {0}
         run: |
           export TRAVIS_BUILD_DIR=$PWD
-          source .github/workflows/mac/install.sh
+          source ci/mac/install.sh
         env:
             CCACHE_DIR: ${{ github.workspace }}/.ccache
             TRAVIS_OS_NAME: osx

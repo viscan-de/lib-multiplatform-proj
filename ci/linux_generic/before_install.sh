@@ -2,8 +2,8 @@
 
 set -e
 
-./travis/before_install_apt.sh
-./travis/before_install_pip.sh
+./ci/before_install_apt.sh
+./ci/before_install_pip.sh
 
 sudo apt-get install -qq \
     sqlite3 zip \
