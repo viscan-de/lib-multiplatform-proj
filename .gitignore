@@ -54,6 +54,7 @@ CTestTestfile.cmake
 cmake_install.cmake
 cmake/project-config*.cmake
 install_manifest.txt
+/CMakeUserPresets.json
 
 # / (base)
 /*.manifest
