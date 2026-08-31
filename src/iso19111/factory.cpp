@@ -1381,19 +1381,13 @@ void DatabaseContext::Private::attachExtraDatabases(
             std::string sql("CREATE TEMP VIEW ");
             sql += tableStructure.name;
             sql += " AS ";
+            const auto columns = join(tableStructure.columns, ", ");
             for (size_t i = 0; i <= auxiliaryDatabasePaths.size(); ++i) {
                 std::string selectFromAux("SELECT ");
-                bool firstCol = true;
-                for (const auto &colName : tableStructure.columns) {
-                    if (!firstCol) {
-                        selectFromAux += ", ";
-                    }
-                    firstCol = false;
-                    selectFromAux += colName;
-                }
+                selectFromAux += columns;
                 selectFromAux += " FROM db_";
                 selectFromAux += toString(static_cast<int>(i));
-                selectFromAux += ".";
+                selectFromAux += '.';
                 selectFromAux += tableStructure.name;
 
                 try {
