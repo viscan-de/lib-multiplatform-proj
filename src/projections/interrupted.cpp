@@ -112,13 +112,12 @@ PJ *PJ_PROJECTION(interrupted) {
     std::vector<double> sizes;
     if (pj_param(P->ctx, P->params, "tgores").i) {
         const std::string g = pj_param(P->ctx, P->params, "sgores").s;
-        const std::vector<std::string> gores =
-            osgeo::proj::internal::split(g, ",");
+        const std::vector<std::string> gores = NS_PROJ::internal::split(g, ",");
         bool success = true;
         for (const auto &gore : gores) {
             if (gore.empty())
                 continue;
-            double d = osgeo::proj::internal::c_locale_stod(gore, success);
+            double d = NS_PROJ::internal::c_locale_stod(gore, success);
             if (!success) {
                 proj_log_error(P, _("Invalid value for gores parameter"));
                 return pj_default_destructor(
