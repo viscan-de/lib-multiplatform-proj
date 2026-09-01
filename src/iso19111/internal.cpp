@@ -407,6 +407,20 @@ double getRoundedEpochInDecimalYear(double year) {
     return year;
 }
 
+std::string join(const std::vector<std::string> &strings,
+                 const char *delimiter) {
+    std::string result;
+    bool first = true;
+    for (const auto &str : strings) {
+        if (!first)
+            result += delimiter;
+        first = false;
+        result += str;
+    }
+
+    return result;
+}
+
 // ---------------------------------------------------------------------------
 
 } // namespace internal

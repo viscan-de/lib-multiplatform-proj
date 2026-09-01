@@ -178,6 +178,9 @@ std::string concat(const std::string &, const std::string &,
 
 double getRoundedEpochInDecimalYear(double year);
 
+std::string join(const std::vector<std::string> &strings,
+                 const char *delimiter);
+
 } // namespace internal
 
 NS_PROJ_END

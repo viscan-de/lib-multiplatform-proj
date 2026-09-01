@@ -1381,19 +1381,13 @@ void DatabaseContext::Private::attachExtraDatabases(
             std::string sql("CREATE TEMP VIEW ");
             sql += tableStructure.name;
             sql += " AS ";
+            const auto columns = join(tableStructure.columns, ", ");
             for (size_t i = 0; i <= auxiliaryDatabasePaths.size(); ++i) {
                 std::string selectFromAux("SELECT ");
-                bool firstCol = true;
-                for (const auto &colName : tableStructure.columns) {
-                    if (!firstCol) {
-                        selectFromAux += ", ";
-                    }
-                    firstCol = false;
-                    selectFromAux += colName;
-                }
+                selectFromAux += columns;
                 selectFromAux += " FROM db_";
                 selectFromAux += toString(static_cast<int>(i));
-                selectFromAux += ".";
+                selectFromAux += '.';
                 selectFromAux += tableStructure.name;
 
                 try {
@@ -4239,7 +4233,8 @@ util::PropertyMap AuthorityFactory::Private::createPropertiesSearchUsages(
             "extent.north_lat, extent.west_lon, extent.east_lon, "
             "scope.scope, "
             "(CASE WHEN scope.scope LIKE '%large scale%' THEN 0 ELSE 1 END) "
-            "AS score "
+            "AS score, "
+            "usage.auth_name, usage.code "
             "FROM usage "
             "JOIN extent ON usage.extent_auth_name = extent.auth_name AND "
             "usage.extent_code = extent.code "
@@ -4251,9 +4246,27 @@ util::PropertyMap AuthorityFactory::Private::createPropertiesSearchUsages(
             "NOT (usage.extent_auth_name = 'PROJ' AND "
             "usage.extent_code = 'EXTENT_UNKNOWN') AND "
             "NOT (usage.scope_auth_name = 'PROJ' AND "
-            "usage.scope_code = 'SCOPE_UNKNOWN') "
-            "ORDER BY score, usage.auth_name, usage.code");
+            "usage.scope_code = 'SCOPE_UNKNOWN') ");
         res = run(sql, {table_name, authority(), code});
+
+        // This replaces use of "ORDER BY score, usage.auth_name, usage.code" in
+        // the above query because it is significantly slower with the use of an
+        // auxiliary database.
+        res.sort([](auto &left, auto &right) {
+            auto scoreLeft = std::stoi(left[6]);
+            auto scoreRight = std::stoi(right[6]);
+            if (scoreLeft == scoreRight) {
+                auto &authLeft = left[7];
+                auto &authRight = right[7];
+                if (authLeft == authRight) {
+                    auto &codeLeft = left[8];
+                    auto &codeRight = right[8];
+                    return codeLeft < codeRight;
+                }
+                return authLeft < authRight;
+            }
+            return scoreLeft < scoreRight;
+        });
     }
     std::vector<ObjectDomainNNPtr> usages;
     for (const auto &row : res) {
