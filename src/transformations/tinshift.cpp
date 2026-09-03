@@ -41,10 +41,6 @@ using namespace TINSHIFT_JSON_NAMESPACE;
 
 // ---------------------------------------------------------------------------
 
-TINShiftEvaluator::~TINShiftEvaluator() = default;
-
-// ---------------------------------------------------------------------------
-
 namespace {
 
 struct tinshiftData {
