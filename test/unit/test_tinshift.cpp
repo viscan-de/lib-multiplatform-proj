@@ -34,8 +34,6 @@
 
 using namespace TINSHIFT_JSON_NAMESPACE;
 
-TINShiftEvaluator::~TINShiftEvaluator() = default;
-
 namespace {
 
 static json getMinValidContent() {

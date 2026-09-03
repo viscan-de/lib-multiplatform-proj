@@ -14,10 +14,15 @@
 
 // ---------------------------------------------------------------------------
 
+#ifdef __clang__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wweak-vtables"
+#endif
+
 /** Interface to evaluate the transformation of a coordinate */
 class TINShiftEvaluator {
   public:
-    virtual ~TINShiftEvaluator();
+    inline virtual ~TINShiftEvaluator() = default;
 
     /** Evaluate displacement of a position given by (x,y,z,t) and
      * return it in (x_out,y_out_,z_out).
@@ -29,5 +34,9 @@ class TINShiftEvaluator {
     virtual bool inverse(double x, double y, double z, double &x_out,
                          double &y_out, double &z_out) = 0;
 };
+
+#ifdef __clang__
+#pragma clang diagnostic pop
+#endif
 
 #endif // TINSHIFT_IFACE_H
