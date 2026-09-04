@@ -42,7 +42,9 @@ jobs:
           python-version: "3.x"
       - run: pip install pyyaml
 
-      - uses: ilammy/msvc-dev-cmd@v1
+      - uses: TheMrMilchmann/setup-msvc-dev@v4
+        with:
+          arch: ${{ env.ARCH }}
 
       - name: Cache vcpkg packages
         uses: actions/cache@v6.1.0
