@@ -6,7 +6,7 @@ export TRAVIS_OS_NAME=linux
 export BUILD_NAME=linux_gcc_32bit
 export TRAVIS_BUILD_DIR="$WORK_DIR"
 
-GCC_VERSION=12
+GCC_VERSION=13
 
 ARCH=i386
 

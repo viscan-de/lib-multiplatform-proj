@@ -131,7 +131,13 @@ if (CMAKE_CXX_COMPILER_ID STREQUAL "IntelLLVM")
   # breaks std::isinf(), std::isnan(), etc.
   string(APPEND CMAKE_C_FLAGS " -fno-fast-math")
   string(APPEND CMAKE_CXX_FLAGS " -fno-fast-math")
-endif ()
+elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND
+       CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 13 AND
+       CMAKE_SIZEOF_VOID_P EQUAL 4)
+  # GCC 13 and later changed their C++ excess precision support, which impacts
+  # 32-bit builds. This restores the previous behavior.
+  string(APPEND CMAKE_CXX_FLAGS " -fexcess-precision=fast")
+endif()
 
 # Add other supported compiler flags
 if(("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU") OR ("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang"))
