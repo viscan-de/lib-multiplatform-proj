@@ -140,6 +140,11 @@ extern "C" {
 
 /*! @cond Doxygen_Suppress */
 
+/* viscan fork: users of the static library define PROJ_STATICALLY_LINKED */
+#if defined(PROJ_STATICALLY_LINKED) && !defined(PROJ_DLL)
+#define PROJ_DLL
+#endif
+
 #ifndef PROJ_DLL
 #if defined(_MSC_VER)
 #ifdef PROJ_MSVC_DLL_EXPORT

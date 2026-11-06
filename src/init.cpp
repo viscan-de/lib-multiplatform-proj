@@ -222,6 +222,15 @@ static paralist *get_init(PJ_CONTEXT *ctx, const char *key,
         ctx = pj_get_default_ctx();
     }
 
+#ifdef VISCAN_MATH_ONLY
+    /* viscan fork: definitions are never read from init files or the
+     * database. */
+    (void)allow_init_epsg;
+    pj_log(ctx, PJ_LOG_ERROR, "%s: +init= is disabled in this build", key);
+    proj_context_errno_set(ctx, PROJ_ERR_INVALID_OP_WRONG_SYNTAX);
+    return nullptr;
+#endif
+
     /* support "init=file:section", "+init=file:section", and "file:section"
      * format */
     xkey = strstr(key, "init=");

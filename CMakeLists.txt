@@ -179,6 +179,10 @@ include(ProjConfig)
 include(ProjMac)
 include(policies)
 
+# viscan fork: "math only" build without database, network and definition
+# files. See FORK_CHANGES.md
+include(${PROJ_SOURCE_DIR}/viscan/cmake/ViscanMathOnly.cmake)
+
 ##############################################
 ### SWITCH BETWEEN STATIC OR SHARED LIBRARY###
 ##############################################
@@ -229,6 +233,7 @@ message(STATUS "nlohmann/json: ${NLOHMANN_JSON}")
 # Check for sqlite3
 ################################################################################
 
+if(NOT VISCAN_MATH_ONLY) # viscan fork
 find_program(EXE_SQLITE3 sqlite3)
 if(NOT EXE_SQLITE3)
   message(SEND_ERROR "sqlite3 binary not found!")
@@ -248,6 +253,7 @@ find_package(SQLite3 3.11 REQUIRED)
 if(NOT TARGET SQLite3::SQLite3) # CMake < 4.3
   add_library(SQLite3::SQLite3 ALIAS SQLite::SQLite3)
 endif()
+endif() # viscan fork
 
 ################################################################################
 # Check for libtiff
@@ -440,7 +446,9 @@ set(PROJ_DICTIONARY
 
 include_directories(${PROJ_SOURCE_DIR}/src)
 
+if(NOT VISCAN_MATH_ONLY) # viscan fork: no proj.db, no init files
 add_subdirectory(data)
+endif()
 add_subdirectory(include)
 add_subdirectory(src)
 add_subdirectory(man)
