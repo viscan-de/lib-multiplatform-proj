@@ -9,9 +9,7 @@
 ################################################################################
 # General settings
 ################################################################################
-cmake_minimum_required(VERSION 3.10 FATAL_ERROR)
-set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-
+cmake_minimum_required(VERSION 3.9 FATAL_ERROR)
 
 project(PROJ
   DESCRIPTION "PROJ coordinate transformation software library"
@@ -98,25 +96,10 @@ if (CMAKE_CXX_COMPILER_ID STREQUAL "IntelLLVM")
   set(CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS} -fno-fast-math)
 endif ()
 
-if (LINUX)
-  set(CMAKE_C_FLAGS ${CMAKE_C_FLAGS} -fPIC)
-  set(CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS} -fPIC)
-ENDIF()
-
-IF(MSVC)
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /MT")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /MT")
-ENDIF()
-
-
 set(PROJ_C_WARN_FLAGS "${PROJ_C_WARN_FLAGS}"
   CACHE STRING "C flags used to compile PROJ targets")
 set(PROJ_CXX_WARN_FLAGS "${PROJ_CXX_WARN_FLAGS}"
   CACHE STRING "C++ flags used to compile PROJ targets")
-
-
-
-
 
 ################################################################################
 # PROJ CMake modules
@@ -188,21 +171,21 @@ message(STATUS "nlohmann/json: ${NLOHMANN_JSON}")
 # Check for sqlite3
 ################################################################################
 
-#find_program(EXE_SQLITE3 sqlite3)
-#if(NOT EXE_SQLITE3)
-#  message(SEND_ERROR "sqlite3 binary not found!")
-#endif()
+find_program(EXE_SQLITE3 sqlite3)
+if(NOT EXE_SQLITE3)
+  message(SEND_ERROR "sqlite3 binary not found!")
+endif()
 
-#find_package(Sqlite3 REQUIRED)
-#if(NOT SQLITE3_FOUND)
-#  message(SEND_ERROR "sqlite3 dependency not found!")
-#endif()
+find_package(Sqlite3 REQUIRED)
+if(NOT SQLITE3_FOUND)
+  message(SEND_ERROR "sqlite3 dependency not found!")
+endif()
 
-## Would build and run with older versions, but with horrible performance
-## See https://github.com/OSGeo/PROJ/issues/1718
-#if("${SQLITE3_VERSION}" VERSION_LESS "3.11")
-#  message(SEND_ERROR "sqlite3 >= 3.11 required!")
-#endif()
+# Would build and run with older versions, but with horrible performance
+# See https://github.com/OSGeo/PROJ/issues/1718
+if("${SQLITE3_VERSION}" VERSION_LESS "3.11")
+  message(SEND_ERROR "sqlite3 >= 3.11 required!")
+endif()
 
 ################################################################################
 # Check for libtiff
@@ -229,7 +212,7 @@ endif()
 # Check for curl
 ################################################################################
 
-#option(ENABLE_CURL "Enable Curl support" ON)
+option(ENABLE_CURL "Enable Curl support" ON)
 set(CURL_ENABLED FALSE)
 if(ENABLE_CURL)
   find_package(CURL REQUIRED)
@@ -331,7 +314,7 @@ set(PROJ_DATA_PATH "${CMAKE_INSTALL_FULL_DATADIR}/proj")
 ################################################################################
 # Tests
 ################################################################################
-#include(CTest)
+include(CTest)
 
 if(BUILD_TESTING)
   include(ProjTest)
@@ -344,28 +327,23 @@ endif()
 ################################################################################
 include_directories(${PROJ_SOURCE_DIR}/src)
 
-#add_subdirectory(data)
+add_subdirectory(data)
 add_subdirectory(include)
 add_subdirectory(src)
-#add_subdirectory(man)
-#add_subdirectory(cmake)
-#add_subdirectory(examples)
+add_subdirectory(man)
+add_subdirectory(cmake)
+if(BUILD_TESTING)
+  add_subdirectory(test)
+endif()
 
-#if(BUILD_TESTING)
-#  add_subdirectory(test)
-#endif()
+option(BUILD_EXAMPLES "Whether to build example programs" OFF)
+if(BUILD_EXAMPLES)
+  add_subdirectory(examples)
+endif()
 
-#option(BUILD_EXAMPLES "Whether to build example programs" OFF)
-#if(BUILD_EXAMPLES)
-#  add_subdirectory(examples)
-#endif()
-
-
-#set(docfiles COPYING NEWS AUTHORS)
-#install(FILES ${docfiles}
-#        DESTINATION ${CMAKE_INSTALL_DOCDIR})
-
-
+set(docfiles COPYING NEWS AUTHORS)
+install(FILES ${docfiles}
+        DESTINATION ${CMAKE_INSTALL_DOCDIR})
 
 ################################################################################
 # pkg-config support
@@ -379,7 +357,6 @@ install(FILES
 ################################################################################
 # "make dist" workalike
 ################################################################################
-
 
 set(CPACK_SOURCE_GENERATOR "TGZ;ZIP")
 set(CPACK_SOURCE_PACKAGE_FILE_NAME "proj-${PROJ_VERSION}")

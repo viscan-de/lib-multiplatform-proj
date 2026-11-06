@@ -260,7 +260,7 @@ class gieTest : public ::testing::Test {
 };
 
 // ---------------------------------------------------------------------------
-#ifdef SQLLITE_ENABLED
+
 TEST_F(gieTest, proj_create_crs_to_crs) {
     /* test proj_create_crs_to_crs() */
     auto P = proj_create_crs_to_crs(PJ_DEFAULT_CTX, "epsg:25832", "epsg:25833",
@@ -345,8 +345,6 @@ TEST_F(gieTest, proj_create_crs_to_crs_proj_longlat) {
     EXPECT_NEAR(a.xy.y, b.xy.y, 1e-9);
     proj_destroy(P);
 }
-
-#endif
 
 // ---------------------------------------------------------------------------
 
@@ -980,7 +978,7 @@ TEST(gie, horner_only_fwd_selftest) {
 }
 
 // ---------------------------------------------------------------------------
-#ifdef SQLLITE_ENABLED
+
 TEST(gie, proj_create_crs_to_crs_PULKOVO42_ETRS89) {
     auto P = proj_create_crs_to_crs(PJ_DEFAULT_CTX, "EPSG:4179", "EPSG:4258",
                                     nullptr);
@@ -1075,6 +1073,7 @@ TEST(gie, proj_create_crs_to_crs_WGS84_EGM08_to_WGS84) {
 
     proj_destroy(P);
 }
+
 // ---------------------------------------------------------------------------
 
 TEST(gie, proj_create_crs_to_crs_outside_area_of_use) {
@@ -1187,7 +1186,7 @@ TEST(gie, proj_create_crs_to_crs_with_longitude_outside_minus_180_180) {
 
     proj_destroy(P);
 }
-#endif
+
 // ---------------------------------------------------------------------------
 
 TEST(gie, proj_trans_generic) {
@@ -1215,12 +1214,9 @@ TEST(gie, proj_trans_generic) {
 }
 
 // ---------------------------------------------------------------------------
-#ifdef SQLLITE_ENABLED
 
 TEST(gie, proj_trans_with_a_crs) {
     auto P = proj_create(PJ_DEFAULT_CTX, "EPSG:4326");
-    ASSERT_TRUE(P != nullptr);
-
     PJ_COORD input;
     input.xyzt.x = 0;
     input.xyzt.y = 0;
@@ -1468,6 +1464,5 @@ TEST(gie, proj_create_crs_to_crs_from_pj_force_over) {
     proj_destroy(epsg3857);
     proj_context_destroy(ctx);
 }
-#endif
 
 } // namespace

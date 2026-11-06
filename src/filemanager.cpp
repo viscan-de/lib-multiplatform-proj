@@ -69,8 +69,6 @@
 #include <unistd.h>
 #endif
 
-#include <iostream>
-
 //! @cond Doxygen_Suppress
 
 using namespace NS_PROJ::internal;
@@ -791,21 +789,14 @@ unsigned long long FileStdio::tell() {
 }
 
 // ---------------------------------------------------------------------------
+
 std::unique_ptr<File> FileStdio::open(PJ_CONTEXT *ctx, const char *filename,
                                       FileAccess access) {
     auto fp = fopen(filename, access == FileAccess::READ_ONLY     ? "rb"
                               : access == FileAccess::READ_UPDATE ? "r+b"
-                                                                         : "w+b");
-    //if (fp == nullptr) {
-    //auto accessValue = access == FileAccess::READ_ONLY ? "rb"
-    //       : access == FileAccess::READ_UPDATE ? "r+b"
-    //       : "w+b";
-    //  std::cout<<"FileStdio::open failed for file \""<<std::string(filename)<<"\". Access rights: "<<  accessValue <<std::endl;
-    //} else {
-    //    std::cout<<"FileStdio::opened \""<<std::string(filename) <<"\""<<std::endl;
-    //}
+                                                                  : "w+b");
     return std::unique_ptr<File>(fp ? new FileStdio(filename, ctx, fp)
-                                   : nullptr);  
+                                    : nullptr);
 }
 
 #endif // _WIN32

@@ -46,9 +46,7 @@
 #include <sstream> // std::istringstream and std::ostringstream
 #include <string>
 
-#ifndef _WIN32
 #include "sqlite3.h"
-#endif
 
 NS_PROJ_START
 

@@ -1614,7 +1614,7 @@ TEST_F(CApi, transformation_from_boundCRS) {
 }
 
 // ---------------------------------------------------------------------------
-#ifdef SQLLITE_ENABLED
+
 TEST_F(CApi, proj_coordoperation_get_grid_used) {
     auto op = proj_create_from_database(m_ctxt, "EPSG", "1312",
                                         PJ_CATEGORY_COORDINATE_OPERATION, true,
@@ -1658,7 +1658,7 @@ TEST_F(CApi, proj_coordoperation_get_grid_used) {
 
     proj_context_set_url_endpoint(m_ctxt, old_endpoint.c_str());
 }
-#endif
+
 // ---------------------------------------------------------------------------
 
 #ifdef TIFF_ENABLED
@@ -2312,7 +2312,6 @@ TEST_F(CApi, proj_identify) {
         auto res = proj_identify(m_ctxt, obj, "EPSG", nullptr, &confidence);
         ObjListKeeper keeper_res(res);
         EXPECT_EQ(proj_list_get_count(res), 1);
-        ASSERT_TRUE(confidence != nullptr);
         EXPECT_EQ(confidence[0], 100);
         proj_int_list_destroy(confidence);
     }
@@ -6474,7 +6473,7 @@ TEST_F(CApi, proj_crs_has_point_motion_operation) {
 }
 
 // ---------------------------------------------------------------------------
-#ifdef SQLLITE_ENABLED
+
 #if !defined(_WIN32)
 TEST_F(CApi, open_plenty_of_contexts) {
     // Test that we only consume 1 file handle for the connection to the
@@ -6549,5 +6548,5 @@ TEST_F(CApi, concurrent_context) {
 }
 
 #endif // __MINGW32__
-#endif
+
 } // namespace

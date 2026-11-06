@@ -79,7 +79,6 @@ TEST(operation, geogCRS_to_geogCRS) {
 }
 
 // ---------------------------------------------------------------------------
-#ifdef SQLLITE_ENABLED
 
 TEST(operation, geogCRS_to_geogCRS_context_default) {
     auto authFactory =
@@ -972,7 +971,7 @@ TEST(operation, geog3DCRS_to_geog2DCRS_plus_vertCRS_depth_context) {
                   "+step +proj=axisswap +order=2,1");
     }
 }
-#endif
+
 // ---------------------------------------------------------------------------
 
 TEST(operation, geogCRS_to_geogCRS_noop) {
@@ -1021,7 +1020,6 @@ TEST(operation, geogCRS_to_geogCRS_longitude_rotation) {
 }
 
 // ---------------------------------------------------------------------------
-#ifdef SQLLITE_ENABLED
 
 TEST(operation, geogCRS_to_geogCRS_longitude_rotation_context) {
     auto authFactory =
@@ -1274,7 +1272,7 @@ TEST(operation, geogCRS_to_geogCRS_context_deprecated) {
     EXPECT_EQ(list[0]->nameStr(),
               "Ballpark geographic offset from Cote d'Ivoire to ETRS89");
 }
-#endif
+
 // ---------------------------------------------------------------------------
 
 TEST(operation, geogCRS_to_geogCRS_3D) {
@@ -1356,7 +1354,6 @@ TEST(operation, geogCRS_3D_lat_long_non_metre_to_geogCRS_longlat) {
 }
 
 // ---------------------------------------------------------------------------
-#ifdef SQLLITE_ENABLED
 
 TEST(operation, geogCRS_without_id_to_geogCRS_3D_context) {
     auto authFactory =
@@ -1401,7 +1398,7 @@ TEST(operation, geogCRS_without_id_to_geogCRS_3D_context) {
             << op->nameStr() << " " << op2->nameStr();
     }
 }
-#endif
+
 // ---------------------------------------------------------------------------
 
 static GeodeticCRSNNPtr createGeocentricDatumWGS84() {
@@ -1509,7 +1506,6 @@ TEST(operation, geocentricCRS_to_geocentricCRS_different_ballpark) {
 }
 
 // ---------------------------------------------------------------------------
-#ifdef SQLLITE_ENABLED
 
 TEST(operation, geocentricCRS_to_geogCRS_same_datum_context) {
     auto authFactory =
@@ -2002,7 +1998,7 @@ TEST(operation, geogCRS_3D_source_datum_name_is_alias_to_geogCRS) {
     EXPECT_EQ(list[0]->nameStr(),
               "Null geographic offset from something to WGS 84");
 }
-#endif
+
 // ---------------------------------------------------------------------------
 
 static ProjectedCRSNNPtr createUTM31_WGS84() {
@@ -2076,7 +2072,6 @@ TEST(operation, geogCRS_longlat_to_geogCS_latlong) {
 }
 
 // ---------------------------------------------------------------------------
-#ifdef SQLLITE_ENABLED
 
 TEST(operation, geogCRS_longlat_to_geogCS_latlong_database) {
 
@@ -2093,7 +2088,7 @@ TEST(operation, geogCRS_longlat_to_geogCS_latlong_database) {
     EXPECT_EQ(list[0]->exportToPROJString(PROJStringFormatter::create().get()),
               "+proj=axisswap +order=2,1");
 }
-#endif
+
 // ---------------------------------------------------------------------------
 
 TEST(operation, geogCRS_longlat_to_projCRS) {
@@ -2122,7 +2117,6 @@ TEST(operation, geogCRS_different_from_baseCRS_to_projCRS) {
 }
 
 // ---------------------------------------------------------------------------
-#ifdef SQLLITE_ENABLED
 
 TEST(operation, geogCRS_with_towgs84_to_geocentric) {
 
@@ -2208,7 +2202,7 @@ TEST(operation,
         "+proj=longlat +ellps=clrk80ign +pm=paris +step +proj=hgridshift "
         "+grids=fr_ign_ntf_r93.tif +step +proj=utm +zone=31 +ellps=WGS84");
 }
-#endif
+
 // ---------------------------------------------------------------------------
 
 TEST(operation, geocentricCRS_to_projCRS) {
@@ -2235,7 +2229,6 @@ TEST(operation, projCRS_to_geogCRS) {
 }
 
 // ---------------------------------------------------------------------------
-#ifdef SQLLITE_ENABLED
 
 TEST(operation, projCRS_no_id_to_geogCRS_context) {
     auto authFactory =
@@ -2444,7 +2437,7 @@ TEST(operation, geogCRS_3D_to_projCRS_with_2D_geocentric_translation) {
         "+step +proj=unitconvert +xy_in=rad +z_in=m +xy_out=deg +z_out=m "
         "+step +proj=axisswap +order=2,1");
 }
-#endif
+
 // ---------------------------------------------------------------------------
 
 TEST(operation, projCRS_to_projCRS) {
@@ -2475,7 +2468,6 @@ TEST(operation, projCRS_to_projCRS_different_baseCRS) {
 }
 
 // ---------------------------------------------------------------------------
-#ifdef SQLLITE_ENABLED
 
 TEST(operation, projCRS_to_projCRS_context_compatible_area) {
     auto authFactory =
@@ -2706,7 +2698,7 @@ TEST(operation, transform_from_amersfoort_rd_new_to_epsg_4326) {
     EXPECT_EQ(list[1]->nameStr(),
               "Inverse of RD New + Amersfoort to WGS 84 (3)");
 }
-#endif
+
 // ---------------------------------------------------------------------------
 
 TEST(operation, boundCRS_of_geogCRS_to_geogCRS) {
@@ -2745,7 +2737,6 @@ TEST(operation, boundCRS_of_geogCRS_to_geodCRS) {
 }
 
 // ---------------------------------------------------------------------------
-#ifdef SQLLITE_ENABLED
 
 TEST(operation, boundCRS_of_geogCRS_to_geodCRS_not_related_to_hub) {
     auto authFactory =
@@ -2791,7 +2782,7 @@ TEST(operation, boundCRS_of_geogCRS_to_geogCRS_with_area) {
               "+proj=unitconvert +xy_in=rad +xy_out=deg +step +proj=axisswap "
               "+order=2,1");
 }
-#endif
+
 // ---------------------------------------------------------------------------
 
 TEST(operation, boundCRS_of_geogCRS_to_unrelated_geogCRS) {
@@ -2808,7 +2799,6 @@ TEST(operation, boundCRS_of_geogCRS_to_unrelated_geogCRS) {
 }
 
 // ---------------------------------------------------------------------------
-#ifdef SQLLITE_ENABLED
 
 TEST(operation, createOperation_boundCRS_identified_by_datum) {
     auto objSrc = PROJStringParser().createFromPROJString(
@@ -2840,7 +2830,7 @@ TEST(operation, createOperation_boundCRS_identified_by_datum) {
     ASSERT_EQ(list.size(), 1U);
     EXPECT_TRUE(list[0]->isEquivalentTo(op.get()));
 }
-#endif
+
 // ---------------------------------------------------------------------------
 
 TEST(operation, boundCRS_of_clrk_66_geogCRS_to_nad83_geogCRS) {
@@ -2930,7 +2920,6 @@ TEST(operation, boundCRS_of_geogCRS_to_projCRS) {
 }
 
 // ---------------------------------------------------------------------------
-#ifdef SQLLITE_ENABLED
 
 TEST(operation, boundCRS_of_geogCRS_to_unrelated_geogCRS_context) {
     auto src = BoundCRS::createFromTOWGS84(
@@ -2961,7 +2950,7 @@ TEST(operation, boundCRS_of_geogCRS_to_unrelated_geogCRS_context) {
               "+step +proj=unitconvert +xy_in=rad +xy_out=deg "
               "+step +proj=axisswap +order=2,1");
 }
-#endif
+
 // ---------------------------------------------------------------------------
 
 TEST(operation, geogCRS_to_boundCRS_of_geogCRS) {
@@ -2982,7 +2971,6 @@ TEST(operation, geogCRS_to_boundCRS_of_geogCRS) {
 }
 
 // ---------------------------------------------------------------------------
-#ifdef SQLLITE_ENABLED
 
 TEST(operation, boundCRS_to_geogCRS_same_datum_context) {
     auto boundCRS = BoundCRS::createFromTOWGS84(
@@ -3349,7 +3337,7 @@ TEST(
               "+step +proj=unitconvert +xy_in=rad +z_in=m +xy_out=deg +z_out=m "
               "+step +proj=axisswap +order=2,1");
 }
-#endif
+
 // ---------------------------------------------------------------------------
 
 TEST(operation, boundCRS_to_boundCRS) {
@@ -3593,7 +3581,6 @@ TEST(operation, boundCRS_with_basecrs_with_extent_to_geogCRS) {
 }
 
 // ---------------------------------------------------------------------------
-#ifdef SQLLITE_ENABLED
 
 TEST(operation, ETRS89_3D_to_proj_string_with_geoidgrids_nadgrids) {
     auto authFactory =
@@ -3774,7 +3761,7 @@ TEST(operation, WGS84_G1762_to_compoundCRS_with_bound_vertCRS) {
               "+step +inv +proj=vgridshift +grids=@foo.gtx +multiplier=1 "
               "+step +proj=unitconvert +xy_in=rad +xy_out=deg");
 }
-#endif
+
 // ---------------------------------------------------------------------------
 
 static VerticalCRSNNPtr createVerticalCRS() {
@@ -3821,7 +3808,6 @@ static BoundCRSNNPtr createBoundVerticalCRS() {
 }
 
 // ---------------------------------------------------------------------------
-#ifdef SQLLITE_ENABLED
 
 TEST(operation, transformation_height_to_PROJ_string) {
     auto transf = createBoundVerticalCRS()->transformation();
@@ -3851,7 +3837,7 @@ TEST(operation, transformation_height_to_PROJ_string) {
     EXPECT_EQ(gridDesc.directDownload, true);
     EXPECT_EQ(gridDesc.openLicense, true);
 }
-#endif
+
 // ---------------------------------------------------------------------------
 
 TEST(operation, transformation_Geographic3D_to_GravityRelatedHeight_gtx) {
@@ -3944,7 +3930,6 @@ TEST(operation, transformation_VERTCON_to_PROJ_string) {
               "+proj=vgridshift +grids=bla.gtx +multiplier=0.001");
 }
 // ---------------------------------------------------------------------------
-#ifdef SQLLITE_ENABLED
 
 TEST(operation, transformation_NZLVD_to_PROJ_string) {
     auto dbContext = DatabaseContext::create();
@@ -3971,7 +3956,7 @@ TEST(operation, transformation_BEV_AT_to_PROJ_string) {
               "+proj=vgridshift +grids=at_bev_GV_Hoehengrid_V1.tif "
               "+multiplier=1");
 }
-#endif
+
 // ---------------------------------------------------------------------------
 
 TEST(operation, transformation_longitude_rotation_to_PROJ_string) {
@@ -4316,7 +4301,6 @@ TEST(operation,
 }
 
 // ---------------------------------------------------------------------------
-#ifdef SQLLITE_ENABLED
 
 TEST(operation,
      compoundCRS_with_boundVerticalCRS_from_grids_to_geogCRS_with_ftus_ctxt) {
@@ -4881,7 +4865,7 @@ TEST(operation, compoundCRS_with_vert_bound_to_bound_geog3D) {
               "+step +proj=unitconvert +xy_in=rad +xy_out=deg "
               "+step +proj=axisswap +order=2,1");
 }
-#endif
+
 // ---------------------------------------------------------------------------
 
 TEST(operation, geocent_to_compoundCRS) {
@@ -4907,7 +4891,6 @@ TEST(operation, geocent_to_compoundCRS) {
 }
 
 // ---------------------------------------------------------------------------
-#ifdef SQLLITE_ENABLED
 
 TEST(operation, geocent_to_compoundCRS_context) {
     auto authFactory =
@@ -4931,7 +4914,7 @@ TEST(operation, geocent_to_compoundCRS_context) {
               "+step +inv +proj=vgridshift +grids=@foo.gtx +multiplier=1 "
               "+step +proj=unitconvert +xy_in=rad +xy_out=deg");
 }
-#endif
+
 // ---------------------------------------------------------------------------
 
 TEST(operation, compoundCRS_to_compoundCRS) {
@@ -5207,7 +5190,6 @@ TEST(
 }
 
 // ---------------------------------------------------------------------------
-#ifdef SQLLITE_ENABLED
 
 TEST(
     operation,
@@ -6141,7 +6123,7 @@ TEST(operation,
             expected_proj);
     }
 }
-#endif
+
 // ---------------------------------------------------------------------------
 
 TEST(operation, vertCRS_to_vertCRS) {
@@ -6236,7 +6218,7 @@ TEST(operation, vertCRS_to_vertCRS) {
 }
 
 // ---------------------------------------------------------------------------
-#ifdef SQLLITE_ENABLED
+
 TEST(operation, vertCRS_to_vertCRS_context) {
     auto authFactory =
         AuthorityFactory::create(DatabaseContext::create(), "EPSG");
@@ -6270,7 +6252,7 @@ TEST(operation, vertCRS_to_vertCRS_New_Zealand_context) {
               "+proj=vgridshift +grids=nz_linz_auckht1946-nzvd2016.tif "
               "+multiplier=1");
 }
-#endif
+
 // ---------------------------------------------------------------------------
 
 TEST(operation, projCRS_3D_to_geogCRS_3D) {
@@ -6396,7 +6378,6 @@ TEST(operation, compoundCRS_to_geogCRS_3D) {
 
 // ---------------------------------------------------------------------------
 
-#ifdef SQLLITE_ENABLED
 TEST(operation, compoundCRS_to_geogCRS_3D_context) {
     auto authFactory =
         AuthorityFactory::create(DatabaseContext::create(), "EPSG");
@@ -8094,7 +8075,7 @@ TEST(operation, compoundCRS_with_non_meter_horiz_and_vertical_to_geog) {
               "+xy_out=deg +z_out=m "
               "+step +proj=axisswap +order=2,1");
 }
-#endif
+
 // ---------------------------------------------------------------------------
 
 TEST(operation, boundCRS_to_compoundCRS) {
@@ -8127,7 +8108,7 @@ TEST(operation, boundCRS_to_compoundCRS) {
 }
 
 // ---------------------------------------------------------------------------
-#ifdef SQLLITE_ENABLED
+
 TEST(operation,
      boundCRS_to_compoundCRS_with_hubCRS_same_as_compound_geographicCRS) {
     auto authFactory =
@@ -8344,7 +8325,6 @@ TEST(operation, NAD83_to_projeted_CRS_based_on_NAD83_2011) {
 
 // ---------------------------------------------------------------------------
 
-
 TEST(operation, isPROJInstantiable) {
 
     {
@@ -8377,7 +8357,7 @@ TEST(operation, isPROJInstantiable) {
             DatabaseContext::create(), false));
     }
 }
-#endif
+
 // ---------------------------------------------------------------------------
 
 TEST(operation, createOperation_on_crs_with_canonical_bound_crs) {
@@ -8582,7 +8562,7 @@ TEST(operation,
 }
 
 // ---------------------------------------------------------------------------
-#ifdef SQLLITE_ENABLED
+
 TEST(
     operation,
     createOperation_fallback_to_proj4_strings_regular_to_projliteral_with_towgs84) {
@@ -8606,7 +8586,6 @@ TEST(
 }
 
 // ---------------------------------------------------------------------------
-#endif
 
 TEST(operation, createOperation_on_crs_with_bound_crs_and_wktext) {
     auto objSrc = PROJStringParser().createFromPROJString(
@@ -8633,7 +8612,7 @@ TEST(operation, createOperation_on_crs_with_bound_crs_and_wktext) {
 }
 
 // ---------------------------------------------------------------------------
-#ifdef SQLLITE_ENABLED
+
 TEST(operation,
      createOperation_fallback_to_proj4_strings_with_axis_inverted_projCRS) {
     auto objSrc =
@@ -9213,7 +9192,6 @@ TEST(operation, createOperation_ossfuzz_18587) {
 }
 
 // ---------------------------------------------------------------------------
-#endif
 
 class derivedGeographicCRS_with_to_wgs84_to_geographicCRS
     : public ::testing::Test {
@@ -9292,7 +9270,7 @@ TEST_F(derivedGeographicCRS_with_to_wgs84_to_geographicCRS, src_from_proj) {
 }
 
 // ---------------------------------------------------------------------------
-#ifdef SQLLITE_ENABLED
+
 TEST_F(derivedGeographicCRS_with_to_wgs84_to_geographicCRS, src_from_wkt2) {
     // Same as above, but testing with a WKT CRS source
     // The subtle difference is that the base CRS of the DerivedGeographicCRS
@@ -9308,7 +9286,7 @@ TEST_F(derivedGeographicCRS_with_to_wgs84_to_geographicCRS, src_from_wkt2) {
     ASSERT_TRUE(src != nullptr);
     run(NN_CHECK_ASSERT(src));
 }
-#endif
+
 // ---------------------------------------------------------------------------
 
 TEST(operation, createOperation_spherical_ocentric_to_geographic) {
@@ -9504,7 +9482,7 @@ TEST(operation,
 }
 
 // ---------------------------------------------------------------------------
-#ifdef SQLLITE_ENABLED
+
 TEST(
     operation,
     createOperation_ellipsoidal_ographic_west_to_projected_of_ellipsoidal_ographic_west) {
@@ -9636,7 +9614,6 @@ TEST(
 }
 
 // ---------------------------------------------------------------------------
-#endif
 
 TEST(operation, createOperation_ossfuzz_47873) {
     auto objSrc = PROJStringParser().createFromPROJString(
@@ -9658,7 +9635,7 @@ TEST(operation, createOperation_ossfuzz_47873) {
 }
 
 // ---------------------------------------------------------------------------
-#ifdef SQLLITE_ENABLED
+
 TEST(operation, createOperation_ossfuzz_47873_simplified_if_i_might_say) {
     auto wkt =
         "BOUNDCRS[\n"
@@ -9783,7 +9760,6 @@ TEST(operation, createOperation_derived_projected_crs) {
               "+step +proj=affine +xoff=20 "
               "+step +proj=axisswap +order=2,1");
 }
-#endif
 
 TEST(operation,
      geogCRS_to_compoundCRS_with_boundVerticalCRS_and_derivedProjected) {
@@ -9852,7 +9828,7 @@ TEST(operation,
 }
 
 // ---------------------------------------------------------------------------
-#ifdef SQLLITE_ENABLED
+
 TEST(operation, createOperation_point_motion_operation_geog2D) {
     auto dbContext = DatabaseContext::create();
     auto factory = AuthorityFactory::create(dbContext, "EPSG");
@@ -10513,4 +10489,3 @@ TEST(operation, createOperation_Vrtical_Offset_by_velocity_grid) {
               "+step +proj=unitconvert +xy_in=rad +xy_out=deg "
               "+step +proj=axisswap +order=2,1");
 }
-#endif

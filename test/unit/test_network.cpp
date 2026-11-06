@@ -49,7 +49,6 @@
 #endif
 
 namespace {
-#ifdef SQLLITE_ENABLED
 
 static const int byte_order_test = 1;
 #define IS_LSB                                                                 \
@@ -73,7 +72,6 @@ static void swap_words(void *dataIn, size_t word_size, size_t word_count)
 }
 
 // ---------------------------------------------------------------------------
-
 
 #ifdef CURL_ENABLED
 
@@ -2020,7 +2018,6 @@ TEST(networking, pyproj_issue_1192) {
     proj_context_destroy(ctx);
 }
 
-#endif
 #endif
 
 } // namespace

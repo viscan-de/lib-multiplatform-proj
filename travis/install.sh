@@ -59,8 +59,7 @@ cmake \
   ${PROJ_CMAKE_BUILD_OPTIONS:-} \
   -D PROJ_DB_CACHE_DIR=$HOME/.ccache \
   -D BUILD_SHARED_LIBS=ON \
-  -D BUILD_EXAMPLES=OFF \
-  -D BUILD_PROJSYNC=OFF \
+  -D BUILD_EXAMPLES=ON \
   -D CMAKE_INSTALL_PREFIX=/tmp/proj_shared_install_from_dist \
   ..
 make
@@ -100,7 +99,6 @@ cmake \
   -D USE_CCACHE=${USE_CCACHE} \
   -D PROJ_DB_CACHE_DIR=$HOME/.ccache \
   -D BUILD_SHARED_LIBS=OFF \
-  -D BUILD_PROJSYNC=OFF \
   -D INSTALL_LEGACY_CMAKE_FILES=OFF \
   -D CMAKE_INSTALL_PREFIX=/tmp/proj_static_install_from_dist \
   -D CMAKE_INSTALL_INCLUDEDIR=/tmp/proj_static_install_from_dist/include \
@@ -226,7 +224,7 @@ if [ "$BUILD_NAME" != "linux_gcc8" -a "$BUILD_NAME" != "linux_gcc_32bit" ]; then
     echo '#include "proj.h"' > mytest.c
     echo 'int main() { proj_info(); return 0; }' >> mytest.c
 
-    echo 'cmake_minimum_required(VERSION 3.10)' > CMakeLists.txt
+    echo 'cmake_minimum_required(VERSION 3.9)' > CMakeLists.txt
     echo 'project(mytest)' >> CMakeLists.txt
     echo 'add_subdirectory(external/PROJ)' >> CMakeLists.txt
     echo 'add_executable(mytest mytest.c)' >> CMakeLists.txt
@@ -255,7 +253,6 @@ if [ "$BUILD_NAME" != "linux_gcc8" -a "$BUILD_NAME" != "linux_gcc_32bit" ]; then
               -D PROJ_DB_CACHE_DIR=$HOME/.ccache \
               -D CMAKE_C_FLAGS="--coverage" \
               -D CMAKE_CXX_FLAGS="--coverage" \
-              -D BUILD_PROJSYNC=OFF \
               . ;
         else
             LDFLAGS="$LDFLAGS -lgcov" cmake \
@@ -264,7 +261,6 @@ if [ "$BUILD_NAME" != "linux_gcc8" -a "$BUILD_NAME" != "linux_gcc_32bit" ]; then
               -D PROJ_DB_CACHE_DIR=$HOME/.ccache \
               -D CMAKE_C_FLAGS="$CFLAGS --coverage" \
               -D CMAKE_CXX_FLAGS="$CXXFLAGS --coverage" \
-              -D BUILD_PROJSYNC=OFF \
               . ;
         fi
     else
@@ -272,7 +268,6 @@ if [ "$BUILD_NAME" != "linux_gcc8" -a "$BUILD_NAME" != "linux_gcc_32bit" ]; then
           -D CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} \
           -D USE_CCACHE=${USE_CCACHE} \
           -D PROJ_DB_CACHE_DIR=$HOME/.ccache \
-          -D BUILD_PROJSYNC=OFF \
           . ;
     fi
     make
