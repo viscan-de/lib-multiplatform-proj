@@ -157,13 +157,13 @@ void Datum::Private::exportAnchorEpoch(io::JSONFormatter *formatter) const {
 
 // ---------------------------------------------------------------------------
 
-Datum::Datum() : d(internal::make_unique<Private>()) {}
+Datum::Datum() : d(std::make_unique<Private>()) {}
 
 // ---------------------------------------------------------------------------
 
 #ifdef notdef
 Datum::Datum(const Datum &other)
-    : ObjectUsage(other), d(internal::make_unique<Private>(*other.d)) {}
+    : ObjectUsage(other), d(std::make_unique<Private>(*other.d)) {}
 #endif
 
 // ---------------------------------------------------------------------------
@@ -268,6 +268,16 @@ void Datum::setProperties(
     if (!publicationDateResult.empty()) {
         d->publicationDate = common::DateTime::create(publicationDateResult);
     }
+    std::string anchorEpoch;
+    properties.getStringValue("ANCHOR_EPOCH", anchorEpoch);
+    if (!anchorEpoch.empty()) {
+        bool success = false;
+        const double anchorEpochYear = c_locale_stod(anchorEpoch, success);
+        if (success) {
+            setAnchorEpoch(util::optional<common::Measure>(
+                common::Measure(anchorEpochYear, common::UnitOfMeasure::YEAR)));
+        }
+    }
     ObjectUsage::setProperties(properties);
 }
 
@@ -331,14 +341,13 @@ struct PrimeMeridian::Private {
 // ---------------------------------------------------------------------------
 
 PrimeMeridian::PrimeMeridian(const common::Angle &longitudeIn)
-    : d(internal::make_unique<Private>(longitudeIn)) {}
+    : d(std::make_unique<Private>(longitudeIn)) {}
 
 // ---------------------------------------------------------------------------
 
 #ifdef notdef
 PrimeMeridian::PrimeMeridian(const PrimeMeridian &other)
-    : common::IdentifiedObject(other),
-      d(internal::make_unique<Private>(*other.d)) {}
+    : common::IdentifiedObject(other), d(std::make_unique<Private>(*other.d)) {}
 #endif
 
 // ---------------------------------------------------------------------------
@@ -405,8 +414,8 @@ void PrimeMeridian::_exportToWKT(
     io::WKTFormatter *formatter) const // throw(FormattingException)
 {
     const bool isWKT2 = formatter->version() == io::WKTFormatter::Version::WKT2;
-    std::string l_name =
-        name()->description().has_value() ? nameStr() : "Greenwich";
+    std::string l_name(name()->description().has_value() ? nameStr()
+                                                         : "Greenwich");
     if (!(isWKT2 && formatter->primeMeridianOmittedIfGreenwich() &&
           l_name == "Greenwich")) {
         formatter->startNode(io::WKTConstants::PRIMEM, !identifiers().empty());
@@ -418,7 +427,7 @@ void PrimeMeridian::_exportToWKT(
                 auto l_alias = dbContext->getAliasFromOfficialName(
                     l_name, "prime_meridian", "ESRI");
                 if (!l_alias.empty()) {
-                    l_name = l_alias;
+                    l_name = std::move(l_alias);
                     aliasFound = true;
                 }
             }
@@ -588,30 +597,29 @@ struct Ellipsoid::Private {
 
 Ellipsoid::Ellipsoid(const common::Length &radius,
                      const std::string &celestialBodyIn)
-    : d(internal::make_unique<Private>(radius, celestialBodyIn)) {}
+    : d(std::make_unique<Private>(radius, celestialBodyIn)) {}
 
 // ---------------------------------------------------------------------------
 
 Ellipsoid::Ellipsoid(const common::Length &semiMajorAxisIn,
                      const common::Scale &invFlattening,
                      const std::string &celestialBodyIn)
-    : d(internal::make_unique<Private>(semiMajorAxisIn, invFlattening,
-                                       celestialBodyIn)) {}
+    : d(std::make_unique<Private>(semiMajorAxisIn, invFlattening,
+                                  celestialBodyIn)) {}
 
 // ---------------------------------------------------------------------------
 
 Ellipsoid::Ellipsoid(const common::Length &semiMajorAxisIn,
                      const common::Length &semiMinorAxisIn,
                      const std::string &celestialBodyIn)
-    : d(internal::make_unique<Private>(semiMajorAxisIn, semiMinorAxisIn,
-                                       celestialBodyIn)) {}
+    : d(std::make_unique<Private>(semiMajorAxisIn, semiMinorAxisIn,
+                                  celestialBodyIn)) {}
 
 // ---------------------------------------------------------------------------
 
 #ifdef notdef
 Ellipsoid::Ellipsoid(const Ellipsoid &other)
-    : common::IdentifiedObject(other),
-      d(internal::make_unique<Private>(*other.d)) {}
+    : common::IdentifiedObject(other), d(std::make_unique<Private>(*other.d)) {}
 #endif
 
 // ---------------------------------------------------------------------------
@@ -620,7 +628,7 @@ Ellipsoid::Ellipsoid(const Ellipsoid &other)
 Ellipsoid::~Ellipsoid() = default;
 
 Ellipsoid::Ellipsoid(const Ellipsoid &other)
-    : IdentifiedObject(other), d(internal::make_unique<Private>(*(other.d))) {}
+    : IdentifiedObject(other), d(std::make_unique<Private>(*(other.d))) {}
 
 //! @endcond
 
@@ -735,6 +743,7 @@ double Ellipsoid::computedInverseFlattening() PROJ_PURE_DEFN {
  */
 double Ellipsoid::squaredEccentricity() PROJ_PURE_DEFN {
     const double rf = computedInverseFlattening();
+    // coverity[divide_by_zero]
     const double f = rf != 0.0 ? 1. / rf : 0.0;
     const double e2 = f * (2 - f);
     return e2;
@@ -808,13 +817,17 @@ EllipsoidNNPtr Ellipsoid::createSphere(const util::PropertyMap &properties,
 EllipsoidNNPtr Ellipsoid::createFlattenedSphere(
     const util::PropertyMap &properties, const common::Length &semiMajorAxisIn,
     const common::Scale &invFlattening, const std::string &celestialBody) {
-    auto ellipsoid(invFlattening.value() == 0
-                       ? Ellipsoid::nn_make_shared<Ellipsoid>(semiMajorAxisIn,
-                                                              celestialBody)
-                       : Ellipsoid::nn_make_shared<Ellipsoid>(
-                             semiMajorAxisIn, invFlattening, celestialBody));
-    ellipsoid->setProperties(properties);
-    return ellipsoid;
+    if (invFlattening.value() == 0) {
+        auto ellipsoid(Ellipsoid::nn_make_shared<Ellipsoid>(semiMajorAxisIn,
+                                                            celestialBody));
+        ellipsoid->setProperties(properties);
+        return ellipsoid;
+    } else {
+        auto ellipsoid(Ellipsoid::nn_make_shared<Ellipsoid>(
+            semiMajorAxisIn, invFlattening, celestialBody));
+        ellipsoid->setProperties(properties);
+        return ellipsoid;
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -873,7 +886,7 @@ void Ellipsoid::_exportToWKT(
                                 : io::WKTConstants::SPHEROID,
                          !identifiers().empty());
     {
-        auto l_name = nameStr();
+        std::string l_name(nameStr());
         if (l_name.empty()) {
             formatter->addQuotedString("unnamed");
         } else {
@@ -887,7 +900,7 @@ void Ellipsoid::_exportToWKT(
                         auto l_alias = dbContext->getAliasFromOfficialName(
                             l_name, "ellipsoid", "ESRI");
                         if (!l_alias.empty()) {
-                            l_name = l_alias;
+                            l_name = std::move(l_alias);
                             aliasFound = true;
                         }
                     }
@@ -941,7 +954,7 @@ void Ellipsoid::_exportToJSON(
         formatter->MakeObjectContext("Ellipsoid", !identifiers().empty()));
 
     writer->AddObjKey("name");
-    auto l_name = nameStr();
+    const auto &l_name = nameStr();
     if (l_name.empty()) {
         writer->Add("unnamed");
     } else {
@@ -1169,24 +1182,35 @@ bool Ellipsoid::_isEquivalentTo(const util::IComparable *other,
 // ---------------------------------------------------------------------------
 
 std::string Ellipsoid::guessBodyName(const io::DatabaseContextPtr &dbContext,
-                                     double a) {
-    // Mars (2015) - Sphere uses R=3396190
-    // and Mars polar radius (as used by HIRISE JPEG2000) is 3376200m
-    // which is a 0.59% relative difference.
-    constexpr double relError = 0.007;
+                                     double a, const std::string &ellpsName) {
     constexpr double earthMeanRadius = 6375000.0;
-    if (std::fabs(a - earthMeanRadius) < relError * earthMeanRadius) {
+    if (std::fabs(a - earthMeanRadius) <
+        REL_ERROR_FOR_SAME_CELESTIAL_BODY * earthMeanRadius) {
         return Ellipsoid::EARTH;
     }
     if (dbContext) {
         try {
             auto factory = io::AuthorityFactory::create(NN_NO_CHECK(dbContext),
                                                         std::string());
-            return factory->identifyBodyFromSemiMajorAxis(a, relError);
+            if (!ellpsName.empty()) {
+                auto matches = factory->createObjectsFromName(
+                    ellpsName, {io::AuthorityFactory::ObjectType::ELLIPSOID},
+                    true, 1);
+                if (!matches.empty()) {
+                    auto ellps =
+                        static_cast<const Ellipsoid *>(matches.front().get());
+                    if (std::fabs(a - ellps->semiMajorAxis().getSIValue()) <
+                        REL_ERROR_FOR_SAME_CELESTIAL_BODY * a) {
+                        return ellps->celestialBody();
+                    }
+                }
+            }
+            return factory->identifyBodyFromSemiMajorAxis(
+                a, REL_ERROR_FOR_SAME_CELESTIAL_BODY);
         } catch (const std::exception &) {
         }
     }
-    return "Non-Earth body";
+    return NON_EARTH_BODY;
 }
 
 // ---------------------------------------------------------------------------
@@ -1207,14 +1231,14 @@ struct GeodeticReferenceFrame::Private {
 GeodeticReferenceFrame::GeodeticReferenceFrame(
     const EllipsoidNNPtr &ellipsoidIn,
     const PrimeMeridianNNPtr &primeMeridianIn)
-    : d(internal::make_unique<Private>(ellipsoidIn, primeMeridianIn)) {}
+    : d(std::make_unique<Private>(ellipsoidIn, primeMeridianIn)) {}
 
 // ---------------------------------------------------------------------------
 
 #ifdef notdef
 GeodeticReferenceFrame::GeodeticReferenceFrame(
     const GeodeticReferenceFrame &other)
-    : Datum(other), d(internal::make_unique<Private>(*other.d)) {}
+    : Datum(other), d(std::make_unique<Private>(*other.d)) {}
 #endif
 
 // ---------------------------------------------------------------------------
@@ -1334,7 +1358,7 @@ void GeodeticReferenceFrame::_exportToWKT(
     const bool isWKT2 = formatter->version() == io::WKTFormatter::Version::WKT2;
     const auto &ids = identifiers();
     formatter->startNode(io::WKTConstants::DATUM, !ids.empty());
-    auto l_name = nameStr();
+    std::string l_name(nameStr());
     if (l_name.empty()) {
         l_name = "unnamed";
     }
@@ -1350,13 +1374,13 @@ void GeodeticReferenceFrame::_exportToWKT(
                         l_name, "geodetic_datum", "ESRI");
                     size_t pos;
                     if (!l_alias.empty()) {
-                        l_name = l_alias;
+                        l_name = std::move(l_alias);
                         aliasFound = true;
                     } else if ((pos = l_name.find(" (")) != std::string::npos) {
                         l_alias = dbContext->getAliasFromOfficialName(
                             l_name.substr(0, pos), "geodetic_datum", "ESRI");
                         if (!l_alias.empty()) {
-                            l_name = l_alias;
+                            l_name = std::move(l_alias);
                             aliasFound = true;
                         }
                     }
@@ -1372,6 +1396,48 @@ void GeodeticReferenceFrame::_exportToWKT(
                                          false // approximateMatch
                                          )
                                      .size() == 1;
+                }
+                if (!aliasFound && dbContext && !ids.empty()) {
+                    // Case for example for ETRS89-NOR [EUREF89] that has no
+                    // ESRI alias. Fallback to ETRS89
+                    const auto EPSGOldAliases = dbContext->getAliases(
+                        *(ids[0]->codeSpace()), ids[0]->code(),
+                        std::string(), // officialName,
+                        "geodetic_datum", "EPSG_OLD");
+                    if (EPSGOldAliases.size() == 1) {
+                        std::string EPSGName = EPSGOldAliases.front();
+                        if (EPSGName ==
+                            "European Terrestrial Reference System 1989") {
+                            EPSGName += " ensemble";
+                        }
+                        auto authFactoryEPSG = io::AuthorityFactory::create(
+                            NN_NO_CHECK(dbContext), "EPSG");
+                        auto objCandidates =
+                            authFactoryEPSG->createObjectsFromNameEx(
+                                EPSGName,
+                                {io::AuthorityFactory::ObjectType::
+                                     GEODETIC_REFERENCE_FRAME},
+                                false, // approximateMatch
+                                0,     // limitResultCount
+                                false  // useAliases
+                            );
+                        for (const auto &[obj, name] : objCandidates) {
+                            (void)name;
+                            const auto &objIdentifiers = obj->identifiers();
+                            if (!objIdentifiers.empty()) {
+                                const auto ESRIAliases = dbContext->getAliases(
+                                    *(objIdentifiers[0]->codeSpace()),
+                                    objIdentifiers[0]->code(),
+                                    std::string(), // officialName,
+                                    "geodetic_datum", "ESRI");
+                                if (ESRIAliases.size() == 1) {
+                                    l_name = ESRIAliases.front();
+                                    aliasFound = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
                 }
                 if (!aliasFound) {
                     l_name = io::WKTFormatter::morphNameToESRI(l_name);
@@ -1469,7 +1535,7 @@ void GeodeticReferenceFrame::_exportToJSON(
     auto writer = formatter->writer();
 
     writer->AddObjKey("name");
-    auto l_name = nameStr();
+    const auto &l_name = nameStr();
     if (l_name.empty()) {
         writer->Add("unnamed");
     } else {
@@ -1536,17 +1602,17 @@ bool GeodeticReferenceFrame::_isEquivalentTo(
 bool GeodeticReferenceFrame::hasEquivalentNameToUsingAlias(
     const IdentifiedObject *other,
     const io::DatabaseContextPtr &dbContext) const {
-    if (nameStr() == "unknown" || other->nameStr() == "unknown") {
-        return true;
-    }
-    if (dbContext) {
-        if (!identifiers().empty()) {
-            const auto &id = identifiers().front();
+
+    const auto compareFromThisId =
+        [&dbContext](const GeodeticReferenceFrame &self,
+                     const std::string &thisName,
+                     const std::string &otherName) {
+            const auto &id = self.identifiers().front();
 
             const std::string officialNameFromId = dbContext->getName(
                 "geodetic_datum", *(id->codeSpace()), id->code());
             const auto aliasesResult =
-                dbContext->getAliases(*(id->codeSpace()), id->code(), nameStr(),
+                dbContext->getAliases(*(id->codeSpace()), id->code(), thisName,
                                       "geodetic_datum", std::string());
 
             const auto isNameMatching =
@@ -1566,28 +1632,81 @@ bool GeodeticReferenceFrame::hasEquivalentNameToUsingAlias(
                     return false;
                 };
 
-            return isNameMatching(nameStr()) &&
-                   isNameMatching(other->nameStr());
-        } else if (!other->identifiers().empty()) {
-            auto otherGRF = dynamic_cast<const GeodeticReferenceFrame *>(other);
-            if (otherGRF) {
-                return otherGRF->hasEquivalentNameToUsingAlias(this, dbContext);
-            }
-            return false;
-        }
+            return isNameMatching(thisName) && isNameMatching(otherName);
+        };
 
+    const auto compareFromThisName = [&dbContext](
+                                         const std::string &thisName,
+                                         const std::string &otherName) {
         auto aliasesResult =
-            dbContext->getAliases(std::string(), std::string(), nameStr(),
+            dbContext->getAliases(std::string(), std::string(), thisName,
                                   "geodetic_datum", std::string());
-        const char *otherName = other->nameStr().c_str();
+        const char *otherNamePtr = otherName.c_str();
         for (const auto &aliasResult : aliasesResult) {
-            if (metadata::Identifier::isEquivalentName(otherName,
+            if (metadata::Identifier::isEquivalentName(otherNamePtr,
                                                        aliasResult.c_str())) {
                 return true;
             }
         }
+        return false;
+    };
+
+    const auto compare = [this, other, &dbContext, &compareFromThisId,
+                          &compareFromThisName](const std::string &thisName,
+                                                const std::string &otherName) {
+        if (thisName == otherName || thisName == "unknown" ||
+            otherName == "unknown") {
+            return true;
+        }
+
+        if (ci_starts_with(thisName, UNKNOWN_BASED_ON) ||
+            ci_starts_with(otherName, UNKNOWN_BASED_ON)) {
+            // Note: they cannot be equal based on initial test.
+            return false;
+        }
+
+        if (dbContext) {
+            if (!identifiers().empty()) {
+                if (compareFromThisId(*this, thisName, otherName)) {
+                    return true;
+                }
+            }
+            if (!other->identifiers().empty()) {
+                auto otherGRF =
+                    dynamic_cast<const GeodeticReferenceFrame *>(other);
+                if (otherGRF) {
+                    if (compareFromThisId(*otherGRF, otherName, thisName)) {
+                        return true;
+                    }
+                }
+            }
+
+            if (compareFromThisName(thisName, otherName) ||
+                compareFromThisName(otherName, thisName)) {
+                return true;
+            }
+        }
+        return false;
+    };
+
+    // Try to work around issues with Esri style "D_" name prefixing
+    // Cf https://github.com/OSGeo/PROJ/issues/4514
+    const bool thisStartsWithDUnderscore = ci_starts_with(nameStr(), "D_");
+    const bool otherStartsWithDUnderscore =
+        ci_starts_with(other->nameStr(), "D_");
+    if (thisStartsWithDUnderscore && !otherStartsWithDUnderscore) {
+        const std::string thisNameMod = nameStr().substr(2);
+        return metadata::Identifier::isEquivalentName(
+                   thisNameMod.c_str(), other->nameStr().c_str()) ||
+               compare(thisNameMod, other->nameStr());
+    } else if (!thisStartsWithDUnderscore && otherStartsWithDUnderscore) {
+        const std::string otherNameMod = other->nameStr().substr(2);
+        return metadata::Identifier::isEquivalentName(nameStr().c_str(),
+                                                      otherNameMod.c_str()) ||
+               compare(nameStr(), otherNameMod);
+    } else {
+        return compare(nameStr(), other->nameStr());
     }
-    return false;
 }
 
 // ---------------------------------------------------------------------------
@@ -1610,7 +1729,7 @@ DynamicGeodeticReferenceFrame::DynamicGeodeticReferenceFrame(
     const common::Measure &frameReferenceEpochIn,
     const util::optional<std::string> &deformationModelNameIn)
     : GeodeticReferenceFrame(ellipsoidIn, primeMeridianIn),
-      d(internal::make_unique<Private>(frameReferenceEpochIn)) {
+      d(std::make_unique<Private>(frameReferenceEpochIn)) {
     d->deformationModelName = deformationModelNameIn;
 }
 
@@ -1619,8 +1738,7 @@ DynamicGeodeticReferenceFrame::DynamicGeodeticReferenceFrame(
 #ifdef notdef
 DynamicGeodeticReferenceFrame::DynamicGeodeticReferenceFrame(
     const DynamicGeodeticReferenceFrame &other)
-    : GeodeticReferenceFrame(other),
-      d(internal::make_unique<Private>(*other.d)) {}
+    : GeodeticReferenceFrame(other), d(std::make_unique<Private>(*other.d)) {}
 #endif
 
 // ---------------------------------------------------------------------------
@@ -1756,13 +1874,13 @@ struct DatumEnsemble::Private {
 
 DatumEnsemble::DatumEnsemble(const std::vector<DatumNNPtr> &datumsIn,
                              const metadata::PositionalAccuracyNNPtr &accuracy)
-    : d(internal::make_unique<Private>(datumsIn, accuracy)) {}
+    : d(std::make_unique<Private>(datumsIn, accuracy)) {}
 
 // ---------------------------------------------------------------------------
 
 #ifdef notdef
 DatumEnsemble::DatumEnsemble(const DatumEnsemble &other)
-    : common::ObjectUsage(other), d(internal::make_unique<Private>(*other.d)) {}
+    : common::ObjectUsage(other), d(std::make_unique<Private>(*other.d)) {}
 #endif
 
 // ---------------------------------------------------------------------------
@@ -1801,6 +1919,26 @@ DatumEnsemble::positionalAccuracy() const {
 // ---------------------------------------------------------------------------
 
 //! @cond Doxygen_Suppress
+
+/* static */
+std::string DatumEnsemble::ensembleNameToNonEnsembleName(const std::string &s) {
+    if (s == "World Geodetic System 1984 ensemble") {
+        return "World Geodetic System 1984";
+    } else if (s == "European Terrestrial Reference System 1989 ensemble") {
+        return "European Terrestrial Reference System 1989";
+    } else if (s == "Greenland Reference 1996 ensemble") {
+        return "Greenland 1996";
+    }
+    return std::string();
+}
+
+//! @endcond
+
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+
+//! @cond Doxygen_Suppress
 DatumNNPtr
 DatumEnsemble::asDatum(const io::DatabaseContextPtr &dbContext) const {
 
@@ -1827,12 +1965,9 @@ DatumEnsemble::asDatum(const io::DatabaseContextPtr &dbContext) const {
     std::string l_name(nameStr());
     if (grf) {
         // Remap to traditional datum names
-        if (l_name == "World Geodetic System 1984 ensemble") {
-            l_name = "World Geodetic System 1984";
-        } else if (l_name ==
-                   "European Terrestrial Reference System 1989 ensemble") {
-            l_name = "European Terrestrial Reference System 1989";
-        }
+        auto oldName = ensembleNameToNonEnsembleName(l_name);
+        if (!oldName.empty())
+            l_name = std::move(oldName);
     }
     auto props =
         util::PropertyMap().set(common::IdentifiedObject::NAME_KEY, l_name);
@@ -1935,7 +2070,7 @@ void DatumEnsemble::_exportToJSON(
     auto writer = formatter->writer();
 
     writer->AddObjKey("name");
-    auto l_name = nameStr();
+    const auto &l_name = nameStr();
     if (l_name.empty()) {
         writer->Add("unnamed");
     } else {
@@ -1983,7 +2118,7 @@ void DatumEnsemble::_exportToJSON(
  * @param datumsIn Array of at least 2 datums.
  * @param accuracy Accuracy of the datum ensemble
  * @return new DatumEnsemble.
- * @throw util::Exception
+ * @throw util::Exception in case of error.
  */
 DatumEnsembleNNPtr DatumEnsemble::create(
     const util::PropertyMap &properties,
@@ -2056,7 +2191,7 @@ struct VerticalReferenceFrame::Private {
 
 VerticalReferenceFrame::VerticalReferenceFrame(
     const util::optional<RealizationMethod> &realizationMethodIn)
-    : d(internal::make_unique<Private>()) {
+    : d(std::make_unique<Private>()) {
     if (!realizationMethodIn->toString().empty()) {
         d->realizationMethod_ = *realizationMethodIn;
     }
@@ -2148,7 +2283,7 @@ void VerticalReferenceFrame::_exportToWKT(
                              ? io::WKTConstants::VDATUM
                              : io::WKTConstants::VERT_DATUM,
                          !identifiers().empty());
-    auto l_name = nameStr();
+    std::string l_name(nameStr());
     if (!l_name.empty()) {
         if (!isWKT2 && formatter->useESRIDialect()) {
             bool aliasFound = false;
@@ -2157,7 +2292,7 @@ void VerticalReferenceFrame::_exportToWKT(
                 auto l_alias = dbContext->getAliasFromOfficialName(
                     l_name, "vertical_datum", "ESRI");
                 if (!l_alias.empty()) {
-                    l_name = l_alias;
+                    l_name = std::move(l_alias);
                     aliasFound = true;
                 }
             }
@@ -2217,7 +2352,7 @@ void VerticalReferenceFrame::_exportToJSON(
     auto writer = formatter->writer();
 
     writer->AddObjKey("name");
-    auto l_name = nameStr();
+    const auto &l_name = nameStr();
     if (l_name.empty()) {
         writer->Add("unnamed");
     } else {
@@ -2293,7 +2428,7 @@ DynamicVerticalReferenceFrame::DynamicVerticalReferenceFrame(
     const common::Measure &frameReferenceEpochIn,
     const util::optional<std::string> &deformationModelNameIn)
     : VerticalReferenceFrame(realizationMethodIn),
-      d(internal::make_unique<Private>(frameReferenceEpochIn)) {
+      d(std::make_unique<Private>(frameReferenceEpochIn)) {
     d->deformationModelName = deformationModelNameIn;
 }
 
@@ -2302,8 +2437,7 @@ DynamicVerticalReferenceFrame::DynamicVerticalReferenceFrame(
 #ifdef notdef
 DynamicVerticalReferenceFrame::DynamicVerticalReferenceFrame(
     const DynamicVerticalReferenceFrame &other)
-    : VerticalReferenceFrame(other),
-      d(internal::make_unique<Private>(*other.d)) {}
+    : VerticalReferenceFrame(other), d(std::make_unique<Private>(*other.d)) {}
 #endif
 
 // ---------------------------------------------------------------------------
@@ -2437,7 +2571,7 @@ struct TemporalDatum::Private {
 
 TemporalDatum::TemporalDatum(const common::DateTime &temporalOriginIn,
                              const std::string &calendarIn)
-    : d(internal::make_unique<Private>(temporalOriginIn, calendarIn)) {}
+    : d(std::make_unique<Private>(temporalOriginIn, calendarIn)) {}
 
 // ---------------------------------------------------------------------------
 

@@ -4,18 +4,19 @@
 Icosahedral Snyder Equal Area
 ********************************************************************************
 
-Snyder's Icosahedral Equal Area map projections on polyhedral globes for the
-dodecahedron and truncated icosahedron offer relatively low scale and
-angular distortion. The equations involved are relatively straight-forward,
-and for certain instructional tools and databases, the projections are useful
-for world maps. The interruptions remain a disadvantage, as with any low-error
-projection system applied to the entire globe :cite:`Snyder1992`.
+Snyder's equal-area mapping :cite:`Snyder1992` applied to the twenty triangular
+faces of a regular icosahedron and unfolded into a planar net.
 
+The icosahedron is subdivided into 20 × 6 = 120 right sub-triangles, and each
+sub-triangle is mapped independently using the area-preserving Snyder
+construction.
+
+See :ref:`polyhedral` for the shared theory.
 
 +---------------------+----------------------------------------------------------+
 | **Classification**  | Polyhedral, equal area                                   |
 +---------------------+----------------------------------------------------------+
-| **Available forms** | Forward, spherical                                       |
+| **Available forms** | Forward and inverse, spherical and ellipsoidal           |
 +---------------------+----------------------------------------------------------+
 | **Defined area**    | Global                                                   |
 +---------------------+----------------------------------------------------------+
@@ -36,43 +37,77 @@ projection system applied to the entire globe :cite:`Snyder1992`.
 
    proj-string: ``+proj=isea``
 
+
+Nets & Orientations
+################################################################################
+
+``isea`` ships a single net (Snyder's Figure 12, shown above). A second named
+orientation is available via ``+orient=pole``, and ``+dual`` unfolds the same
+mapping onto a dodecahedral net (the same layout as ``+proj=dsea``):
+
+pole
+--------------------------------------------------------------------------------
+
+Places one icosahedron vertex on the geographic north pole.
+
+.. figure:: ./images/isea_pole.png
+   :width: 500 px
+   :align: center
+   :alt:   ISEA pole orientation
+
+   proj-string: ``+proj=isea +orient=pole``
+
+dual
+--------------------------------------------------------------------------------
+
+Unfolds the ISEA mapping onto a dodecahedral net.
+
+.. figure:: ./images/isea_dual.png
+   :width: 500 px
+   :align: center
+   :alt:   ISEA dual net
+
+   proj-string: ``+proj=isea +dual``
+
 Parameters
 ################################################################################
 
-.. note:: All parameters are optional for the projection.
+.. note::
+    All parameters are optional.
 
-.. option:: +orient=<string>
+.. option:: +dual
 
-    Can be set to either ``isea`` or ``pole``.  See Snyder's Figure 12 for pole orientation :cite:`Snyder1992`.
-    
-    *Defaults to isea*
+    Unfolds onto dual dodecahedron net. All options will be interpreted
+    as if ``+proj=dsea`` were specified.
 
-.. option:: +azi=<value>
+.. option:: +orient=<name>
 
-    Azimuth.
+    Shorthand for two named orientations. Accepted values: ``isea``, ``pole``.
+    Equivalent to setting ``+orient_lat`` / ``+orient_lon`` / ``+azi``
+    explicitly; individual ``+orient_*`` parameters still override.
 
-    *Defaults to 0.0*
+    *Defaults to* ``isea``.
 
-.. option:: +aperture=<value>
+.. include:: ../options/orient_lat.rst
 
-    *Defaults to 3.0*
+*Defaults to ~58.40° geodetic (arctan(φ) ≈ 58.2825° authalic).*
 
-.. option:: +resolution=<value>
+.. include:: ../options/orient_lon.rst
 
-    *Defaults to 4.0*
+*Defaults to 11.25° on a sphere, 11.20° on an ellipsoid.*
 
-.. option:: +mode=<string>
+.. include:: ../options/azi_polyhedral.rst
 
-    Can be either ``plane``, ``di``, ``dd`` or ``hex``.
-    
-    *Defaults to plane*
+*Defaults to 0.0.*
 
-.. include:: ../options/lon_0.rst
+.. include:: ../options/lat_0_polyhedral.rst
 
-.. include:: ../options/lat_0.rst
-
-.. include:: ../options/R.rst
+.. include:: ../options/lon_0_polyhedral.rst
 
 .. include:: ../options/x_0.rst
 
 .. include:: ../options/y_0.rst
+
+.. include:: ../options/ellps.rst
+
+.. include:: ../options/R.rst

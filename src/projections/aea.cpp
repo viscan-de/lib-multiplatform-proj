@@ -27,7 +27,6 @@
  * DEALINGS IN THE SOFTWARE.
  *****************************************************************************/
 
-#define PJ_LIB_
 #include "proj.h"
 #include "proj_internal.h"
 #include <errno.h>
@@ -40,36 +39,8 @@ PROJ_HEAD(aea, "Albers Equal Area") "\n\tConic Sph&Ell\n\tlat_1= lat_2=";
 PROJ_HEAD(leac, "Lambert Equal Area Conic")
 "\n\tConic, Sph&Ell\n\tlat_1= south";
 
-/* determine latitude angle phi-1 */
-#define N_ITER 15
-#define EPSILON 1.0e-7
-#define TOL 1.0e-10
-static double phi1_(double qs, double Te, double Tone_es) {
-    int i;
-    double Phi, sinpi, cospi, con, com, dphi;
-
-    Phi = asin(.5 * qs);
-    if (Te < EPSILON)
-        return (Phi);
-    i = N_ITER;
-    do {
-        sinpi = sin(Phi);
-        cospi = cos(Phi);
-        con = Te * sinpi;
-        com = 1. - con * con;
-        dphi = .5 * com * com / cospi *
-               (qs / Tone_es - sinpi / com +
-                .5 / Te * log((1. - con) / (1. + con)));
-        Phi += dphi;
-        if (!(fabs(dphi) > TOL))
-            return Phi;
-        --i;
-    } while (i >= 0);
-    return HUGE_VAL;
-}
-
 namespace { // anonymous namespace
-struct pj_opaque {
+struct pj_aea {
     double ec;
     double n;
     double c;
@@ -79,26 +50,28 @@ struct pj_opaque {
     double rho;
     double phi1;
     double phi2;
-    double *en;
     int ellips;
+    double *apa;
+    double qp;
 };
 } // anonymous namespace
 
-static PJ *destructor(PJ *P, int errlev) { /* Destructor */
+static PJ *pj_aea_destructor(PJ *P, int errlev) { /* Destructor */
     if (nullptr == P)
         return nullptr;
 
     if (nullptr == P->opaque)
         return pj_default_destructor(P, errlev);
 
-    free(static_cast<struct pj_opaque *>(P->opaque)->en);
+    free(static_cast<struct pj_aea *>(P->opaque)->apa);
+
     return pj_default_destructor(P, errlev);
 }
 
 static PJ_XY aea_e_forward(PJ_LP lp, PJ *P) { /* Ellipsoid/spheroid, forward */
     PJ_XY xy = {0.0, 0.0};
-    struct pj_opaque *Q = static_cast<struct pj_opaque *>(P->opaque);
-    Q->rho = Q->c - (Q->ellips ? Q->n * pj_qsfn(sin(lp.phi), P->e, P->one_es)
+    struct pj_aea *Q = static_cast<struct pj_aea *>(P->opaque);
+    Q->rho = Q->c - (Q->ellips ? Q->n * pj_authalic_lat_q(sin(lp.phi), P)
                                : Q->n2 * sin(lp.phi));
     if (Q->rho < 0.) {
         proj_errno_set(P, PROJ_ERR_COORD_TRANSFM_OUTSIDE_PROJECTION_DOMAIN);
@@ -113,7 +86,7 @@ static PJ_XY aea_e_forward(PJ_LP lp, PJ *P) { /* Ellipsoid/spheroid, forward */
 
 static PJ_LP aea_e_inverse(PJ_XY xy, PJ *P) { /* Ellipsoid/spheroid, inverse */
     PJ_LP lp = {0.0, 0.0};
-    struct pj_opaque *Q = static_cast<struct pj_opaque *>(P->opaque);
+    struct pj_aea *Q = static_cast<struct pj_aea *>(P->opaque);
     xy.y = Q->rho0 - xy.y;
     Q->rho = hypot(xy.x, xy.y);
     if (Q->rho != 0.0) {
@@ -124,27 +97,28 @@ static PJ_LP aea_e_inverse(PJ_XY xy, PJ *P) { /* Ellipsoid/spheroid, inverse */
         }
         lp.phi = Q->rho / Q->dd;
         if (Q->ellips) {
-            lp.phi = (Q->c - lp.phi * lp.phi) / Q->n;
-            if (fabs(Q->ec - fabs(lp.phi)) > TOL7) {
-                if (fabs(lp.phi) > 2) {
+            const double qs = (Q->c - lp.phi * lp.phi) / Q->n;
+            if (fabs(Q->ec - fabs(qs)) > TOL7) {
+                if (fabs(qs) > 2) {
                     proj_errno_set(
                         P, PROJ_ERR_COORD_TRANSFM_OUTSIDE_PROJECTION_DOMAIN);
                     return lp;
                 }
-                lp.phi = phi1_(lp.phi, P->e, P->one_es);
+                lp.phi =
+                    pj_authalic_lat_inverse(asin(qs / Q->qp), Q->apa, P, Q->qp);
                 if (lp.phi == HUGE_VAL) {
                     proj_errno_set(
                         P, PROJ_ERR_COORD_TRANSFM_OUTSIDE_PROJECTION_DOMAIN);
                     return lp;
                 }
             } else
-                lp.phi = lp.phi < 0. ? -M_HALFPI : M_HALFPI;
+                lp.phi = qs < 0. ? -M_HALFPI : M_HALFPI;
         } else {
-            lp.phi = (Q->c - lp.phi * lp.phi) / Q->n2;
-            if (fabs(lp.phi) <= 1.)
-                lp.phi = asin(lp.phi);
+            const double qs_div_2 = (Q->c - lp.phi * lp.phi) / Q->n2;
+            if (fabs(qs_div_2) <= 1.)
+                lp.phi = asin(qs_div_2);
             else
-                lp.phi = lp.phi < 0. ? -M_HALFPI : M_HALFPI;
+                lp.phi = qs_div_2 < 0. ? -M_HALFPI : M_HALFPI;
         }
         lp.lam = atan2(xy.x, xy.y) / Q->n;
     } else {
@@ -155,7 +129,7 @@ static PJ_LP aea_e_inverse(PJ_XY xy, PJ *P) { /* Ellipsoid/spheroid, inverse */
 }
 
 static PJ *setup(PJ *P) {
-    struct pj_opaque *Q = static_cast<struct pj_opaque *>(P->opaque);
+    struct pj_aea *Q = static_cast<struct pj_aea *>(P->opaque);
 
     P->inv = aea_e_inverse;
     P->fwd = aea_e_forward;
@@ -163,17 +137,17 @@ static PJ *setup(PJ *P) {
     if (fabs(Q->phi1) > M_HALFPI) {
         proj_log_error(P,
                        _("Invalid value for lat_1: |lat_1| should be <= 90°"));
-        return destructor(P, PROJ_ERR_INVALID_OP_ILLEGAL_ARG_VALUE);
+        return pj_aea_destructor(P, PROJ_ERR_INVALID_OP_ILLEGAL_ARG_VALUE);
     }
     if (fabs(Q->phi2) > M_HALFPI) {
         proj_log_error(P,
                        _("Invalid value for lat_2: |lat_2| should be <= 90°"));
-        return destructor(P, PROJ_ERR_INVALID_OP_ILLEGAL_ARG_VALUE);
+        return pj_aea_destructor(P, PROJ_ERR_INVALID_OP_ILLEGAL_ARG_VALUE);
     }
     if (fabs(Q->phi1 + Q->phi2) < EPS10) {
         proj_log_error(P, _("Invalid value for lat_1 and lat_2: |lat_1 + "
                             "lat_2| should be > 0"));
-        return destructor(P, PROJ_ERR_INVALID_OP_ILLEGAL_ARG_VALUE);
+        return pj_aea_destructor(P, PROJ_ERR_INVALID_OP_ILLEGAL_ARG_VALUE);
     }
     double sinphi = sin(Q->phi1);
     Q->n = sinphi;
@@ -183,33 +157,35 @@ static PJ *setup(PJ *P) {
     if (Q->ellips) {
         double ml1, m1;
 
-        Q->en = pj_enfn(P->n);
-        if (Q->en == nullptr)
-            return destructor(P, 0);
+        Q->apa = pj_authalic_lat_compute_coeffs(P->n);
+        if (Q->apa == nullptr)
+            return pj_aea_destructor(P, 0);
+        Q->qp = pj_authalic_lat_q(1.0, P);
         m1 = pj_msfn(sinphi, cosphi, P->es);
-        ml1 = pj_qsfn(sinphi, P->e, P->one_es);
+        ml1 = pj_authalic_lat_q(sinphi, P);
         if (secant) { /* secant cone */
             double ml2, m2;
 
             sinphi = sin(Q->phi2);
             cosphi = cos(Q->phi2);
             m2 = pj_msfn(sinphi, cosphi, P->es);
-            ml2 = pj_qsfn(sinphi, P->e, P->one_es);
+            ml2 = pj_authalic_lat_q(sinphi, P);
             if (ml2 == ml1)
-                return destructor(P, 0);
+                return pj_aea_destructor(P, 0);
 
             Q->n = (m1 * m1 - m2 * m2) / (ml2 - ml1);
             if (Q->n == 0) {
                 // Not quite, but es is very close to 1...
                 proj_log_error(P, _("Invalid value for eccentricity"));
-                return destructor(P, PROJ_ERR_INVALID_OP_ILLEGAL_ARG_VALUE);
+                return pj_aea_destructor(P,
+                                         PROJ_ERR_INVALID_OP_ILLEGAL_ARG_VALUE);
             }
         }
         Q->ec = 1. - .5 * P->one_es * log((1. - P->e) / (1. + P->e)) / P->e;
         Q->c = m1 * m1 + Q->n * ml1;
         Q->dd = 1. / Q->n;
         Q->rho0 =
-            Q->dd * sqrt(Q->c - Q->n * pj_qsfn(sin(P->phi0), P->e, P->one_es));
+            Q->dd * sqrt(Q->c - Q->n * pj_authalic_lat_q(sin(P->phi0), P));
     } else {
         if (secant)
             Q->n = .5 * (Q->n + sin(Q->phi2));
@@ -222,28 +198,31 @@ static PJ *setup(PJ *P) {
     return P;
 }
 
-PJ *PROJECTION(aea) {
-    struct pj_opaque *Q =
-        static_cast<struct pj_opaque *>(calloc(1, sizeof(struct pj_opaque)));
+PJ *PJ_PROJECTION(aea) {
+    struct pj_aea *Q =
+        static_cast<struct pj_aea *>(calloc(1, sizeof(struct pj_aea)));
     if (nullptr == Q)
         return pj_default_destructor(P, PROJ_ERR_OTHER /*ENOMEM*/);
     P->opaque = Q;
-    P->destructor = destructor;
+    P->destructor = pj_aea_destructor;
 
     Q->phi1 = pj_param(P->ctx, P->params, "rlat_1").f;
     Q->phi2 = pj_param(P->ctx, P->params, "rlat_2").f;
     return setup(P);
 }
 
-PJ *PROJECTION(leac) {
-    struct pj_opaque *Q =
-        static_cast<struct pj_opaque *>(calloc(1, sizeof(struct pj_opaque)));
+PJ *PJ_PROJECTION(leac) {
+    struct pj_aea *Q =
+        static_cast<struct pj_aea *>(calloc(1, sizeof(struct pj_aea)));
     if (nullptr == Q)
         return pj_default_destructor(P, PROJ_ERR_OTHER /*ENOMEM*/);
     P->opaque = Q;
-    P->destructor = destructor;
+    P->destructor = pj_aea_destructor;
 
     Q->phi2 = pj_param(P->ctx, P->params, "rlat_1").f;
     Q->phi1 = pj_param(P->ctx, P->params, "bsouth").i ? -M_HALFPI : M_HALFPI;
     return setup(P);
 }
+
+#undef EPS10
+#undef TOL7

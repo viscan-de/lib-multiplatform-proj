@@ -4,10 +4,19 @@
 Installation
 ================================================================================
 
-These pages describe how to install PROJ on your computer without compiling it
-yourself. Below are guides for installing on Windows, Linux and Mac OS X. This
-is a good place to get started if this is your first time using PROJ. More
-advanced users may want to compile the software themselves.
+These pages describe how to install PROJ on your computer, covering a
+variety of operating systems.
+
+There is a section for using package management systems.  If PROJ is
+available for a package management system you already use, and you
+wish to run the release of PROJ offered by that system (usually that's
+fine), this is is the easiest path.
+
+There is a second section for building from source.  This section can
+be followed if there is no binary package available for your
+operating and CPU combination or if you wish to install a different
+version, including the tip of master in git, or pending fixes.  It is
+of course also useful to those creating packages.
 
 Installation from package management systems
 ################################################################################
@@ -130,24 +139,45 @@ Compilation and installation from source code
 
 The classic way of installing PROJ is via the source code distribution. The
 most recent version is available from the :ref:`download page<current_release>`.
+Alternatively, one can also check out the master branch or any other revision from GitHub.
 
-The following guides show how to compile and install the software using CMake.
+Note that some sections below presume an unpacked release tarball, and
+some say to use a git checkout.
 
-  .. note::
+As of PROJ 9.0, the only build system is CMake.  (The last release
+with Autotools was 8.2.)
 
-    Support for Autotools was maintained until PROJ 8.2 (see :ref:`RFC7`).
-    PROJ 9.0 and later releases only support builds using CMake.
+Packagers and others with similar policy constraints should note that
+an outdated vendored copy of nlohmann/json may be used and that
+GoogleTest may be downloaded at build time (details below).
 
-
-Build requirements
+Requirements
 --------------------------------------------------------------------------------
 
+Build requirements
+++++++++++++++++++
+
 - C99 compiler
-- C++11 compiler
-- CMake >= 3.9
-- SQLite3 >= 3.11: headers and library for target architecture, and sqlite3 executable for build architecture.
-- libtiff >= 4.0 (optional but recommended)
-- curl >= 7.29.0 (optional but recommended)
+- C++17 compiler
+- CMake >= 3.22.1
+- SQLite3 >= 3.11: headers and library for target architecture, and sqlite3 executable for build architecture
+- libtiff >= 4.0 (optional but recommended to enable reading of grid formats based on GeoTIFF. Only basic TIFF support is required; optional features like WebP or ZStd are not needed.)
+- curl >= 7.29.0 (optional but recommended to support automatic downloading of remote grid files during runtime, allowing PROJ to fetch required transformation data on demand.)
+- JSON for Modern C++ (nlohmann/json) >= 3.7.0 (a vendored 3.9.1 will be used if not found; use `-DNLOHMANN_JSON_ORIGIN=EXTERNAL` to prevent this)
+
+
+.. _test_requirements:
+
+Test requirements
++++++++++++++++++
+
+If :option:`BUILD_TESTING` is ON (the default), test programs will be be compiled at build time, and the following additional dependencies are required:
+
+- GoogleTest (GTest) >= 1.8.1; if not found and :option:`TESTING_USE_NETWORK` is ON, then version 1.15.2 is fetched from GitHub and locally installed
+- Python >= 3.7
+- `importlib_metadata <https://pypi.org/project/importlib-metadata/>`_ only needed for Python 3.7
+- One of either `PyYAML <https://pypi.org/project/PyYAML/>`_ or `ruamel.yaml <https://pypi.org/project/ruamel.yaml/>`_
+
 
 Build steps
 --------------------------------------------------------------------------------
@@ -173,12 +203,8 @@ On Windows, one may need to specify generator::
 
     cmake -G "Visual Studio 15 2017" ..
 
-If the SQLite3 dependency is installed in a custom location, specify the
-paths to the include directory and the library::
-
-    cmake -DSQLITE3_INCLUDE_DIR=/opt/SQLite/include -DSQLITE3_LIBRARY=/opt/SQLite/lib/libsqlite3.so ..
-
-Alternatively, the custom prefix for SQLite3 can be specified::
+If the SQLite3 dependency is installed in a custom location, specify
+:option:`CMAKE_PREFIX_PATH`::
 
     cmake -DCMAKE_PREFIX_PATH=/opt/SQLite ..
 
@@ -187,10 +213,10 @@ Tests are run with::
 
     ctest
 
-With a successful install of PROJ we can now install data files using the
+With a successful install of PROJ, we can now install data files using the
 :program:`projsync` utility::
 
-    projsync --system-directory
+    projsync --system-directory --all
 
 which will download all resource files currently available for PROJ. If less than
 the entire collection of resource files is needed the call to :program:`projsync`
@@ -263,7 +289,7 @@ All cached entries can be viewed using ``cmake -LAH`` from a build directory.
 
     Build PROJ library shared. Default is ON. See also the CMake
     documentation for `BUILD_SHARED_LIBS
-    <https://cmake.org/cmake/help/v3.9/variable/BUILD_SHARED_LIBS.html>`_.
+    <https://cmake.org/cmake/help/latest/variable/BUILD_SHARED_LIBS.html>`_.
 
     .. versionchanged:: 7.0
         Renamed from ``BUILD_LIBPROJ_SHARED``
@@ -272,8 +298,9 @@ All cached entries can be viewed using ``cmake -LAH`` from a build directory.
 
 .. option:: BUILD_TESTING=ON
 
-    CTest option to build the testing tree, which also downloads and installs
-    Googletest. Default is ON, but can be turned OFF if tests are not required.
+    CTest option to build the testing tree. Default is ON, but can be turned
+    OFF if tests are not required.
+    See :ref:`test requirements <test_requirements>` for other details.
 
     .. versionchanged:: 7.0
         Renamed from ``PROJ_TESTS``
@@ -283,13 +310,33 @@ All cached entries can be viewed using ``cmake -LAH`` from a build directory.
     Choose the type of build, options are: None (default), Debug, Release,
     RelWithDebInfo, or MinSizeRel. See also the CMake documentation for
     `CMAKE_BUILD_TYPE
-    <https://cmake.org/cmake/help/v3.9/variable/CMAKE_BUILD_TYPE.html>`_.
+    <https://cmake.org/cmake/help/latest/variable/CMAKE_BUILD_TYPE.html>`_.
 
     .. note::
         A default build is not optimized without specifying
         ``-DCMAKE_BUILD_TYPE=Release`` (or similar) during configuration,
         or by specifying ``--config Release`` with CMake
         multi-configuration build tools (see example below).
+
+.. option:: PROJ_OUTPUT_NAME
+
+    .. versionadded:: 9.5
+
+    Sets the name of the PROJ library (excluding extension).
+    This generally defaults to "proj", except on Windows, where this defaults to
+    "proj_${PROJ_MAJOR_VERSION}" if APPEND_SOVERSION is OFF.
+
+    .. note::
+        For PROJ >= 6.0 and up to 9.4.1, on Windows, this was hardcoded to
+        "proj_${PROJ_MAJOR_VERSION}_${PROJ_MINOR_VERSION}".
+
+.. option:: APPEND_SOVERSION=OFF
+
+    .. versionadded:: 9.5
+
+    This variable can be set to ON for MinGW builds where BUILD_SHARED_LIBS=ON,
+    to add a "-${PROJ_SOVERSION}" suffix to the PROJ shared library name.
+    When this variable is set, PROJ_OUTPUT_NAME defaults to "proj"
 
 .. option:: CMAKE_C_COMPILER
 
@@ -315,6 +362,25 @@ All cached entries can be viewed using ``cmake -LAH`` from a build directory.
     :envvar:`OSGEO4W_ROOT` (if set), otherwise is ``c:/OSGeo4W``.
     Default for Unix-like is ``/usr/local/``.
 
+.. option:: CMAKE_PREFIX_PATH
+
+    `CMake variable
+    <https://cmake.org/cmake/help/latest/variable/CMAKE_PREFIX_PATH.html>`_
+    used to specify installation prefixes for SQLite3 and other dependencies.
+
+.. option:: CMAKE_UNITY_BUILD=OFF
+
+    .. versionadded:: 9.4
+
+    Default is OFF. This can be set to ON to build PROJ using the
+    `CMAKE_UNITY_BUILD
+    <https://cmake.org/cmake/help/latest/variable/CMAKE_UNITY_BUILD.html>`_.
+    feature.
+    This helps speeding PROJ build times. This feature is still considered
+    experimental for now, and could hide subtle bugs (we are not aware of
+    any at writing time though). We don't recommend it for mission critical
+    builds.
+
 .. option:: ENABLE_IPO=OFF
 
     Build library using the compiler's `interprocedural optimization
@@ -328,14 +394,17 @@ All cached entries can be viewed using ``cmake -LAH`` from a build directory.
 
     Path to an ``sqlite3`` or ``sqlite3.exe`` executable.
 
-.. option:: SQLITE3_INCLUDE_DIR
+    .. note::
 
-    Path to an include directory with the ``sqlite3.h`` header file.
+        When cross-compiling, the executable pointed by EXE_SQLITE3 must be
+        of the same architecture as the host, *not* of the architecture you
+        build for. That sqlite3 binary is used to build the :file:`proj.db`
+        SQLite3 database from source .sql files.
 
-.. option:: SQLITE3_LIBRARY
-
-    Path to a shared or static library file, such as ``sqlite3.dll``,
-    ``libsqlite3.so``, ``sqlite3.lib`` or other name.
+.. deprecated:: 9.4.0
+    ``SQLITE3_INCLUDE_DIR`` and ``SQLITE3_LIBRARY`` should be replaced with
+    ``SQLite3_INCLUDE_DIR`` and ``SQLite3_LIBRARY``, respectively.
+    Users may also consider :option:`CMAKE_PREFIX_PATH` instead.
 
 .. option:: ENABLE_CURL=ON
 
@@ -375,6 +444,69 @@ All cached entries can be viewed using ``cmake -LAH`` from a build directory.
 
     Path to an existing directory used to cache :file:`proj.db` to speed-up
     subsequent builds without modifications to source SQL files.
+
+.. option:: TESTING_USE_NETWORK=ON
+
+    .. versionadded:: 9.5
+
+    Permit use of network to fetch :ref:`test requirements
+    <test_requirements>` (if needed)
+    and run network-dependent tests. Default ON.
+
+.. option:: EMBED_PROJ_DATA_PATH
+
+    .. versionadded:: 9.5
+
+    Embed ``PROJ_DATA`` hard-coded alternative path for data files location. Disable to avoid setting this non-relocatable hard-coded path. Default ON.
+
+.. option:: EMBED_RESOURCE_FILES=ON/OFF
+
+    .. versionadded:: 9.6
+
+    When ON, :file:`proj.db`, :file:`proj.ini` and ITRF resource files will be
+    embedded into the PROJ library.
+    Default is OFF for shared library builds (BUILD_SHARED_LIBS=ON), and ON
+    for static library builds (BUILD_SHARED_LIBS=OFF).
+
+.. option:: EMBED_RESOURCE_DIRECTORY=<directory>
+
+    .. versionadded:: 9.6
+
+    Embed files from <directory> ending with .tif, .json, .gpkg or .pol in the PROJ library itself.
+
+    The pointed directory can potentially be the full PROJ-data package (uncompressed).
+    In that case, about 6 GB of free disk and 16 GB of RAM are required to build PROJ.
+
+    When using this parameter, EMBED_RESOURCE_FILES must be set to ON.
+
+    If the content of the directory changes, you need to run CMake again to
+    update the list of files.
+
+.. option:: USE_ONLY_EMBEDDED_RESOURCE_FILES=ON/OFF
+
+    .. versionadded:: 9.6
+
+    Even if EMBED_RESOURCE_FILES=ON, by default PROJ will still try to locate
+    :file:`proj.db`, :file:`proj.ini`, ITRF resource files or grid files on the
+    file system, and fallback to the embedded version if not found.
+    By setting USE_ONLY_EMBEDDED_RESOURCE_FILES=ON, no attempt at locating
+    those files on the file system is made.
+    Default is OFF.
+    Users will also typically want to set EMBED_PROJ_DATA_PATH=OFF if setting
+    USE_ONLY_EMBEDDED_RESOURCE_FILES=OFF.
+
+.. _install_emscripten_fetch:
+.. option:: ENABLE_EMSCRIPTEN_FETCH=ON/OFF
+
+    .. versionadded:: 9.8
+
+    When ON, the function emscripten_fetch is used to get files
+    from the network (grid files, etc), in a similar way as with cURL.
+    PROJ is doing synchronous fetch calls, so emscripten must have the `-pthread` flag enabled.
+    In addition to that, it is very recommended to run it in a Web Worker in the browser,
+    to not block the main thread.
+    It is incompatible with cURL, so ``ENABLE_CURL`` must be OFF.
+    Default: OFF.
 
 
 Building on Windows with vcpkg and Visual Studio 2017 or 2019
@@ -498,3 +630,8 @@ Run PROJ tests
     cd c:\dev\PROJ
     cd _build.vs2019
     ctest -V --build-config Release
+
+
+.. spelling:word-list::
+
+    gpkg

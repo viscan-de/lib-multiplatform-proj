@@ -115,6 +115,19 @@ PJconsts::PJconsts() : destructor(pj_default_destructor) {}
 /*****************************************************************************/
 
 /*****************************************************************************/
+/*              void PJconsts::copyStateFrom(const PJconsts& other)          */
+/*****************************************************************************/
+
+void PJconsts::copyStateFrom(const PJconsts &other) {
+    over = other.over;
+    errorIfBestTransformationNotAvailable =
+        other.errorIfBestTransformationNotAvailable;
+    warnIfBestTransformationNotAvailable =
+        other.warnIfBestTransformationNotAvailable;
+    skipNonInstantiable = other.skipNonInstantiable;
+}
+
+/*****************************************************************************/
 PJ *pj_new() {
     /*****************************************************************************/
     return new (std::nothrow) PJ();
@@ -166,6 +179,8 @@ PJ *pj_default_destructor(PJ *P, int errlev) { /* Destructor */
     proj_destroy(P->hgridshift);
     proj_destroy(P->vgridshift);
 
+    proj_destroy(P->cached_op_for_proj_factors);
+
     free(static_cast<struct pj_opaque *>(P->opaque));
     delete P;
     return nullptr;
@@ -189,4 +204,5 @@ void proj_cleanup() {
     pj_clear_vgridshift_knowngrids_cache();
     pj_clear_gridshift_knowngrids_cache();
     pj_clear_sqlite_cache();
+    pj_clear_proj_info();
 }

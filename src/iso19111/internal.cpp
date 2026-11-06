@@ -129,8 +129,9 @@ std::string tolower(const std::string &str)
 
 {
     std::string ret(str);
-    for (size_t i = 0; i < ret.size(); i++)
-        ret[i] = static_cast<char>(::tolower(ret[i]));
+    for (char &ch : ret)
+        ch =
+            (ch >= 'A' && ch <= 'Z') ? static_cast<char>(ch + ('a' - 'A')) : ch;
     return ret;
 }
 
@@ -144,8 +145,9 @@ std::string toupper(const std::string &str)
 
 {
     std::string ret(str);
-    for (size_t i = 0; i < ret.size(); i++)
-        ret[i] = static_cast<char>(::toupper(ret[i]));
+    for (char &ch : ret)
+        ch =
+            (ch >= 'a' && ch <= 'z') ? static_cast<char>(ch - ('a' - 'A')) : ch;
     return ret;
 }
 
@@ -403,6 +405,20 @@ double getRoundedEpochInDecimalYear(double year) {
         year = std::round(1000 * year) / 1000.0;
     }
     return year;
+}
+
+std::string join(const std::vector<std::string> &strings,
+                 const char *delimiter) {
+    std::string result;
+    bool first = true;
+    for (const auto &str : strings) {
+        if (!first)
+            result += delimiter;
+        first = false;
+        result += str;
+    }
+
+    return result;
 }
 
 // ---------------------------------------------------------------------------

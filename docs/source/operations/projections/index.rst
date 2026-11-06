@@ -17,6 +17,7 @@ Projections map the spherical 3D space to a flat 2D space.
    adams_ws2
    aea
    aeqd
+   airocean
    airy
    aitoff
    alsk
@@ -38,6 +39,7 @@ Projections map the spherical 3D space to a flat 2D space.
    comill
    crast
    denoy
+   dsea
    eck1
    eck2
    eck3
@@ -64,12 +66,15 @@ Projections map the spherical 3D space to a flat 2D space.
    hatano
    healpix
    rhealpix
+   hourglass
    igh
    igh_o
    imoll
    imoll_o
    imw_p
+   interrupted
    isea
+   ivea
    kav5
    kav7
    krovak
@@ -93,6 +98,7 @@ Projections map the spherical 3D space to a flat 2D space.
    mil_os
    mill
    misrsom
+   mod_krovak
    moll
    murd1
    murd2
@@ -133,6 +139,7 @@ Projections map the spherical 3D space to a flat 2D space.
    sinu
    som
    somerc
+   spilhaus
    stere
    sterea
    gstmerc
@@ -141,9 +148,11 @@ Projections map the spherical 3D space to a flat 2D space.
    times
    tissot
    tmerc
+   tmerczoned
    tobmerc
    tpeqd
    tpers
+   tsea
    ups
    urm5
    urmfps
@@ -165,3 +174,4 @@ Projections map the spherical 3D space to a flat 2D space.
    wink1
    wink2
    wintri
+   all_images

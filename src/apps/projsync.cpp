@@ -29,6 +29,7 @@
 
 #define FROM_PROJ_CPP
 
+#include <algorithm>
 #include <cstdlib>
 #include <iostream>
 #include <limits>
@@ -90,10 +91,10 @@ static std::vector<double> get_bbox(const json &j) {
     } else {
         for (const auto &obj : j) {
             if (obj.is_array()) {
-                const auto subres = get_bbox(obj);
+                auto subres = get_bbox(obj);
                 if (subres.size() == 4) {
                     if (res.empty()) {
-                        res = subres;
+                        res = std::move(subres);
                     } else {
                         res[0] = std::min(res[0], subres[0]);
                         res[1] = std::min(res[1], subres[1]);
@@ -242,7 +243,7 @@ int main(int argc, char *argv[]) {
         }
 
         // This is used by projsync() to determine where to write files.
-        pj_context_set_user_writable_directory(ctx, targetDir);
+        proj_context_set_user_writable_directory(ctx, targetDir.c_str(), true);
     }
 
     if (!endpoint.empty() && endpoint.back() == '/') {
@@ -309,7 +310,12 @@ int main(int argc, char *argv[]) {
     }
 
     try {
-        const auto j = json::parse(text);
+        const auto j =
+            json::parse(text, [](int depth, json::parse_event_t, json &) {
+                if (depth >= 128)
+                    throw ParsingException("Too deep nesting in JSON content");
+                return true;
+            });
         bool foundMatchSourceIdCriterion = false;
         std::set<std::string> source_ids;
         bool foundMatchAreaOfUseCriterion = false;
@@ -492,13 +498,13 @@ int main(int argc, char *argv[]) {
                         bool foundPlus180 = false;
                         for (const auto &obj : j_coordinates) {
                             if (obj.is_array()) {
-                                const auto tmp = get_bbox(obj);
+                                auto tmp = get_bbox(obj);
                                 if (tmp.size() == 4) {
                                     if (tmp[0] == -180)
                                         foundMinus180 = true;
                                     else if (tmp[2] == 180)
                                         foundPlus180 = true;
-                                    grid_bboxes.push_back(tmp);
+                                    grid_bboxes.push_back(std::move(tmp));
                                 }
                             }
                         }
@@ -565,11 +571,11 @@ int main(int argc, char *argv[]) {
                     continue;
                 }
 
-                const std::string resource_url(
+                std::string resource_url(
                     std::string(endpoint).append("/").append(name));
                 if (proj_is_download_needed(ctx, resource_url.c_str(), false)) {
                     total_size_to_download += file_size;
-                    to_download.push_back(resource_url);
+                    to_download.push_back(std::move(resource_url));
                 } else {
                     if (!quiet) {
                         std::cout << resource_url << " already downloaded."

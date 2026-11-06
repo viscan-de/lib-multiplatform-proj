@@ -79,6 +79,7 @@ Thomas Knudsen, thokn@sdfe.dk, 2016-05-25/2017-10-26
 #include <string.h>
 
 #include <algorithm>
+#include <cstdint>
 #include <fstream> // std::ifstream
 #include <iostream>
 
@@ -162,7 +163,8 @@ static const char usage[] = {
     "1. convert geographical input to UTM zone 32 on the GRS80 ellipsoid:\n"
     "    cct +proj=utm +ellps=GRS80 +zone=32\n"
     "2. roundtrip accuracy check for the case above:\n"
-    "    cct +proj=pipeline +proj=utm +ellps=GRS80 +zone=32 +step +step +inv\n"
+    "    cct +proj=pipeline +ellps=GRS80 +zone=32 +step +proj=utm \\\n"
+    "        +step +proj=utm +inv\n"
     "3. as (1) but specify input columns for longitude, latitude, height and "
     "time:\n"
     "    cct -c 5,2,1,4  +proj=utm +ellps=GRS80 +zone=32\n"
@@ -238,10 +240,11 @@ int main(int argc, char **argv) {
     /* coverity[tainted_data] */
     o = opt_parse(argc, argv, "hvI", "cdozts", longflags, longkeys);
     if (nullptr == o)
-        return 0;
+        return 1;
 
     if (opt_given(o, "h") || argc == 1) {
         printf(usage, o->progname);
+        free(o);
         return 0;
     }
 
@@ -256,6 +259,7 @@ int main(int argc, char **argv) {
 
     if (opt_given(o, "version")) {
         print(PJ_LOG_NONE, "%s: %s", o->progname, pj_get_release());
+        free(o);
         return 0;
     }
 
@@ -417,6 +421,7 @@ int main(int argc, char **argv) {
         /* fail if an inverse operation is not available */
         if (!info.has_inverse) {
             print(PJ_LOG_ERROR, "Inverse operation not available");
+            free(o);
             if (stdout != fout)
                 fclose(fout);
             return 1;
@@ -441,7 +446,8 @@ int main(int argc, char **argv) {
 
     /* Loop over all records of all input files */
     int previous_index = -1;
-    while (opt_input_loop(o, optargs_file_format_text)) {
+    bool gotError = false;
+    while (opt_input_loop(o, optargs_file_format_text, &gotError)) {
         int err;
         char *bufptr = fgets(buf, BUFFER_SIZE - 1, o->input);
         if (opt_eof(o)) {
@@ -546,7 +552,7 @@ int main(int argc, char **argv) {
         fclose(fout);
     free(o);
     free(buf);
-    return 0;
+    return gotError ? 1 : 0;
 }
 
 /* return a pointer to the n'th column of buf */

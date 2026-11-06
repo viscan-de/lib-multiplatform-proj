@@ -76,6 +76,10 @@
 
 #include <sqlite3.h>
 
+#ifdef EMBED_RESOURCE_FILES
+#include "embedded_resources.h"
+#endif
+
 // Custom SQLite VFS as our database is not supposed to be modified in
 // parallel. This is slightly faster
 #define ENABLE_CUSTOM_LOCKLESS_VFS
@@ -102,15 +106,6 @@ namespace io {
 
 //! @cond Doxygen_Suppress
 
-// CRS subtypes
-#define GEOG_2D "geographic 2D"
-#define GEOG_3D "geographic 3D"
-#define GEOCENTRIC "geocentric"
-#define OTHER "other"
-#define PROJECTED "projected"
-#define VERTICAL "vertical"
-#define COMPOUND "compound"
-
 #define GEOG_2D_SINGLE_QUOTED "'geographic 2D'"
 #define GEOG_3D_SINGLE_QUOTED "'geographic 3D'"
 #define GEOCENTRIC_SINGLE_QUOTED "'geocentric'"
@@ -126,9 +121,13 @@ constexpr const char *CS_TYPE_ORDINAL = cs::OrdinalCS::WKT2_TYPE;
 constexpr int DATABASE_LAYOUT_VERSION_MAJOR = 1;
 // If the code depends on the new additions, then DATABASE_LAYOUT_VERSION_MINOR
 // must be incremented.
-constexpr int DATABASE_LAYOUT_VERSION_MINOR = 3;
+constexpr int DATABASE_LAYOUT_VERSION_MINOR = 7;
 
 constexpr size_t N_MAX_PARAMS = 7;
+
+#ifdef EMBED_RESOURCE_FILES
+constexpr const char *EMBEDDED_PROJ_DB = "__embedded_proj_db__";
+#endif
 
 // ---------------------------------------------------------------------------
 
@@ -238,6 +237,7 @@ static void PROJ_SQLITE_intersects_bbox(sqlite3_context *pContext,
 // ---------------------------------------------------------------------------
 
 class SQLiteHandle {
+    std::string path_{};
     sqlite3 *sqlite_handle_ = nullptr;
     bool close_handle_ = true;
 
@@ -248,7 +248,7 @@ class SQLiteHandle {
     int nLayoutVersionMajor_ = 0;
     int nLayoutVersionMinor_ = 0;
 
-#ifdef ENABLE_CUSTOM_LOCKLESS_VFS
+#if defined(ENABLE_CUSTOM_LOCKLESS_VFS) || defined(EMBED_RESOURCE_FILES)
     std::unique_ptr<SQLite3VFS> vfs_{};
 #endif
 
@@ -269,6 +269,8 @@ class SQLiteHandle {
 
   public:
     ~SQLiteHandle();
+
+    const std::string &path() const { return path_; }
 
     sqlite3 *handle() { return sqlite_handle_; }
 
@@ -312,8 +314,9 @@ SQLiteHandle::~SQLiteHandle() {
 // ---------------------------------------------------------------------------
 
 std::shared_ptr<SQLiteHandle> SQLiteHandle::open(PJ_CONTEXT *ctx,
-                                                 const std::string &path) {
+                                                 const std::string &pathIn) {
 
+    std::string path(pathIn);
     const int sqlite3VersionNumber = sqlite3_libversion_number();
     // Minimum version for correct performance: 3.11
     if (sqlite3VersionNumber < 3 * 1000000 + 11 * 1000) {
@@ -323,9 +326,35 @@ std::shared_ptr<SQLiteHandle> SQLiteHandle::open(PJ_CONTEXT *ctx,
     }
 
     std::string vfsName;
-#ifdef ENABLE_CUSTOM_LOCKLESS_VFS
+#if defined(ENABLE_CUSTOM_LOCKLESS_VFS) || defined(EMBED_RESOURCE_FILES)
     std::unique_ptr<SQLite3VFS> vfs;
-    if (ctx->custom_sqlite3_vfs_name.empty()) {
+#endif
+
+#ifdef EMBED_RESOURCE_FILES
+    if (path == EMBEDDED_PROJ_DB && ctx->custom_sqlite3_vfs_name.empty()) {
+        unsigned int proj_db_size = 0;
+        const unsigned char *proj_db = pj_get_embedded_proj_db(&proj_db_size);
+
+        vfs = SQLite3VFS::createMem(proj_db, proj_db_size);
+        if (vfs == nullptr) {
+            throw FactoryException("Open of " + path + " failed");
+        }
+
+        std::ostringstream buffer;
+        buffer << "file:/proj.db?immutable=1&ptr=";
+        buffer << reinterpret_cast<uintptr_t>(proj_db);
+        buffer << "&sz=";
+        buffer << proj_db_size;
+        buffer << "&max=";
+        buffer << proj_db_size;
+        buffer << "&vfs=";
+        buffer << vfs->name();
+        path = buffer.str();
+    } else
+#endif
+
+#ifdef ENABLE_CUSTOM_LOCKLESS_VFS
+        if (ctx->custom_sqlite3_vfs_name.empty()) {
         vfs = SQLite3VFS::create(false, true, true);
         if (vfs == nullptr) {
             throw FactoryException("Open of " + path + " failed");
@@ -350,10 +379,11 @@ std::shared_ptr<SQLiteHandle> SQLiteHandle::open(PJ_CONTEXT *ctx,
     }
     auto handle =
         std::shared_ptr<SQLiteHandle>(new SQLiteHandle(sqlite_handle, true));
-#ifdef ENABLE_CUSTOM_LOCKLESS_VFS
+#if defined(ENABLE_CUSTOM_LOCKLESS_VFS) || defined(EMBED_RESOURCE_FILES)
     handle->vfs_ = std::move(vfs);
 #endif
     handle->initialize();
+    handle->path_ = path;
     handle->checkDatabaseLayout(path, path, std::string());
     return handle;
 }
@@ -392,7 +422,7 @@ SQLResultSet SQLiteHandle::run(sqlite3_stmt *stmt, const std::string &sql,
     for (const auto &param : parameters) {
         const auto &paramType = param.type();
         if (paramType == SQLValues::Type::STRING) {
-            auto strValue = param.stringValue();
+            const auto &strValue = param.stringValue();
             sqlite3_bind_text(stmt, nBindField, strValue.c_str(),
                               static_cast<int>(strValue.size()),
                               SQLITE_TRANSIENT);
@@ -454,8 +484,13 @@ SQLResultSet SQLiteHandle::run(sqlite3_stmt *stmt, const std::string &sql,
         } else if (ret == SQLITE_DONE) {
             break;
         } else {
-            throw FactoryException("SQLite error on " + sql + ": " +
-                                   sqlite3_errmsg(sqlite_handle_));
+            throw FactoryException(std::string("SQLite error [ ")
+                                       .append("code = ")
+                                       .append(internal::toString(ret))
+                                       .append(", msg = ")
+                                       .append(sqlite3_errmsg(sqlite_handle_))
+                                       .append(" ] on ")
+                                       .append(sql));
         }
     }
     return result;
@@ -471,8 +506,10 @@ SQLResultSet SQLiteHandle::run(const std::string &sql,
         if (sqlite3_prepare_v2(sqlite_handle_, sql.c_str(),
                                static_cast<int>(sql.size()), &stmt,
                                nullptr) != SQLITE_OK) {
-            throw FactoryException("SQLite error on " + sql + ": " +
-                                   sqlite3_errmsg(sqlite_handle_));
+            throw FactoryException(std::string("SQLite error [ ")
+                                       .append(sqlite3_errmsg(sqlite_handle_))
+                                       .append(" ] on ")
+                                       .append(sql));
         }
         auto ret = run(stmt, sql, parameters, useMaxFloatPrecision);
         sqlite3_finalize(stmt);
@@ -627,8 +664,20 @@ SQLiteHandleCache::getHandle(const std::string &path, PJ_CONTEXT *ctx) {
 #ifdef REOPEN_SQLITE_DB_AFTER_FORK
     if (firstTime_) {
         firstTime_ = false;
-        pthread_atfork(nullptr, nullptr,
-                       []() { SQLiteHandleCache::get().invalidateHandles(); });
+        pthread_atfork(
+            []() {
+                // This mutex needs to be acquired by 'invalidateHandles()'.
+                // The forking thread needs to own this mutex during the fork.
+                // Otherwise there's an opporunity for another thread to own
+                // the mutex during the fork, leaving the child process unable
+                // to acquire the mutex in invalidateHandles().
+                SQLiteHandleCache::get().sMutex_.lock();
+            },
+            []() { SQLiteHandleCache::get().sMutex_.unlock(); },
+            []() {
+                SQLiteHandleCache::get().sMutex_.unlock();
+                SQLiteHandleCache::get().invalidateHandles();
+            });
     }
 #endif
 
@@ -772,6 +821,8 @@ struct DatabaseContext::Private {
     // cppcheck-suppress functionStatic
     bool getGridInfoFromCache(const std::string &code, GridInfoCache &info);
     // cppcheck-suppress functionStatic
+    void evictGridInfoFromCache(const std::string &code);
+    // cppcheck-suppress functionStatic
     void cache(const std::string &code, const GridInfoCache &info);
 
     struct VersionedAuthName {
@@ -792,6 +843,7 @@ struct DatabaseContext::Private {
     std::string databasePath_{};
     std::vector<std::string> auxiliaryDatabasePaths_{};
     std::shared_ptr<SQLiteHandle> sqlite_handle_{};
+    unsigned int queryCounter_ = 0;
     std::map<std::string, sqlite3_stmt *> mapSqlToStatement_{};
     PJ_CONTEXT *pjCtxt_ = nullptr;
     int recLevel_ = 0;
@@ -822,6 +874,7 @@ struct DatabaseContext::Private {
 
     lru11::Cache<std::string, std::list<std::string>> cacheAliasNames_{
         CACHE_SIZE};
+    lru11::Cache<std::string, std::string> cacheNames_{CACHE_SIZE};
 
     std::vector<VersionedAuthName> cacheAuthNameWithVersion_{};
 
@@ -987,6 +1040,7 @@ void DatabaseContext::Private::clearCaches() {
     cacheGridInfo_.clear();
     cacheAllowedAuthorities_.clear();
     cacheAliasNames_.clear();
+    cacheNames_.clear();
 }
 
 // ---------------------------------------------------------------------------
@@ -1172,6 +1226,12 @@ bool DatabaseContext::Private::getGridInfoFromCache(const std::string &code,
 
 // ---------------------------------------------------------------------------
 
+void DatabaseContext::Private::evictGridInfoFromCache(const std::string &code) {
+    cacheGridInfo_.remove(code);
+}
+
+// ---------------------------------------------------------------------------
+
 void DatabaseContext::Private::cache(const std::string &code,
                                      const GridInfoCache &info) {
     cacheGridInfo_.insert(code, info);
@@ -1188,18 +1248,26 @@ void DatabaseContext::Private::open(const std::string &databasePath,
     setPjCtxt(ctx);
     std::string path(databasePath);
     if (path.empty()) {
+#ifndef USE_ONLY_EMBEDDED_RESOURCE_FILES
         path.resize(2048);
         const bool found =
-            pj_find_file(pjCtxt(), "proj.db", &path[0], path.size() - 1) != 0;
+            pj_find_file(pjCtxt(), "proj.db", &path[0], path.size() - 1,
+                         /* disable_network = */ true) != 0;
         path.resize(strlen(path.c_str()));
-        if (!found) {
+        if (!found)
+#endif
+        {
+#ifdef EMBED_RESOURCE_FILES
+            path = EMBEDDED_PROJ_DB;
+#else
             throw FactoryException("Cannot find proj.db");
+#endif
         }
     }
 
     sqlite_handle_ = SQLiteHandleCache::get().getHandle(path, ctx);
 
-    databasePath_ = path;
+    databasePath_ = sqlite_handle_->path();
 }
 
 // ---------------------------------------------------------------------------
@@ -1248,18 +1316,30 @@ void DatabaseContext::Private::attachExtraDatabases(
     auto l_handle = handle();
     assert(l_handle);
 
-    auto tables =
-        run("SELECT name FROM sqlite_master WHERE type IN ('table', 'view') "
-            "AND name NOT LIKE 'sqlite_stat%'");
-    std::map<std::string, std::vector<std::string>> tableStructure;
+    auto tables = run("SELECT name, type, sql FROM sqlite_master WHERE type IN "
+                      "('table', 'view') "
+                      "AND name NOT LIKE 'sqlite_stat%'");
+
+    struct TableStructure {
+        std::string name{};
+        bool isTable = false;
+        std::string sql{};
+        std::vector<std::string> columns{};
+    };
+    std::vector<TableStructure> tablesStructure;
     for (const auto &rowTable : tables) {
-        auto tableName = rowTable[0];
-        auto tableInfo = run("PRAGMA table_info(\"" +
-                             replaceAll(tableName, "\"", "\"\"") + "\")");
+        TableStructure tableStructure;
+        tableStructure.name = rowTable[0];
+        tableStructure.isTable = rowTable[1] == "table";
+        tableStructure.sql = rowTable[2];
+        auto tableInfo =
+            run("PRAGMA table_info(\"" +
+                replaceAll(tableStructure.name, "\"", "\"\"") + "\")");
         for (const auto &rowCol : tableInfo) {
             const auto &colName = rowCol[1];
-            tableStructure[tableName].push_back(colName);
+            tableStructure.columns.push_back(colName);
         }
+        tablesStructure.push_back(std::move(tableStructure));
     }
 
     const int nLayoutVersionMajor = l_handle->getLayoutVersionMajor();
@@ -1282,55 +1362,54 @@ void DatabaseContext::Private::attachExtraDatabases(
         sqlite_handle, true, nLayoutVersionMajor, nLayoutVersionMinor);
     l_handle = sqlite_handle_;
 
-    run("ATTACH DATABASE '" + replaceAll(databasePath_, "'", "''") +
-        "' AS db_0");
+    run("ATTACH DATABASE ? AS db_0", {databasePath_});
     detach_ = true;
     int count = 1;
     for (const auto &otherDbPath : auxiliaryDatabasePaths) {
         const auto attachedDbName("db_" + toString(static_cast<int>(count)));
-        std::string sql = "ATTACH DATABASE '";
-        sql += replaceAll(otherDbPath, "'", "''");
-        sql += "' AS ";
+        std::string sql = "ATTACH DATABASE ? AS ";
         sql += attachedDbName;
         count++;
-        run(sql);
+        run(sql, {otherDbPath});
 
         l_handle->checkDatabaseLayout(databasePath_, otherDbPath,
                                       attachedDbName + '.');
     }
 
-    for (const auto &pair : tableStructure) {
-        std::string sql("CREATE TEMP VIEW ");
-        sql += pair.first;
-        sql += " AS ";
-        for (size_t i = 0; i <= auxiliaryDatabasePaths.size(); ++i) {
-            std::string selectFromAux("SELECT ");
-            bool firstCol = true;
-            for (const auto &colName : pair.second) {
-                if (!firstCol) {
-                    selectFromAux += ", ";
-                }
-                firstCol = false;
-                selectFromAux += colName;
-            }
-            selectFromAux += " FROM db_";
-            selectFromAux += toString(static_cast<int>(i));
-            selectFromAux += ".";
-            selectFromAux += pair.first;
+    for (const auto &tableStructure : tablesStructure) {
+        if (tableStructure.isTable) {
+            std::string sql("CREATE TEMP VIEW ");
+            sql += tableStructure.name;
+            sql += " AS ";
+            const auto columns = join(tableStructure.columns, ", ");
+            for (size_t i = 0; i <= auxiliaryDatabasePaths.size(); ++i) {
+                std::string selectFromAux("SELECT ");
+                selectFromAux += columns;
+                selectFromAux += " FROM db_";
+                selectFromAux += toString(static_cast<int>(i));
+                selectFromAux += '.';
+                selectFromAux += tableStructure.name;
 
-            try {
-                // Check that the request will succeed. In case of 'sparse'
-                // databases...
-                run(selectFromAux + " LIMIT 0");
+                try {
+                    // Check that the request will succeed. In case of 'sparse'
+                    // databases...
+                    run(selectFromAux + " LIMIT 0");
 
-                if (i > 0) {
-                    sql += " UNION ALL ";
+                    if (i > 0) {
+                        if (tableStructure.name == "conversion_method")
+                            sql += " UNION ";
+                        else
+                            sql += " UNION ALL ";
+                    }
+                    sql += selectFromAux;
+                } catch (const std::exception &) {
                 }
-                sql += selectFromAux;
-            } catch (const std::exception &) {
             }
+            run(sql);
+        } else {
+            run(replaceAll(tableStructure.sql, "CREATE VIEW",
+                           "CREATE TEMP VIEW"));
         }
-        run(sql);
     }
 }
 
@@ -1352,12 +1431,17 @@ SQLResultSet DatabaseContext::Private::run(const std::string &sql,
         if (sqlite3_prepare_v2(l_handle->handle(), sql.c_str(),
                                static_cast<int>(sql.size()), &stmt,
                                nullptr) != SQLITE_OK) {
-            throw FactoryException("SQLite error on " + sql + ": " +
-                                   sqlite3_errmsg(l_handle->handle()));
+            throw FactoryException(
+                std::string("SQLite error [ ")
+                    .append(sqlite3_errmsg(l_handle->handle()))
+                    .append(" ] on ")
+                    .append(sql));
         }
         mapSqlToStatement_.insert(
             std::pair<std::string, sqlite3_stmt *>(sql, stmt));
     }
+
+    ++queryCounter_;
 
     return l_handle->run(stmt, sql, parameters, useMaxFloatPrecision);
 }
@@ -1451,7 +1535,7 @@ static void identifyFromNameOrCode(
 
     for (const auto &id : obj->identifiers()) {
         try {
-            const auto idAuthName = *(id->codeSpace());
+            const auto &idAuthName = *(id->codeSpace());
             if (std::find(allowedAuthoritiesTmp.begin(),
                           allowedAuthoritiesTmp.end(),
                           idAuthName) != allowedAuthoritiesTmp.end()) {
@@ -2131,6 +2215,15 @@ std::vector<std::string> DatabaseContext::Private::getInsertStatementsFor(
 
 // ---------------------------------------------------------------------------
 
+static std::string anchorEpochToStr(double val) {
+    constexpr int BUF_SIZE = 32;
+    char szBuffer[BUF_SIZE];
+    sqlite3_snprintf(BUF_SIZE, szBuffer, "%.3f", val);
+    return szBuffer;
+}
+
+// ---------------------------------------------------------------------------
+
 std::vector<std::string> DatabaseContext::Private::getInsertStatementsFor(
     const datum::GeodeticReferenceFrameNNPtr &datum,
     const std::string &authName, const std::string &code, bool numericCode,
@@ -2202,15 +2295,21 @@ std::vector<std::string> DatabaseContext::Private::getInsertStatementsFor(
         frameReferenceEpoch =
             toString(dynamicDatum->frameReferenceEpoch().value());
     }
-    const std::string anchor = *(datum->anchorDefinition());
+    const std::string anchor(*(datum->anchorDefinition()));
+    const util::optional<common::Measure> &anchorEpoch = datum->anchorEpoch();
     const auto sql = formatStatement(
         "INSERT INTO geodetic_datum VALUES("
-        "'%q','%q','%q','%q','%q','%q','%q','%q',%s,%s,NULL,%Q,0);",
+        "'%q','%q','%q','%q','%q','%q','%q','%q',%s,%s,NULL,%Q,%s,0);",
         authName.c_str(), code.c_str(), datum->nameStr().c_str(),
         "", // description
         ellipsoidAuthName.c_str(), ellipsoidCode.c_str(), pmAuthName.c_str(),
         pmCode.c_str(), publicationDate.c_str(), frameReferenceEpoch.c_str(),
-        anchor.empty() ? nullptr : anchor.c_str());
+        anchor.empty() ? nullptr : anchor.c_str(),
+        anchorEpoch.has_value()
+            ? anchorEpochToStr(
+                  anchorEpoch->convertToUnit(common::UnitOfMeasure::YEAR))
+                  .c_str()
+            : "NULL");
     appendSql(sqlStatements, sql);
 
     identifyOrInsertUsages(datum, "geodetic_datum", authName, code,
@@ -2291,28 +2390,41 @@ std::vector<std::string> DatabaseContext::Private::getInsertStatementsFor(
         assert(!pmIds.empty());
         const std::string &pmAuthName = *(pmIds.front()->codeSpace());
         const std::string &pmCode = pmIds.front()->code();
-        const auto anchor = *(firstDatum->anchorDefinition());
+        const std::string anchor(*(firstDatum->anchorDefinition()));
+        const util::optional<common::Measure> &anchorEpoch =
+            firstDatum->anchorEpoch();
         const auto sql = formatStatement(
             "INSERT INTO geodetic_datum VALUES("
-            "'%q','%q','%q','%q','%q','%q','%q','%q',NULL,NULL,%f,%Q,0);",
+            "'%q','%q','%q','%q','%q','%q','%q','%q',NULL,NULL,%f,%Q,%s,0);",
             authName.c_str(), code.c_str(), ensemble->nameStr().c_str(),
             "", // description
             ellipsoidAuthName.c_str(), ellipsoidCode.c_str(),
             pmAuthName.c_str(), pmCode.c_str(), accuracy,
-            anchor.empty() ? nullptr : anchor.c_str());
+            anchor.empty() ? nullptr : anchor.c_str(),
+            anchorEpoch.has_value()
+                ? anchorEpochToStr(
+                      anchorEpoch->convertToUnit(common::UnitOfMeasure::YEAR))
+                      .c_str()
+                : "NULL");
         appendSql(sqlStatements, sql);
     } else {
         const auto firstDatum =
             AuthorityFactory::create(self, membersId.front().first)
                 ->createVerticalDatum(membersId.front().second);
-        const auto anchor = *(firstDatum->anchorDefinition());
+        const std::string anchor(*(firstDatum->anchorDefinition()));
+        const util::optional<common::Measure> &anchorEpoch =
+            firstDatum->anchorEpoch();
         const auto sql = formatStatement(
             "INSERT INTO vertical_datum VALUES("
-            "'%q','%q','%q','%q',NULL,NULL,%f,%Q,"
-            "0);",
+            "'%q','%q','%q','%q',NULL,NULL,%f,%Q,%s,0);",
             authName.c_str(), code.c_str(), ensemble->nameStr().c_str(),
             "", // description
-            accuracy, anchor.empty() ? nullptr : anchor.c_str());
+            accuracy, anchor.empty() ? nullptr : anchor.c_str(),
+            anchorEpoch.has_value()
+                ? anchorEpochToStr(
+                      anchorEpoch->convertToUnit(common::UnitOfMeasure::YEAR))
+                      .c_str()
+                : "NULL");
         appendSql(sqlStatements, sql);
     }
     identifyOrInsertUsages(ensemble,
@@ -2392,12 +2504,12 @@ std::vector<std::string> DatabaseContext::Private::getInsertStatementsFor(
     identifyOrInsert(self, coordinateSystem, "GEODETIC_CRS", authName, code,
                      csAuthName, csCode, sqlStatements);
 
-    const char *type = GEOG_2D;
+    const char *type = CRS_SUBTYPE_GEOG_2D;
     if (coordinateSystem->axisList().size() == 3) {
         if (dynamic_cast<const crs::GeographicCRS *>(crs.get())) {
-            type = GEOG_3D;
+            type = CRS_SUBTYPE_GEOG_3D;
         } else {
-            type = GEOCENTRIC;
+            type = CRS_SUBTYPE_GEOCENTRIC;
         }
     }
 
@@ -2658,14 +2770,20 @@ std::vector<std::string> DatabaseContext::Private::getInsertStatementsFor(
         frameReferenceEpoch =
             toString(dynamicDatum->frameReferenceEpoch().value());
     }
-    const auto anchor = *(datum->anchorDefinition());
+    const std::string anchor(*(datum->anchorDefinition()));
+    const util::optional<common::Measure> &anchorEpoch = datum->anchorEpoch();
     const auto sql = formatStatement(
         "INSERT INTO vertical_datum VALUES("
-        "'%q','%q','%q','%q',%s,%s,NULL,%Q,0);",
+        "'%q','%q','%q','%q',%s,%s,NULL,%Q,%s,0);",
         authName.c_str(), code.c_str(), datum->nameStr().c_str(),
         "", // description
         publicationDate.c_str(), frameReferenceEpoch.c_str(),
-        anchor.empty() ? nullptr : anchor.c_str());
+        anchor.empty() ? nullptr : anchor.c_str(),
+        anchorEpoch.has_value()
+            ? anchorEpochToStr(
+                  anchorEpoch->convertToUnit(common::UnitOfMeasure::YEAR))
+                  .c_str()
+            : "NULL");
     appendSql(sqlStatements, sql);
 
     identifyOrInsertUsages(datum, "vertical_datum", authName, code,
@@ -2844,7 +2962,7 @@ DatabaseContext::~DatabaseContext() {
 
 // ---------------------------------------------------------------------------
 
-DatabaseContext::DatabaseContext() : d(internal::make_unique<Private>()) {}
+DatabaseContext::DatabaseContext() : d(std::make_unique<Private>()) {}
 
 // ---------------------------------------------------------------------------
 
@@ -2862,7 +2980,7 @@ DatabaseContext::DatabaseContext() : d(internal::make_unique<Private>()) {}
  * provided, they must be separated by the colon (:) character on Unix, and
  * on Windows, by the semi-colon (;) character.
  * @param ctx Context used for file search.
- * @throw FactoryException
+ * @throw FactoryException if the database cannot be opened.
  */
 DatabaseContextNNPtr
 DatabaseContext::create(const std::string &databasePath,
@@ -2885,7 +3003,7 @@ DatabaseContext::create(const std::string &databasePath,
     }
     if (!auxDbs.empty()) {
         dbCtxPrivate->attachExtraDatabases(auxDbs);
-        dbCtxPrivate->auxiliaryDatabasePaths_ = auxDbs;
+        dbCtxPrivate->auxiliaryDatabasePaths_ = std::move(auxDbs);
     }
     dbCtxPrivate->self_ = dbCtx.as_nullable();
     return dbCtx;
@@ -2947,7 +3065,7 @@ const char *DatabaseContext::getMetadata(const char *key) const {
  *
  * Only one session may be active at a time for a given database context.
  *
- * @throw FactoryException
+ * @throw FactoryException in case of error.
  * @since 8.1
  */
 void DatabaseContext::startInsertStatementsSession() {
@@ -3009,16 +3127,16 @@ void DatabaseContext::startInsertStatementsSession() {
  * @return the suggested code, that is guaranteed to not conflict with an
  * existing one.
  *
- * @throw FactoryException
+ * @throw FactoryException in case of error.
  * @since 8.1
  */
 std::string
 DatabaseContext::suggestsCodeFor(const common::IdentifiedObjectNNPtr &object,
                                  const std::string &authName,
                                  bool numericCode) {
-    const char *tableName = "";
+    const char *tableName = "prime_meridian";
     if (dynamic_cast<const datum::PrimeMeridian *>(object.get())) {
-        tableName = "prime_meridian";
+        // tableName = "prime_meridian";
     } else if (dynamic_cast<const datum::Ellipsoid *>(object.get())) {
         tableName = "ellipsoid";
     } else if (dynamic_cast<const datum::GeodeticReferenceFrame *>(
@@ -3095,7 +3213,7 @@ DatabaseContext::suggestsCodeFor(const common::IdentifiedObjectNNPtr &object,
  *                           added to it. Note that unit, coordinate
  *                           systems, projection methods and parameters will in
  *                           any case be allowed to refer to EPSG.
- * @throw FactoryException
+ * @throw FactoryException in case of error.
  * @since 8.1
  */
 std::vector<std::string> DatabaseContext::getInsertStatementsFor(
@@ -3252,6 +3370,31 @@ bool DatabaseContext::lookForGridAlternative(const std::string &officialName,
 
 // ---------------------------------------------------------------------------
 
+static std::string makeCachedGridKey(const std::string &projFilename,
+                                     bool networkEnabled,
+                                     bool considerKnownGridsAsAvailable) {
+    std::string key(projFilename);
+    key += networkEnabled ? "true" : "false";
+    key += considerKnownGridsAsAvailable ? "true" : "false";
+    return key;
+}
+
+// ---------------------------------------------------------------------------
+
+/** Invalidates information related to projFilename that might have been
+ * previously cached by lookForGridInfo().
+ *
+ * This is useful when downloading a new grid during a session.
+ */
+void DatabaseContext::invalidateGridInfo(const std::string &projFilename) {
+    d->evictGridInfoFromCache(makeCachedGridKey(projFilename, false, false));
+    d->evictGridInfoFromCache(makeCachedGridKey(projFilename, false, true));
+    d->evictGridInfoFromCache(makeCachedGridKey(projFilename, true, false));
+    d->evictGridInfoFromCache(makeCachedGridKey(projFilename, true, true));
+}
+
+// ---------------------------------------------------------------------------
+
 bool DatabaseContext::lookForGridInfo(
     const std::string &projFilename, bool considerKnownGridsAsAvailable,
     std::string &fullFilename, std::string &packageName, std::string &url,
@@ -3275,9 +3418,9 @@ bool DatabaseContext::lookForGridInfo(
         d->setPjCtxt(ctxt);
     }
 
-    std::string key(projFilename);
-    key += proj_context_is_network_enabled(ctxt) ? "true" : "false";
-    key += considerKnownGridsAsAvailable ? "true" : "false";
+    const std::string key(makeCachedGridKey(
+        projFilename, proj_context_is_network_enabled(ctxt) != false,
+        considerKnownGridsAsAvailable));
     if (d->getGridInfoFromCache(key, info)) {
         fullFilename = info.fullFilename;
         packageName = info.packageName;
@@ -3293,14 +3436,18 @@ bool DatabaseContext::lookForGridInfo(
     url.clear();
     openLicense = false;
     directDownload = false;
+    gridAvailable = false;
 
-    fullFilename.resize(2048);
-    int errno_before = proj_context_errno(ctxt);
-    gridAvailable = NS_PROJ::FileManager::open_resource_file(
-                        ctxt, projFilename.c_str(), &fullFilename[0],
-                        fullFilename.size() - 1) != nullptr;
-    proj_context_errno_set(ctxt, errno_before);
-    fullFilename.resize(strlen(fullFilename.c_str()));
+    const auto resolveFullFilename = [ctxt, &fullFilename, &projFilename]() {
+        fullFilename.resize(2048);
+        const int errno_before = proj_context_errno(ctxt);
+        bool lGridAvailable = NS_PROJ::FileManager::open_resource_file(
+                                  ctxt, projFilename.c_str(), &fullFilename[0],
+                                  fullFilename.size() - 1) != nullptr;
+        proj_context_errno_set(ctxt, errno_before);
+        fullFilename.resize(strlen(fullFilename.c_str()));
+        return lGridAvailable;
+    };
 
     auto res =
         d->run("SELECT "
@@ -3332,21 +3479,31 @@ bool DatabaseContext::lookForGridInfo(
             old_proj_grid_name == projFilename) {
             std::string fullFilenameNewName;
             fullFilenameNewName.resize(2048);
-            errno_before = proj_context_errno(ctxt);
+            const int errno_before = proj_context_errno(ctxt);
             bool gridAvailableWithNewName =
                 pj_find_file(ctxt, proj_grid_name.c_str(),
                              &fullFilenameNewName[0],
-                             fullFilenameNewName.size() - 1) != 0;
+                             fullFilenameNewName.size() - 1,
+                             /* disable_network = */ true) != 0;
             proj_context_errno_set(ctxt, errno_before);
             fullFilenameNewName.resize(strlen(fullFilenameNewName.c_str()));
             if (gridAvailableWithNewName) {
                 gridAvailable = true;
-                fullFilename = fullFilenameNewName;
+                fullFilename = std::move(fullFilenameNewName);
             }
         }
 
-        if (considerKnownGridsAsAvailable &&
+        if (!gridAvailable && considerKnownGridsAsAvailable &&
             (!packageName.empty() || (!url.empty() && openLicense))) {
+
+            // In considerKnownGridsAsAvailable mode, try to fetch the local
+            // file name if it exists, but do not attempt network access.
+            const auto network_was_enabled =
+                proj_context_is_network_enabled(ctxt);
+            proj_context_set_enable_network(ctxt, false);
+            (void)resolveFullFilename();
+            proj_context_set_enable_network(ctxt, network_was_enabled);
+
             gridAvailable = true;
         }
 
@@ -3360,7 +3517,13 @@ bool DatabaseContext::lookForGridInfo(
         }
         info.directDownload = directDownload;
         info.openLicense = openLicense;
+
+        if (!gridAvailable) {
+            gridAvailable = resolveFullFilename();
+        }
     } else {
+        gridAvailable = resolveFullFilename();
+
         if (starts_with(fullFilename, "http://") ||
             starts_with(fullFilename, "https://")) {
             url = fullFilename;
@@ -3374,6 +3537,15 @@ bool DatabaseContext::lookForGridInfo(
     info.found = ret;
     d->cache(key, info);
     return ret;
+}
+
+// ---------------------------------------------------------------------------
+
+/** Returns the number of queries to the database since the creation of this
+ * instance.
+ */
+unsigned int DatabaseContext::getQueryCounter() const {
+    return d->queryCounter_;
 }
 
 // ---------------------------------------------------------------------------
@@ -3440,7 +3612,7 @@ static std::string getUniqueEsriAlias(const std::list<std::string> &l) {
  *                  column of the "geodetic_crs" table.
  * @param source Source of the alias. Mandatory
  * @return Alias name (or empty if not found).
- * @throw FactoryException
+ * @throw FactoryException in case of error.
  */
 std::string
 DatabaseContext::getAliasFromOfficialName(const std::string &officialName,
@@ -3483,7 +3655,7 @@ DatabaseContext::getAliasFromOfficialName(const std::string &officialName,
                 std::list<std::string> l;
                 l.emplace_back(res2.front()[0]);
                 l.emplace_back((*(std::next(res2.begin())))[0]);
-                const auto uniqueEsriAlias = getUniqueEsriAlias(l);
+                std::string uniqueEsriAlias = getUniqueEsriAlias(l);
                 if (!uniqueEsriAlias.empty())
                     return uniqueEsriAlias;
             }
@@ -3554,7 +3726,9 @@ std::list<std::string> DatabaseContext::getAliases(
     std::string sql("SELECT alt_name FROM alias_name WHERE table_name = ? AND "
                     "auth_name = ? AND code = ?");
     ListOfParams params{genuineTableName, resolvedAuthName, resolvedCode};
-    if (!source.empty()) {
+    if (source == "not EPSG_OLD") {
+        sql += " AND source != 'EPSG_OLD'";
+    } else if (!source.empty()) {
         sql += " AND source = ?";
         params.emplace_back(source);
     }
@@ -3583,19 +3757,28 @@ std::list<std::string> DatabaseContext::getAliases(
  * @param authName Authority name of the object.
  * @param code Code of the object
  * @return Name (or empty)
- * @throw FactoryException
+ * @throw FactoryException in case of error.
  */
 std::string DatabaseContext::getName(const std::string &tableName,
                                      const std::string &authName,
                                      const std::string &code) const {
+    std::string res;
+    const auto key(tableName + authName + code);
+    if (d->cacheNames_.tryGet(key, res)) {
+        return res;
+    }
+
     std::string sql("SELECT name FROM \"");
     sql += replaceAll(tableName, "\"", "\"\"");
     sql += "\" WHERE auth_name = ? AND code = ?";
-    auto res = d->run(sql, {authName, code});
-    if (res.empty()) {
-        return std::string();
+    auto sqlRes = d->run(sql, {authName, code});
+    if (sqlRes.empty()) {
+        res.clear();
+    } else {
+        res = sqlRes.front()[0];
     }
-    return res.front()[0];
+    d->cacheNames_.insert(key, res);
+    return res;
 }
 
 // ---------------------------------------------------------------------------
@@ -3606,7 +3789,7 @@ std::string DatabaseContext::getName(const std::string &tableName,
  * @param authName Authority name of the object.
  * @param code Code of the object
  * @return Text definition (or empty)
- * @throw FactoryException
+ * @throw FactoryException in case of error.
  */
 std::string DatabaseContext::getTextDefinition(const std::string &tableName,
                                                const std::string &authName,
@@ -3626,7 +3809,7 @@ std::string DatabaseContext::getTextDefinition(const std::string &tableName,
 /** \brief Return the allowed authorities when researching transformations
  * between different authorities.
  *
- * @throw FactoryException
+ * @throw FactoryException in case of error.
  */
 std::vector<std::string> DatabaseContext::getAllowedAuthorities(
     const std::string &sourceAuthName,
@@ -3801,6 +3984,98 @@ DatabaseContext::getTransformationsForGridName(
     return res;
 }
 
+// ---------------------------------------------------------------------------
+
+// Fixes wrong towgs84 values returned by epsg.io when using a Coordinate Frame
+// transformation, where they neglect to reverse the sign of the rotation terms.
+// Cf https://github.com/OSGeo/PROJ/issues/4170 and
+// https://github.com/maptiler/epsg.io/issues/194
+// We do that only when we found a valid Coordinate Frame rotation that
+// has the same numeric values (and no corresponding Position Vector
+// transformation with same values, or Coordinate Frame transformation with
+// opposite sign for rotation terms, both are highly unlikely)
+bool DatabaseContext::toWGS84AutocorrectWrongValues(
+    double &tx, double &ty, double &tz, double &rx, double &ry, double &rz,
+    double &scale_difference) const {
+    if (rx == 0 && ry == 0 && rz == 0)
+        return false;
+    // 9606: Position Vector transformation (geog2D domain)
+    // 9607: Coordinate Frame rotation (geog2D domain)
+    std::string sql(
+        "SELECT DISTINCT method_code "
+        "FROM helmert_transformation_table WHERE "
+        "abs(tx - ?) <= 1e-8 * abs(tx) AND "
+        "abs(ty - ?) <= 1e-8 * abs(ty) AND "
+        "abs(tz - ?) <= 1e-8 * abs(tz) AND "
+        "abs(rx - ?) <= 1e-8 * abs(rx) AND "
+        "abs(ry - ?) <= 1e-8 * abs(ry) AND "
+        "abs(rz - ?) <= 1e-8 * abs(rz) AND "
+        "abs(scale_difference - ?) <= 1e-8 * abs(scale_difference) AND "
+        "method_auth_name = 'EPSG' AND "
+        "method_code IN (9606, 9607) AND "
+        "translation_uom_auth_name = 'EPSG' AND "
+        "translation_uom_code = 9001 AND " // metre
+        "rotation_uom_auth_name = 'EPSG' AND "
+        "rotation_uom_code = 9104 AND " // arc-second
+        "scale_difference_uom_auth_name = 'EPSG' AND "
+        "scale_difference_uom_code = 9202 AND " // parts per million
+        "deprecated = 0");
+    ListOfParams params;
+    params.emplace_back(tx);
+    params.emplace_back(ty);
+    params.emplace_back(tz);
+    params.emplace_back(rx);
+    params.emplace_back(ry);
+    params.emplace_back(rz);
+    params.emplace_back(scale_difference);
+    bool bFound9606 = false;
+    bool bFound9607 = false;
+    for (const auto &row : d->run(sql, params)) {
+        if (row[0] == "9606") {
+            bFound9606 = true;
+        } else if (row[0] == "9607") {
+            bFound9607 = true;
+        }
+    }
+    if (bFound9607 && !bFound9606) {
+        params.clear();
+        params.emplace_back(tx);
+        params.emplace_back(ty);
+        params.emplace_back(tz);
+        params.emplace_back(-rx);
+        params.emplace_back(-ry);
+        params.emplace_back(-rz);
+        params.emplace_back(scale_difference);
+        if (d->run(sql, params).empty()) {
+            if (d->pjCtxt()) {
+                pj_log(d->pjCtxt(), PJ_LOG_ERROR,
+                       "Auto-correcting wrong sign of rotation terms of "
+                       "TOWGS84 clause from %s,%s,%s,%s,%s,%s,%s to "
+                       "%s,%s,%s,%s,%s,%s,%s",
+                       internal::toString(tx).c_str(),
+                       internal::toString(ty).c_str(),
+                       internal::toString(tz).c_str(),
+                       internal::toString(rx).c_str(),
+                       internal::toString(ry).c_str(),
+                       internal::toString(rz).c_str(),
+                       internal::toString(scale_difference).c_str(),
+                       internal::toString(tx).c_str(),
+                       internal::toString(ty).c_str(),
+                       internal::toString(tz).c_str(),
+                       internal::toString(-rx).c_str(),
+                       internal::toString(-ry).c_str(),
+                       internal::toString(-rz).c_str(),
+                       internal::toString(scale_difference).c_str());
+            }
+            rx = -rx;
+            ry = -ry;
+            rz = -rz;
+            return true;
+        }
+    }
+    return false;
+}
+
 //! @endcond
 
 // ---------------------------------------------------------------------------
@@ -3867,6 +4142,11 @@ struct AuthorityFactory::Private {
     SQLResultSet createProjectedCRSBegin(const std::string &code);
     crs::ProjectedCRSNNPtr createProjectedCRSEnd(const std::string &code,
                                                  const SQLResultSet &res);
+
+    SQLResultSet createDerivedProjectedCRSBegin(const std::string &code);
+    crs::DerivedProjectedCRSNNPtr
+    createDerivedProjectedCRSEnd(const std::string &code,
+                                 const SQLResultSet &res);
 
   private:
     DatabaseContextNNPtr context_;
@@ -3953,7 +4233,8 @@ util::PropertyMap AuthorityFactory::Private::createPropertiesSearchUsages(
             "extent.north_lat, extent.west_lon, extent.east_lon, "
             "scope.scope, "
             "(CASE WHEN scope.scope LIKE '%large scale%' THEN 0 ELSE 1 END) "
-            "AS score "
+            "AS score, "
+            "usage.auth_name, usage.code "
             "FROM usage "
             "JOIN extent ON usage.extent_auth_name = extent.auth_name AND "
             "usage.extent_code = extent.code "
@@ -3965,9 +4246,27 @@ util::PropertyMap AuthorityFactory::Private::createPropertiesSearchUsages(
             "NOT (usage.extent_auth_name = 'PROJ' AND "
             "usage.extent_code = 'EXTENT_UNKNOWN') AND "
             "NOT (usage.scope_auth_name = 'PROJ' AND "
-            "usage.scope_code = 'SCOPE_UNKNOWN') "
-            "ORDER BY score, usage.auth_name, usage.code");
+            "usage.scope_code = 'SCOPE_UNKNOWN') ");
         res = run(sql, {table_name, authority(), code});
+
+        // This replaces use of "ORDER BY score, usage.auth_name, usage.code" in
+        // the above query because it is significantly slower with the use of an
+        // auxiliary database.
+        res.sort([](auto &left, auto &right) {
+            auto scoreLeft = std::stoi(left[6]);
+            auto scoreRight = std::stoi(right[6]);
+            if (scoreLeft == scoreRight) {
+                auto &authLeft = left[7];
+                auto &authRight = right[7];
+                if (authLeft == authRight) {
+                    auto &codeLeft = left[8];
+                    auto &codeRight = right[8];
+                    return codeLeft < codeRight;
+                }
+                return authLeft < authRight;
+            }
+            return scoreLeft < scoreRight;
+        });
     }
     std::vector<ObjectDomainNNPtr> usages;
     for (const auto &row : res) {
@@ -4033,7 +4332,7 @@ bool AuthorityFactory::Private::rejectOpDueToMissingGrid(
 
     struct DisableNetwork {
         const DatabaseContextNNPtr &m_dbContext;
-        bool m_old_network_enabled;
+        bool m_old_network_enabled = false;
 
         explicit DisableNetwork(const DatabaseContextNNPtr &l_context)
             : m_dbContext(l_context) {
@@ -4081,7 +4380,7 @@ AuthorityFactory::~AuthorityFactory() = default;
 
 AuthorityFactory::AuthorityFactory(const DatabaseContextNNPtr &context,
                                    const std::string &authorityName)
-    : d(internal::make_unique<Private>(context, authorityName)) {}
+    : d(std::make_unique<Private>(context, authorityName)) {}
 
 // ---------------------------------------------------------------------------
 
@@ -4150,8 +4449,8 @@ AuthorityFactory::CRSInfo::CRSInfo()
  *
  * @param code Object code allocated by authority. (e.g. "4326")
  * @return object.
- * @throw NoSuchAuthorityCodeException
- * @throw FactoryException
+ * @throw NoSuchAuthorityCodeException if there is no matching object.
+ * @throw FactoryException in case of other errors.
  */
 
 util::BaseObjectNNPtr
@@ -4210,6 +4509,10 @@ AuthorityFactory::createObject(const std::string &code) const {
         return util::nn_static_pointer_cast<util::BaseObject>(
             createVerticalDatum(code));
     }
+    if (table_name == "engineering_datum") {
+        return util::nn_static_pointer_cast<util::BaseObject>(
+            createEngineeringDatum(code));
+    }
     if (table_name == "geodetic_crs") {
         return util::nn_static_pointer_cast<util::BaseObject>(
             createGeodeticCRS(code));
@@ -4222,9 +4525,17 @@ AuthorityFactory::createObject(const std::string &code) const {
         return util::nn_static_pointer_cast<util::BaseObject>(
             createProjectedCRS(code));
     }
+    if (table_name == "derived_projected_crs") {
+        return util::nn_static_pointer_cast<util::BaseObject>(
+            createDerivedProjectedCRS(code));
+    }
     if (table_name == "compound_crs") {
         return util::nn_static_pointer_cast<util::BaseObject>(
             createCompoundCRS(code));
+    }
+    if (table_name == "engineering_crs") {
+        return util::nn_static_pointer_cast<util::BaseObject>(
+            createEngineeringCRS(code));
     }
     if (table_name == "conversion") {
         return util::nn_static_pointer_cast<util::BaseObject>(
@@ -4258,8 +4569,8 @@ static FactoryException buildFactoryException(const char *type,
  *
  * @param code Object code allocated by authority.
  * @return object.
- * @throw NoSuchAuthorityCodeException
- * @throw FactoryException
+ * @throw NoSuchAuthorityCodeException if there is no matching object.
+ * @throw FactoryException in case of other errors.
  */
 
 metadata::ExtentNNPtr
@@ -4313,8 +4624,8 @@ AuthorityFactory::createExtent(const std::string &code) const {
  *
  * @param code Object code allocated by authority.
  * @return object.
- * @throw NoSuchAuthorityCodeException
- * @throw FactoryException
+ * @throw NoSuchAuthorityCodeException if there is no matching object.
+ * @throw FactoryException in case of other errors.
  */
 
 UnitOfMeasureNNPtr
@@ -4415,8 +4726,8 @@ static double normalizeMeasure(const std::string &uom_code,
  *
  * @param code Object code allocated by authority.
  * @return object.
- * @throw NoSuchAuthorityCodeException
- * @throw FactoryException
+ * @throw NoSuchAuthorityCodeException if there is no matching object.
+ * @throw FactoryException in case of other errors.
  */
 
 datum::PrimeMeridianNNPtr
@@ -4467,27 +4778,37 @@ AuthorityFactory::createPrimeMeridian(const std::string &code) const {
  * @param semi_major_axis Approximate semi-major axis.
  * @param tolerance Relative error allowed.
  * @return celestial body name if one single match found.
- * @throw FactoryException
+ * @throw FactoryException in case of error.
  */
 
 std::string
 AuthorityFactory::identifyBodyFromSemiMajorAxis(double semi_major_axis,
                                                 double tolerance) const {
     auto res =
-        d->run("SELECT name, (ABS(semi_major_axis - ?) / semi_major_axis ) "
-               "AS rel_error FROM celestial_body WHERE rel_error <= ?",
+        d->run("SELECT DISTINCT name, "
+               "(ABS(semi_major_axis - ?) / semi_major_axis ) AS rel_error "
+               "FROM celestial_body WHERE rel_error <= ? "
+               "ORDER BY rel_error, name",
                {semi_major_axis, tolerance});
     if (res.empty()) {
         throw FactoryException("no match found");
     }
+    constexpr int IDX_NAME = 0;
     if (res.size() > 1) {
+        constexpr int IDX_REL_ERROR = 1;
+        // If the first object has a relative error of 0 and the next one
+        // a non-zero error, then use the first one.
+        if (res.front()[IDX_REL_ERROR] == "0" &&
+            (*std::next(res.begin()))[IDX_REL_ERROR] != "0") {
+            return res.front()[IDX_NAME];
+        }
         for (const auto &row : res) {
-            if (row[0] != res.front()[0]) {
+            if (row[IDX_NAME] != res.front()[IDX_NAME]) {
                 throw FactoryException("more than one match found");
             }
         }
     }
-    return res.front()[0];
+    return res.front()[IDX_NAME];
 }
 
 // ---------------------------------------------------------------------------
@@ -4496,8 +4817,8 @@ AuthorityFactory::identifyBodyFromSemiMajorAxis(double semi_major_axis,
  *
  * @param code Object code allocated by authority.
  * @return object.
- * @throw NoSuchAuthorityCodeException
- * @throw FactoryException
+ * @throw NoSuchAuthorityCodeException if there is no matching object.
+ * @throw FactoryException in case of other errors.
  */
 
 datum::EllipsoidNNPtr
@@ -4565,8 +4886,8 @@ AuthorityFactory::createEllipsoid(const std::string &code) const {
  *
  * @param code Object code allocated by authority.
  * @return object.
- * @throw NoSuchAuthorityCodeException
- * @throw FactoryException
+ * @throw NoSuchAuthorityCodeException if there is no matching object.
+ * @throw FactoryException in case of other errors.
  */
 
 datum::GeodeticReferenceFrameNNPtr
@@ -4602,7 +4923,8 @@ void AuthorityFactory::createGeodeticDatumOrEnsemble(
         "SELECT name, ellipsoid_auth_name, ellipsoid_code, "
         "prime_meridian_auth_name, prime_meridian_code, "
         "publication_date, frame_reference_epoch, "
-        "ensemble_accuracy, anchor, deprecated FROM geodetic_datum "
+        "ensemble_accuracy, anchor, anchor_epoch, deprecated "
+        "FROM geodetic_datum "
         "WHERE "
         "auth_name = ? AND code = ?",
         code);
@@ -4621,16 +4943,16 @@ void AuthorityFactory::createGeodeticDatumOrEnsemble(
         const auto &frame_reference_epoch = row[6];
         const auto &ensemble_accuracy = row[7];
         const auto &anchor = row[8];
-        const bool deprecated = row[9] == "1";
+        const auto &anchor_epoch = row[9];
+        const bool deprecated = row[10] == "1";
 
-        std::string massagedName = name;
+        std::string massagedName;
         if (turnEnsembleAsDatum) {
-            if (name == "World Geodetic System 1984 ensemble") {
-                massagedName = "World Geodetic System 1984";
-            } else if (name ==
-                       "European Terrestrial Reference System 1989 ensemble") {
-                massagedName = "European Terrestrial Reference System 1989";
-            }
+            massagedName =
+                datum::DatumEnsemble::ensembleNameToNonEnsembleName(name);
+        }
+        if (massagedName.empty()) {
+            massagedName = name;
         }
         auto props = d->createPropertiesSearchUsages("geodetic_datum", code,
                                                      massagedName, deprecated);
@@ -4665,6 +4987,9 @@ void AuthorityFactory::createGeodeticDatumOrEnsemble(
             if (!publication_date.empty()) {
                 props.set("PUBLICATION_DATE", publication_date);
             }
+            if (!anchor_epoch.empty()) {
+                props.set("ANCHOR_EPOCH", anchor_epoch);
+            }
             auto datum = frame_reference_epoch.empty()
                              ? datum::GeodeticReferenceFrame::create(
                                    props, ellipsoid, anchorOpt, pm)
@@ -4691,8 +5016,8 @@ void AuthorityFactory::createGeodeticDatumOrEnsemble(
  *
  * @param code Object code allocated by authority.
  * @return object.
- * @throw NoSuchAuthorityCodeException
- * @throw FactoryException
+ * @throw NoSuchAuthorityCodeException if there is no matching object.
+ * @throw FactoryException in case of other errors.
  */
 
 datum::VerticalReferenceFrameNNPtr
@@ -4713,7 +5038,7 @@ void AuthorityFactory::createVerticalDatumOrEnsemble(
     auto res =
         d->runWithCodeParam("SELECT name, publication_date, "
                             "frame_reference_epoch, ensemble_accuracy, anchor, "
-                            "deprecated FROM "
+                            "anchor_epoch, deprecated FROM "
                             "vertical_datum WHERE auth_name = ? AND code = ?",
                             code);
     if (res.empty()) {
@@ -4727,7 +5052,8 @@ void AuthorityFactory::createVerticalDatumOrEnsemble(
         const auto &frame_reference_epoch = row[2];
         const auto &ensemble_accuracy = row[3];
         const auto &anchor = row[4];
-        const bool deprecated = row[5] == "1";
+        const auto &anchor_epoch = row[5];
+        const bool deprecated = row[6] == "1";
         auto props = d->createPropertiesSearchUsages("vertical_datum", code,
                                                      name, deprecated);
         if (!turnEnsembleAsDatum && !ensemble_accuracy.empty()) {
@@ -4750,6 +5076,9 @@ void AuthorityFactory::createVerticalDatumOrEnsemble(
         } else {
             if (!publication_date.empty()) {
                 props.set("PUBLICATION_DATE", publication_date);
+            }
+            if (!anchor_epoch.empty()) {
+                props.set("ANCHOR_EPOCH", anchor_epoch);
             }
             if (d->authority() == "ESRI" &&
                 starts_with(code, "from_geogdatum_")) {
@@ -4781,13 +5110,61 @@ void AuthorityFactory::createVerticalDatumOrEnsemble(
 
 // ---------------------------------------------------------------------------
 
+/** \brief Returns a datum::EngineeringDatum from the specified code.
+ *
+ * @param code Object code allocated by authority.
+ * @return object.
+ * @throw NoSuchAuthorityCodeException if there is no matching object.
+ * @throw FactoryException in case of other errors.
+ * @since 9.6
+ */
+
+datum::EngineeringDatumNNPtr
+AuthorityFactory::createEngineeringDatum(const std::string &code) const {
+    auto res = d->runWithCodeParam(
+        "SELECT name, publication_date, "
+        "anchor, anchor_epoch, deprecated FROM "
+        "engineering_datum WHERE auth_name = ? AND code = ?",
+        code);
+    if (res.empty()) {
+        throw NoSuchAuthorityCodeException("engineering datum not found",
+                                           d->authority(), code);
+    }
+    try {
+        const auto &row = res.front();
+        const auto &name = row[0];
+        const auto &publication_date = row[1];
+        const auto &anchor = row[2];
+        const auto &anchor_epoch = row[3];
+        const bool deprecated = row[4] == "1";
+        auto props = d->createPropertiesSearchUsages("engineering_datum", code,
+                                                     name, deprecated);
+
+        if (!publication_date.empty()) {
+            props.set("PUBLICATION_DATE", publication_date);
+        }
+        if (!anchor_epoch.empty()) {
+            props.set("ANCHOR_EPOCH", anchor_epoch);
+        }
+        auto anchorOpt = util::optional<std::string>();
+        if (!anchor.empty())
+            anchorOpt = anchor;
+        return datum::EngineeringDatum::create(props, anchorOpt);
+    } catch (const std::exception &ex) {
+        throw buildFactoryException("engineering datum", d->authority(), code,
+                                    ex);
+    }
+}
+
+// ---------------------------------------------------------------------------
+
 /** \brief Returns a datum::DatumEnsemble from the specified code.
  *
  * @param code Object code allocated by authority.
  * @param type "geodetic_datum", "vertical_datum" or empty string if unknown
  * @return object.
- * @throw NoSuchAuthorityCodeException
- * @throw FactoryException
+ * @throw NoSuchAuthorityCodeException if there is no matching object.
+ * @throw FactoryException in case of other errors.
  */
 
 datum::DatumEnsembleNNPtr
@@ -4841,25 +5218,32 @@ AuthorityFactory::createDatumEnsemble(const std::string &code,
  *
  * @param code Object code allocated by authority.
  * @return object.
- * @throw NoSuchAuthorityCodeException
- * @throw FactoryException
+ * @throw NoSuchAuthorityCodeException if there is no matching object.
+ * @throw FactoryException in case of other errors.
  */
 
 datum::DatumNNPtr AuthorityFactory::createDatum(const std::string &code) const {
-    auto res =
-        d->run("SELECT 'geodetic_datum' FROM geodetic_datum WHERE "
-               "auth_name = ? AND code = ? "
-               "UNION ALL SELECT 'vertical_datum' FROM vertical_datum WHERE "
-               "auth_name = ? AND code = ?",
-               {d->authority(), code, d->authority(), code});
+    auto res = d->run(
+        "SELECT 'geodetic_datum' FROM geodetic_datum WHERE "
+        "auth_name = ? AND code = ? "
+        "UNION ALL SELECT 'vertical_datum' FROM vertical_datum WHERE "
+        "auth_name = ? AND code = ? "
+        "UNION ALL SELECT 'engineering_datum' FROM engineering_datum "
+        "WHERE "
+        "auth_name = ? AND code = ?",
+        {d->authority(), code, d->authority(), code, d->authority(), code});
     if (res.empty()) {
         throw NoSuchAuthorityCodeException("datum not found", d->authority(),
                                            code);
     }
-    if (res.front()[0] == "geodetic_datum") {
+    const auto &type = res.front()[0];
+    if (type == "geodetic_datum") {
         return createGeodeticDatum(code);
     }
-    return createVerticalDatum(code);
+    if (type == "vertical_datum") {
+        return createVerticalDatum(code);
+    }
+    return createEngineeringDatum(code);
 }
 
 // ---------------------------------------------------------------------------
@@ -4889,8 +5273,8 @@ static cs::MeridianPtr createMeridian(const std::string &val) {
  *
  * @param code Object code allocated by authority.
  * @return object.
- * @throw NoSuchAuthorityCodeException
- * @throw FactoryException
+ * @throw NoSuchAuthorityCodeException if there is no matching object.
+ * @throw FactoryException in case of other errors.
  */
 
 cs::CoordinateSystemNNPtr
@@ -5024,8 +5408,8 @@ AuthorityFactory::createCoordinateSystem(const std::string &code) const {
  *
  * @param code Object code allocated by authority.
  * @return object.
- * @throw NoSuchAuthorityCodeException
- * @throw FactoryException
+ * @throw NoSuchAuthorityCodeException if there is no matching object.
+ * @throw FactoryException in case of other errors.
  */
 
 crs::GeodeticCRSNNPtr
@@ -5039,8 +5423,8 @@ AuthorityFactory::createGeodeticCRS(const std::string &code) const {
  *
  * @param code Object code allocated by authority.
  * @return object.
- * @throw NoSuchAuthorityCodeException
- * @throw FactoryException
+ * @throw NoSuchAuthorityCodeException if there is no matching object.
+ * @throw FactoryException in case of other errors.
  */
 
 crs::GeographicCRSNNPtr
@@ -5158,7 +5542,8 @@ AuthorityFactory::createGeodeticCRS(const std::string &code,
 
         auto ellipsoidalCS =
             util::nn_dynamic_pointer_cast<cs::EllipsoidalCS>(cs);
-        if ((type == GEOG_2D || type == GEOG_3D) && ellipsoidalCS) {
+        if ((type == CRS_SUBTYPE_GEOG_2D || type == CRS_SUBTYPE_GEOG_3D) &&
+            ellipsoidalCS) {
             auto crsRet = crs::GeographicCRS::create(
                 props, datum, datumEnsemble, NN_NO_CHECK(ellipsoidalCS));
             d->context()->d->cache(cacheKey, crsRet);
@@ -5166,7 +5551,7 @@ AuthorityFactory::createGeodeticCRS(const std::string &code,
         }
 
         auto geocentricCS = util::nn_dynamic_pointer_cast<cs::CartesianCS>(cs);
-        if (type == GEOCENTRIC && geocentricCS) {
+        if (type == CRS_SUBTYPE_GEOCENTRIC && geocentricCS) {
             auto crsRet = crs::GeodeticCRS::create(props, datum, datumEnsemble,
                                                    NN_NO_CHECK(geocentricCS));
             d->context()->d->cache(cacheKey, crsRet);
@@ -5174,7 +5559,7 @@ AuthorityFactory::createGeodeticCRS(const std::string &code,
         }
 
         auto sphericalCS = util::nn_dynamic_pointer_cast<cs::SphericalCS>(cs);
-        if (type == OTHER && sphericalCS) {
+        if (type == CRS_SUBTYPE_OTHER && sphericalCS) {
             auto crsRet = crs::GeodeticCRS::create(props, datum, datumEnsemble,
                                                    NN_NO_CHECK(sphericalCS));
             d->context()->d->cache(cacheKey, crsRet);
@@ -5194,8 +5579,8 @@ AuthorityFactory::createGeodeticCRS(const std::string &code,
  *
  * @param code Object code allocated by authority.
  * @return object.
- * @throw NoSuchAuthorityCodeException
- * @throw FactoryException
+ * @throw NoSuchAuthorityCodeException if there is no matching object.
+ * @throw FactoryException in case of other errors.
  */
 
 crs::VerticalCRSNNPtr
@@ -5255,12 +5640,67 @@ AuthorityFactory::createVerticalCRS(const std::string &code) const {
 
 // ---------------------------------------------------------------------------
 
+/** \brief Returns a crs::EngineeringCRS from the specified code.
+ *
+ * @param code Object code allocated by authority.
+ * @return object.
+ * @throw NoSuchAuthorityCodeException if there is no matching object.
+ * @throw FactoryException in case of other errors.
+ * @since 9.6
+ */
+
+crs::EngineeringCRSNNPtr
+AuthorityFactory::createEngineeringCRS(const std::string &code) const {
+    const auto cacheKey(d->authority() + code);
+    auto crs = d->context()->d->getCRSFromCache(cacheKey);
+    if (crs) {
+        auto engCRS = std::dynamic_pointer_cast<crs::EngineeringCRS>(crs);
+        if (engCRS) {
+            return NN_NO_CHECK(engCRS);
+        }
+        throw NoSuchAuthorityCodeException("engineeringCRS not found",
+                                           d->authority(), code);
+    }
+    auto res = d->runWithCodeParam(
+        "SELECT name, coordinate_system_auth_name, "
+        "coordinate_system_code, datum_auth_name, datum_code, "
+        "deprecated FROM "
+        "engineering_crs WHERE auth_name = ? AND code = ?",
+        code);
+    if (res.empty()) {
+        throw NoSuchAuthorityCodeException("engineeringCRS not found",
+                                           d->authority(), code);
+    }
+    try {
+        const auto &row = res.front();
+        const auto &name = row[0];
+        const auto &cs_auth_name = row[1];
+        const auto &cs_code = row[2];
+        const auto &datum_auth_name = row[3];
+        const auto &datum_code = row[4];
+        const bool deprecated = row[5] == "1";
+        auto cs =
+            d->createFactory(cs_auth_name)->createCoordinateSystem(cs_code);
+        auto datum = d->createFactory(datum_auth_name)
+                         ->createEngineeringDatum(datum_code);
+        auto props = d->createPropertiesSearchUsages("engineering_crs", code,
+                                                     name, deprecated);
+        auto crsRet = crs::EngineeringCRS::create(props, datum, cs);
+        d->context()->d->cache(cacheKey, crsRet);
+        return crsRet;
+    } catch (const std::exception &ex) {
+        throw buildFactoryException("engineeringCRS", d->authority(), code, ex);
+    }
+}
+
+// ---------------------------------------------------------------------------
+
 /** \brief Returns a operation::Conversion from the specified code.
  *
  * @param code Object code allocated by authority.
  * @return object.
- * @throw NoSuchAuthorityCodeException
- * @throw FactoryException
+ * @throw NoSuchAuthorityCodeException if there is no matching object.
+ * @throw FactoryException in case of other errors.
  */
 
 operation::ConversionNNPtr
@@ -5375,8 +5815,8 @@ AuthorityFactory::createConversion(const std::string &code) const {
  *
  * @param code Object code allocated by authority.
  * @return object.
- * @throw NoSuchAuthorityCodeException
- * @throw FactoryException
+ * @throw NoSuchAuthorityCodeException if there is no matching object.
+ * @throw FactoryException in case of other errors.
  */
 
 crs::ProjectedCRSNNPtr
@@ -5445,14 +5885,14 @@ AuthorityFactory::Private::createProjectedCRSEnd(const std::string &code,
                 pj_add_type_crs_if_needed(text_definition), context());
             auto projCRS = dynamic_cast<const crs::ProjectedCRS *>(obj.get());
             if (projCRS) {
-                const auto conv = projCRS->derivingConversion();
+                auto conv = projCRS->derivingConversion();
                 auto newConv =
                     (conv->nameStr() == "unnamed")
                         ? operation::Conversion::create(
                               util::PropertyMap().set(
                                   common::IdentifiedObject::NAME_KEY, name),
                               conv->method(), conv->parameterValues())
-                        : conv;
+                        : std::move(conv);
                 auto crsRet = crs::ProjectedCRS::create(
                     props, projCRS->baseCRS(), newConv,
                     projCRS->coordinateSystem());
@@ -5510,12 +5950,131 @@ AuthorityFactory::Private::createProjectedCRSEnd(const std::string &code,
 
 // ---------------------------------------------------------------------------
 
+/** \brief Returns a crs::DerivedProjectedCRS from the specified code.
+ *
+ * @param code Object code allocated by authority.
+ * @return object.
+ * @throw NoSuchAuthorityCodeException if there is no matching object.
+ * @throw FactoryException in case of other errors.
+ */
+crs::DerivedProjectedCRSNNPtr
+AuthorityFactory::createDerivedProjectedCRS(const std::string &code) const {
+    const auto cacheKey(d->authority() + code);
+    auto crs = d->context()->d->getCRSFromCache(cacheKey);
+    if (crs) {
+        auto derivedProjCRS =
+            std::dynamic_pointer_cast<crs::DerivedProjectedCRS>(crs);
+        if (derivedProjCRS) {
+            return NN_NO_CHECK(derivedProjCRS);
+        }
+        throw NoSuchAuthorityCodeException("derivedProjectedCRS not found",
+                                           d->authority(), code);
+    }
+    return d->createDerivedProjectedCRSEnd(
+        code, d->createDerivedProjectedCRSBegin(code));
+}
+
+// ---------------------------------------------------------------------------
+//! @cond Doxygen_Suppress
+
+/** Returns the result of the SQL query needed by createDerivedProjectedCRSEnd
+ */
+SQLResultSet AuthorityFactory::Private::createDerivedProjectedCRSBegin(
+    const std::string &code) {
+    return runWithCodeParam(
+        "SELECT name, coordinate_system_auth_name, "
+        "coordinate_system_code, base_crs_auth_name, base_crs_code, "
+        "conversion_auth_name, conversion_code, "
+        "text_definition, "
+        "deprecated FROM derived_projected_crs WHERE auth_name = ? AND code = "
+        "?",
+        code);
+}
+
+// ---------------------------------------------------------------------------
+
+/** Build a DerivedProjectedCRS from the result of
+ * createDerivedProjectedCRSBegin() */
+crs::DerivedProjectedCRSNNPtr
+AuthorityFactory::Private::createDerivedProjectedCRSEnd(
+    const std::string &code, const SQLResultSet &res) {
+    const auto cacheKey(authority() + code);
+    if (res.empty()) {
+        throw NoSuchAuthorityCodeException("derivedProjectedCRS not found",
+                                           authority(), code);
+    }
+    try {
+        const auto &row = res.front();
+        const auto &name = row[0];
+        const auto &cs_auth_name = row[1];
+        const auto &cs_code = row[2];
+        const auto &base_crs_auth_name = row[3];
+        const auto &base_crs_code = row[4];
+        const auto &conversion_auth_name = row[5];
+        const auto &conversion_code = row[6];
+        const auto &text_definition = row[7];
+        const bool deprecated = row[8] == "1";
+
+        auto props = createPropertiesSearchUsages("derived_projected_crs", code,
+                                                  name, deprecated);
+
+        if (!text_definition.empty()) {
+            DatabaseContext::Private::RecursionDetector detector(context());
+            auto obj = createFromUserInput(
+                pj_add_type_crs_if_needed(text_definition), context());
+            auto derivedProjCRS =
+                dynamic_cast<const crs::DerivedProjectedCRS *>(obj.get());
+            if (derivedProjCRS) {
+                auto conv = derivedProjCRS->derivingConversion();
+                auto newConv =
+                    (conv->nameStr() == "unnamed")
+                        ? operation::Conversion::create(
+                              util::PropertyMap().set(
+                                  common::IdentifiedObject::NAME_KEY, name),
+                              conv->method(), conv->parameterValues())
+                        : std::move(conv);
+                auto crsRet = crs::DerivedProjectedCRS::create(
+                    props, derivedProjCRS->baseCRS(), newConv,
+                    derivedProjCRS->coordinateSystem());
+                context()->d->cache(cacheKey, crsRet);
+                return crsRet;
+            }
+            throw FactoryException(
+                "text_definition does not define a DerivedProjectedCRS");
+        }
+
+        auto cs = createFactory(cs_auth_name)->createCoordinateSystem(cs_code);
+
+        auto baseCRS = createFactory(base_crs_auth_name)
+                           ->createProjectedCRS(base_crs_code);
+
+        auto conv = createFactory(conversion_auth_name)
+                        ->createConversion(conversion_code);
+        if (conv->nameStr() == "unnamed") {
+            conv = conv->shallowClone();
+            conv->setProperties(util::PropertyMap().set(
+                common::IdentifiedObject::NAME_KEY, name));
+        }
+
+        auto crsRet =
+            crs::DerivedProjectedCRS::create(props, baseCRS, conv, cs);
+        context()->d->cache(cacheKey, crsRet);
+        return crsRet;
+    } catch (const std::exception &ex) {
+        throw buildFactoryException("derivedProjectedCRS", authority(), code,
+                                    ex);
+    }
+}
+//! @endcond
+
+// ---------------------------------------------------------------------------
+
 /** \brief Returns a crs::CompoundCRS from the specified code.
  *
  * @param code Object code allocated by authority.
  * @return object.
- * @throw NoSuchAuthorityCodeException
- * @throw FactoryException
+ * @throw NoSuchAuthorityCodeException if there is no matching object.
+ * @throw FactoryException in case of other errors.
  */
 
 crs::CompoundCRSNNPtr
@@ -5548,7 +6107,8 @@ AuthorityFactory::createCompoundCRS(const std::string &code) const {
         auto props = d->createPropertiesSearchUsages("compound_crs", code, name,
                                                      deprecated);
         return crs::CompoundCRS::create(
-            props, std::vector<crs::CRSNNPtr>{horizCRS, vertCRS});
+            props, std::vector<crs::CRSNNPtr>{std::move(horizCRS),
+                                              std::move(vertCRS)});
     } catch (const std::exception &ex) {
         throw buildFactoryException("compoundCRS", d->authority(), code, ex);
     }
@@ -5560,8 +6120,8 @@ AuthorityFactory::createCompoundCRS(const std::string &code) const {
  *
  * @param code Object code allocated by authority.
  * @return object.
- * @throw NoSuchAuthorityCodeException
- * @throw FactoryException
+ * @throw NoSuchAuthorityCodeException if there is no matching object.
+ * @throw FactoryException in case of other errors.
  */
 
 crs::CRSNNPtr AuthorityFactory::createCoordinateReferenceSystem(
@@ -5659,17 +6219,23 @@ AuthorityFactory::createCoordinateReferenceSystem(const std::string &code,
                                            code);
     }
     const auto &type = res.front()[0];
-    if (type == GEOG_2D || type == GEOG_3D || type == GEOCENTRIC ||
-        type == OTHER) {
+    if (type == CRS_SUBTYPE_GEOG_2D || type == CRS_SUBTYPE_GEOG_3D ||
+        type == CRS_SUBTYPE_GEOCENTRIC || type == CRS_SUBTYPE_OTHER) {
         return createGeodeticCRS(code);
     }
-    if (type == VERTICAL) {
+    if (type == CRS_SUBTYPE_VERTICAL) {
         return createVerticalCRS(code);
     }
-    if (type == PROJECTED) {
+    if (type == CRS_SUBTYPE_PROJECTED) {
         return createProjectedCRS(code);
     }
-    if (allowCompound && type == COMPOUND) {
+    if (type == CRS_SUBTYPE_DERIVED_PROJECTED) {
+        return createDerivedProjectedCRS(code);
+    }
+    if (type == CRS_SUBTYPE_ENGINEERING) {
+        return createEngineeringCRS(code);
+    }
+    if (allowCompound && type == CRS_SUBTYPE_COMPOUND) {
         return createCompoundCRS(code);
     }
     throw FactoryException("unhandled CRS type: " + type);
@@ -5683,8 +6249,8 @@ AuthorityFactory::createCoordinateReferenceSystem(const std::string &code,
  *
  * @param code Object code allocated by authority.
  * @return object.
- * @throw NoSuchAuthorityCodeException
- * @throw FactoryException
+ * @throw NoSuchAuthorityCodeException if there is no matching object.
+ * @throw FactoryException in case of other errors.
  * @since 9.4
  */
 
@@ -5775,8 +6341,8 @@ static operation::ParameterValueNNPtr createAngle(const std::string &value,
  * @param usePROJAlternativeGridNames Whether PROJ alternative grid names
  * should be substituted to the official grid names.
  * @return object.
- * @throw NoSuchAuthorityCodeException
- * @throw FactoryException
+ * @throw NoSuchAuthorityCodeException if there is no matching object.
+ * @throw FactoryException in case of other errors.
  */
 
 operation::CoordinateOperationNNPtr AuthorityFactory::createCoordinateOperation(
@@ -6034,7 +6600,7 @@ operation::CoordinateOperationNNPtr AuthorityFactory::createCoordinateOperation(
                     .set(common::IdentifiedObject::NAME_KEY, method_name);
 
             std::vector<metadata::PositionalAccuracyNNPtr> accuracies;
-            if (!accuracy.empty()) {
+            if (!accuracy.empty() && accuracy != "999.0") {
                 accuracies.emplace_back(
                     metadata::PositionalAccuracy::create(accuracy));
             }
@@ -6058,6 +6624,10 @@ operation::CoordinateOperationNNPtr AuthorityFactory::createCoordinateOperation(
             "grid_name, "
             "grid2_param_auth_name, grid2_param_code, grid2_param_name, "
             "grid2_name, "
+            "param1_auth_name, param1_code, param1_name, param1_value, "
+            "param1_uom_auth_name, param1_uom_code, "
+            "param2_auth_name, param2_code, param2_name, param2_value, "
+            "param2_uom_auth_name, param2_uom_code, "
             "interpolation_crs_auth_name, interpolation_crs_code, "
             "operation_version, deprecated FROM "
             "grid_transformation WHERE auth_name = ? AND code = ?",
@@ -6088,27 +6658,6 @@ operation::CoordinateOperationNNPtr AuthorityFactory::createCoordinateOperation(
             const auto &grid2_param_code = row[idx++];
             const auto &grid2_param_name = row[idx++];
             const auto &grid2_name = row[idx++];
-            const auto &interpolation_crs_auth_name = row[idx++];
-            const auto &interpolation_crs_code = row[idx++];
-            const auto &operation_version = row[idx++];
-            const auto &deprecated_str = row[idx++];
-            const bool deprecated = deprecated_str == "1";
-            assert(idx == row.size());
-
-            auto sourceCRS =
-                d->createFactory(source_crs_auth_name)
-                    ->createCoordinateReferenceSystem(source_crs_code);
-            auto targetCRS =
-                d->createFactory(target_crs_auth_name)
-                    ->createCoordinateReferenceSystem(target_crs_code);
-            auto interpolationCRS =
-                interpolation_crs_auth_name.empty()
-                    ? nullptr
-                    : d->createFactory(interpolation_crs_auth_name)
-                          ->createCoordinateReferenceSystem(
-                              interpolation_crs_code)
-                          .as_nullable();
-
             std::vector<operation::OperationParameterNNPtr> parameters;
             std::vector<operation::ParameterValueNNPtr> values;
 
@@ -6133,6 +6682,56 @@ operation::CoordinateOperationNNPtr AuthorityFactory::createCoordinateOperation(
                     operation::ParameterValue::createFilename(grid2_name));
             }
 
+            const size_t base_param_idx = idx;
+            constexpr size_t N_MAX_PARAMS_GRID_TRANSFORMATION = 2;
+            for (size_t i = 0; i < N_MAX_PARAMS_GRID_TRANSFORMATION; ++i) {
+                const auto &param_auth_name = row[base_param_idx + i * 6 + 0];
+                if (param_auth_name.empty()) {
+                    break;
+                }
+                const auto &param_code = row[base_param_idx + i * 6 + 1];
+                const auto &param_name = row[base_param_idx + i * 6 + 2];
+                const auto &param_value = row[base_param_idx + i * 6 + 3];
+                const auto &param_uom_auth_name =
+                    row[base_param_idx + i * 6 + 4];
+                const auto &param_uom_code = row[base_param_idx + i * 6 + 5];
+                parameters.emplace_back(operation::OperationParameter::create(
+                    util::PropertyMap()
+                        .set(metadata::Identifier::CODESPACE_KEY,
+                             param_auth_name)
+                        .set(metadata::Identifier::CODE_KEY, param_code)
+                        .set(common::IdentifiedObject::NAME_KEY, param_name)));
+                std::string normalized_uom_code(param_uom_code);
+                const double normalized_value = normalizeMeasure(
+                    param_uom_code, param_value, normalized_uom_code);
+                auto uom = d->createUnitOfMeasure(param_uom_auth_name,
+                                                  normalized_uom_code);
+                values.emplace_back(operation::ParameterValue::create(
+                    common::Measure(normalized_value, uom)));
+            }
+            idx = base_param_idx + 6 * N_MAX_PARAMS_GRID_TRANSFORMATION;
+
+            const auto &interpolation_crs_auth_name = row[idx++];
+            const auto &interpolation_crs_code = row[idx++];
+            const auto &operation_version = row[idx++];
+            const auto &deprecated_str = row[idx++];
+            const bool deprecated = deprecated_str == "1";
+            assert(idx == row.size());
+
+            auto sourceCRS =
+                d->createFactory(source_crs_auth_name)
+                    ->createCoordinateReferenceSystem(source_crs_code);
+            auto targetCRS =
+                d->createFactory(target_crs_auth_name)
+                    ->createCoordinateReferenceSystem(target_crs_code);
+            auto interpolationCRS =
+                interpolation_crs_auth_name.empty()
+                    ? nullptr
+                    : d->createFactory(interpolation_crs_auth_name)
+                          ->createCoordinateReferenceSystem(
+                              interpolation_crs_code)
+                          .as_nullable();
+
             auto props = d->createPropertiesSearchUsages(
                 type, code, name, deprecated, description);
             if (!operation_version.empty()) {
@@ -6146,7 +6745,7 @@ operation::CoordinateOperationNNPtr AuthorityFactory::createCoordinateOperation(
                     .set(common::IdentifiedObject::NAME_KEY, method_name);
 
             std::vector<metadata::PositionalAccuracyNNPtr> accuracies;
-            if (!accuracy.empty()) {
+            if (!accuracy.empty() && accuracy != "999.0") {
                 accuracies.emplace_back(
                     metadata::PositionalAccuracy::create(accuracy));
             }
@@ -6192,9 +6791,12 @@ operation::CoordinateOperationNNPtr AuthorityFactory::createCoordinateOperation(
                "method_auth_name, method_code, method_name, "
                "source_crs_auth_name, source_crs_code, target_crs_auth_name, "
                "target_crs_code, "
+               "grid_param_auth_name, grid_param_code, grid_param_name, "
+               "grid_name, "
                "interpolation_crs_auth_name, interpolation_crs_code, "
                "operation_version, accuracy, deprecated";
-        for (size_t i = 1; i <= N_MAX_PARAMS; ++i) {
+        constexpr int N_MAX_PARAMS_OTHER_TRANSFORMATION = 9;
+        for (size_t i = 1; i <= N_MAX_PARAMS_OTHER_TRANSFORMATION; ++i) {
             buffer << ", param" << i << "_auth_name";
             buffer << ", param" << i << "_code";
             buffer << ", param" << i << "_name";
@@ -6223,6 +6825,10 @@ operation::CoordinateOperationNNPtr AuthorityFactory::createCoordinateOperation(
             const auto &source_crs_code = row[idx++];
             const auto &target_crs_auth_name = row[idx++];
             const auto &target_crs_code = row[idx++];
+            const auto &grid_param_auth_name = row[idx++];
+            const auto &grid_param_code = row[idx++];
+            const auto &grid_param_name = row[idx++];
+            const auto &grid_name = row[idx++];
             const auto &interpolation_crs_auth_name = row[idx++];
             const auto &interpolation_crs_code = row[idx++];
             const auto &operation_version = row[idx++];
@@ -6233,7 +6839,7 @@ operation::CoordinateOperationNNPtr AuthorityFactory::createCoordinateOperation(
             const size_t base_param_idx = idx;
             std::vector<operation::OperationParameterNNPtr> parameters;
             std::vector<operation::ParameterValueNNPtr> values;
-            for (size_t i = 0; i < N_MAX_PARAMS; ++i) {
+            for (size_t i = 0; i < N_MAX_PARAMS_OTHER_TRANSFORMATION; ++i) {
                 const auto &param_auth_name = row[base_param_idx + i * 6 + 0];
                 if (param_auth_name.empty()) {
                     break;
@@ -6244,6 +6850,7 @@ operation::CoordinateOperationNNPtr AuthorityFactory::createCoordinateOperation(
                 const auto &param_uom_auth_name =
                     row[base_param_idx + i * 6 + 4];
                 const auto &param_uom_code = row[base_param_idx + i * 6 + 5];
+
                 parameters.emplace_back(operation::OperationParameter::create(
                     util::PropertyMap()
                         .set(metadata::Identifier::CODESPACE_KEY,
@@ -6258,9 +6865,21 @@ operation::CoordinateOperationNNPtr AuthorityFactory::createCoordinateOperation(
                 values.emplace_back(operation::ParameterValue::create(
                     common::Measure(normalized_value, uom)));
             }
-            idx = base_param_idx + 6 * N_MAX_PARAMS;
+            idx = base_param_idx + 6 * N_MAX_PARAMS_OTHER_TRANSFORMATION;
             (void)idx;
             assert(idx == row.size());
+
+            if (!grid_name.empty()) {
+                parameters.emplace_back(operation::OperationParameter::create(
+                    util::PropertyMap()
+                        .set(common::IdentifiedObject::NAME_KEY,
+                             grid_param_name)
+                        .set(metadata::Identifier::CODESPACE_KEY,
+                             grid_param_auth_name)
+                        .set(metadata::Identifier::CODE_KEY, grid_param_code)));
+                values.emplace_back(
+                    operation::ParameterValue::createFilename(grid_name));
+            }
 
             auto sourceCRS =
                 d->createFactory(source_crs_auth_name)
@@ -6284,7 +6903,7 @@ operation::CoordinateOperationNNPtr AuthorityFactory::createCoordinateOperation(
             }
 
             std::vector<metadata::PositionalAccuracyNNPtr> accuracies;
-            if (!accuracy.empty()) {
+            if (!accuracy.empty() && accuracy != "999.0") {
                 accuracies.emplace_back(
                     metadata::PositionalAccuracy::create(accuracy));
             }
@@ -6327,9 +6946,13 @@ operation::CoordinateOperationNNPtr AuthorityFactory::createCoordinateOperation(
                     return op;
                 }
             }
-            return operation::Transformation::create(
+            auto transf = operation::Transformation::create(
                 props, sourceCRS, targetCRS, interpolationCRS, propsMethod,
                 parameters, values, accuracies);
+            if (usePROJAlternativeGridNames) {
+                return transf->substitutePROJAlternativeGridNames(d->context());
+            }
+            return transf;
 
         } catch (const std::exception &ex) {
             throw buildFactoryException("transformation", d->authority(), code,
@@ -6353,7 +6976,7 @@ operation::CoordinateOperationNNPtr AuthorityFactory::createCoordinateOperation(
         }
 
         auto resSteps = d->runWithCodeParam(
-            "SELECT step_auth_name, step_code FROM "
+            "SELECT step_auth_name, step_code, step_direction FROM "
             "concatenated_operation_step WHERE operation_auth_name = ? "
             "AND operation_code = ? ORDER BY step_number",
             code);
@@ -6373,22 +6996,41 @@ operation::CoordinateOperationNNPtr AuthorityFactory::createCoordinateOperation(
             const bool deprecated = deprecated_str == "1";
 
             std::vector<operation::CoordinateOperationNNPtr> operations;
+            size_t countExplicitDirection = 0;
             for (const auto &rowStep : resSteps) {
                 const auto &step_auth_name = rowStep[0];
                 const auto &step_code = rowStep[1];
-                operations.push_back(
+                const auto &step_direction = rowStep[2];
+                auto stepOp =
                     d->createFactory(step_auth_name)
                         ->createCoordinateOperation(step_code, false,
                                                     usePROJAlternativeGridNames,
-                                                    std::string()));
+                                                    std::string());
+                if (step_direction == "forward") {
+                    ++countExplicitDirection;
+                    operations.push_back(std::move(stepOp));
+                } else if (step_direction == "reverse") {
+                    ++countExplicitDirection;
+                    operations.push_back(stepOp->inverse());
+                } else {
+                    operations.push_back(std::move(stepOp));
+                }
             }
 
-            operation::ConcatenatedOperation::fixStepsDirection(
+            if (countExplicitDirection > 0 &&
+                countExplicitDirection != resSteps.size()) {
+                throw FactoryException("not all steps have a defined direction "
+                                       "for concatenated operation " +
+                                       code);
+            }
+
+            const bool fixDirectionAllowed = (countExplicitDirection == 0);
+            operation::ConcatenatedOperation::fixSteps(
                 d->createFactory(source_crs_auth_name)
                     ->createCoordinateReferenceSystem(source_crs_code),
                 d->createFactory(target_crs_auth_name)
                     ->createCoordinateReferenceSystem(target_crs_code),
-                operations, d->context());
+                operations, d->context(), fixDirectionAllowed);
 
             auto props = d->createPropertiesSearchUsages(
                 type, code, name, deprecated, description);
@@ -6399,8 +7041,10 @@ operation::CoordinateOperationNNPtr AuthorityFactory::createCoordinateOperation(
 
             std::vector<metadata::PositionalAccuracyNNPtr> accuracies;
             if (!accuracy.empty()) {
-                accuracies.emplace_back(
-                    metadata::PositionalAccuracy::create(accuracy));
+                if (accuracy != "999.0") {
+                    accuracies.emplace_back(
+                        metadata::PositionalAccuracy::create(accuracy));
+                }
             } else {
                 // Try to compute a reasonable accuracy from the members
                 double totalAcc = -1;
@@ -6457,8 +7101,8 @@ operation::CoordinateOperationNNPtr AuthorityFactory::createCoordinateOperation(
  * @param sourceCRSCode Source CRS code allocated by authority.
  * @param targetCRSCode Source CRS code allocated by authority.
  * @return list of coordinate operations
- * @throw NoSuchAuthorityCodeException
- * @throw FactoryException
+ * @throw NoSuchAuthorityCodeException if there is no matching object.
+ * @throw FactoryException in case of other errors.
  */
 
 std::vector<operation::CoordinateOperationNNPtr>
@@ -6478,7 +7122,7 @@ AuthorityFactory::createFromCoordinateReferenceSystemCodes(
  *
  * @param code crs code allocated by authority.
  * @return list of geoid model names
- * @throw FactoryException
+ * @throw FactoryException in case of error.
  */
 
 std::list<std::string>
@@ -6487,58 +7131,21 @@ AuthorityFactory::getGeoidModels(const std::string &code) const {
     ListOfParams params;
     std::string sql;
     sql += "SELECT DISTINCT GM0.name "
-           " FROM geoid_model GM0 "
+           "  FROM geoid_model GM0 "
            "INNER JOIN grid_transformation GT0 "
-           " ON  GT0.code = GM0.operation_code "
-           " AND GT0.auth_name = GM0.operation_auth_name "
-           " AND GT0.target_crs_code = ? ";
+           "  ON  GT0.code = GM0.operation_code "
+           "  AND GT0.auth_name = GM0.operation_auth_name "
+           "  AND GT0.deprecated = 0 "
+           "INNER JOIN vertical_crs VC0 "
+           "  ON VC0.code = GT0.target_crs_code "
+           "  AND VC0.auth_name = GT0.target_crs_auth_name "
+           "INNER JOIN vertical_crs VC1 "
+           "  ON VC1.datum_code = VC0.datum_code "
+           "  AND VC1.datum_auth_name = VC0.datum_auth_name "
+           "  AND VC1.code = ? ";
     params.emplace_back(code);
     if (d->hasAuthorityRestriction()) {
         sql += " AND GT0.target_crs_auth_name = ? ";
-        params.emplace_back(d->authority());
-    }
-
-    /// The second part of the query is for CRSs that use that geoid model via
-    /// Height Depth Reversal (EPSG:1068) or Change of Vertical Unit (EPSG:1069)
-    sql += "UNION "
-           "SELECT DISTINCT GM0.name "
-           " FROM geoid_model GM0 "
-           "INNER JOIN grid_transformation GT1 "
-           " ON  GT1.code = GM0.operation_code "
-           " AND GT1.auth_name = GM0.operation_auth_name "
-           "INNER JOIN other_transformation OT1 "
-           " ON  OT1.source_crs_code = GT1.target_crs_code "
-           " AND OT1.source_crs_auth_name = GT1.target_crs_auth_name "
-           " AND OT1.method_auth_name = 'EPSG' "
-           " AND OT1.method_code IN (1068, 1069, 1104) "
-           " AND OT1.target_crs_code = ? ";
-    params.emplace_back(code);
-    if (d->hasAuthorityRestriction()) {
-        sql += " AND OT1.target_crs_auth_name = ? ";
-        params.emplace_back(d->authority());
-    }
-
-    /// The third part of the query is for CRSs that use that geoid model via
-    /// other_transformation table twice, like transforming depth and feet
-    sql += "UNION "
-           "SELECT DISTINCT GM0.name "
-           " FROM geoid_model GM0 "
-           "INNER JOIN grid_transformation GT1 "
-           " ON  GT1.code = GM0.operation_code "
-           " AND GT1.auth_name = GM0.operation_auth_name "
-           "INNER JOIN other_transformation OT1 "
-           " ON  OT1.source_crs_code = GT1.target_crs_code "
-           " AND OT1.source_crs_auth_name = GT1.target_crs_auth_name "
-           " AND OT1.method_auth_name = 'EPSG' "
-           " AND OT1.method_code IN (1068, 1069, 1104) "
-           "INNER JOIN other_transformation OT2 "
-           " ON  OT2.source_crs_code = OT1.target_crs_code "
-           " AND OT2.source_crs_auth_name = OT1.target_crs_auth_name "
-           " AND OT2.method_code IN (1068, 1069, 1104) "
-           " AND OT2.target_crs_code = ? ";
-    params.emplace_back(code);
-    if (d->hasAuthorityRestriction()) {
-        sql += " AND OT2.target_crs_auth_name = ? ";
         params.emplace_back(d->authority());
     }
     sql += " ORDER BY 1 ";
@@ -6590,8 +7197,8 @@ AuthorityFactory::getGeoidModels(const std::string &code) const {
  * @param intersectingExtent2 Optional extent that the resulting operations
  * must intersect.
  * @return list of coordinate operations
- * @throw NoSuchAuthorityCodeException
- * @throw FactoryException
+ * @throw NoSuchAuthorityCodeException if there is no matching object.
+ * @throw FactoryException in case of other errors.
  */
 
 std::vector<operation::CoordinateOperationNNPtr>
@@ -7011,9 +7618,12 @@ static bool useIrrelevantPivot(const operation::CoordinateOperationNNPtr &op,
  * must intersect.
  * @param intersectingExtent2 Optional extent that the resulting operations
  * must intersect.
+ * @param skipIntermediateExtentIntersection When true, skip the requirement
+ * that the extents of the two intermediate operations must intersect each
+ * other. This is useful when SourceTargetCRSExtentUse::NONE is set.
  * @return list of coordinate operations
- * @throw NoSuchAuthorityCodeException
- * @throw FactoryException
+ * @throw NoSuchAuthorityCodeException if there is no matching object.
+ * @throw FactoryException in case of other errors.
  */
 
 std::vector<operation::CoordinateOperationNNPtr>
@@ -7027,7 +7637,8 @@ AuthorityFactory::createFromCRSCodesWithIntermediates(
     ObjectType allowedIntermediateObjectType,
     const std::vector<std::string> &allowedAuthorities,
     const metadata::ExtentPtr &intersectingExtent1,
-    const metadata::ExtentPtr &intersectingExtent2) const {
+    const metadata::ExtentPtr &intersectingExtent2,
+    bool skipIntermediateExtentIntersection) const {
 
     std::vector<operation::CoordinateOperationNNPtr> listTmp;
 
@@ -7036,11 +7647,12 @@ AuthorityFactory::createFromCRSCodesWithIntermediates(
         return listTmp;
     }
 
-    const auto CheckIfHasOperations = [=](const std::string &auth_name,
-                                          const std::string &code) {
+    const auto CheckIfHasOperations = [this](const std::string &auth_name,
+                                             const std::string &code) {
         return !(d->run("SELECT 1 FROM coordinate_operation_view WHERE "
                         "(source_crs_auth_name = ? AND source_crs_code = ?) OR "
-                        "(target_crs_auth_name = ? AND target_crs_code = ?)",
+                        "(target_crs_auth_name = ? AND target_crs_code = ?) "
+                        "LIMIT 1",
                         {auth_name, code, auth_name, code})
                      .empty());
     };
@@ -7095,7 +7707,7 @@ AuthorityFactory::createFromCRSCodesWithIntermediates(
             "FROM coordinate_operation_view v1 "
             "JOIN coordinate_operation_view v2 ");
 
-    const std::string joinSupersession(
+    const char *joinSupersession =
         "LEFT JOIN supersession ss1 ON "
         "ss1.superseded_table_name = v1.table_name AND "
         "ss1.superseded_auth_name = v1.auth_name AND "
@@ -7107,23 +7719,23 @@ AuthorityFactory::createFromCRSCodesWithIntermediates(
         "ss2.superseded_auth_name = v2.auth_name AND "
         "ss2.superseded_code = v2.code AND "
         "ss2.superseded_table_name = ss2.replacement_table_name AND "
-        "ss2.same_source_target_crs = 1 ");
+        "ss2.same_source_target_crs = 1 ";
     const std::string joinArea(
-        (discardSuperseded ? joinSupersession : std::string()) +
-        "JOIN usage u1 ON "
-        "u1.object_table_name = v1.table_name AND "
-        "u1.object_auth_name = v1.auth_name AND "
-        "u1.object_code = v1.code "
-        "JOIN extent a1 "
-        "ON a1.auth_name = u1.extent_auth_name AND "
-        "a1.code = u1.extent_code "
-        "JOIN usage u2 ON "
-        "u2.object_table_name = v2.table_name AND "
-        "u2.object_auth_name = v2.auth_name AND "
-        "u2.object_code = v2.code "
-        "JOIN extent a2 "
-        "ON a2.auth_name = u2.extent_auth_name AND "
-        "a2.code = u2.extent_code ");
+        (discardSuperseded ? std::string(joinSupersession) : std::string())
+            .append("JOIN usage u1 ON "
+                    "u1.object_table_name = v1.table_name AND "
+                    "u1.object_auth_name = v1.auth_name AND "
+                    "u1.object_code = v1.code "
+                    "JOIN extent a1 "
+                    "ON a1.auth_name = u1.extent_auth_name AND "
+                    "a1.code = u1.extent_code "
+                    "JOIN usage u2 ON "
+                    "u2.object_table_name = v2.table_name AND "
+                    "u2.object_auth_name = v2.auth_name AND "
+                    "u2.object_code = v2.code "
+                    "JOIN extent a2 "
+                    "ON a2.auth_name = u2.extent_auth_name AND "
+                    "a2.code = u2.extent_code "));
     const std::string orderBy(
         "ORDER BY (CASE WHEN accuracy1 is NULL THEN 1 ELSE 0 END) + "
         "(CASE WHEN accuracy2 is NULL THEN 1 ELSE 0 END), "
@@ -7139,36 +7751,54 @@ AuthorityFactory::createFromCRSCodesWithIntermediates(
         "AND v2.target_crs_auth_name = ? AND v2.target_crs_code = ? ");
     std::string minDate;
     std::string criterionOnIntermediateCRS;
+
+    const auto sourceCRS = d->createFactory(sourceCRSAuthName)
+                               ->createCoordinateReferenceSystem(sourceCRSCode);
+    const auto targetCRS = d->createFactory(targetCRSAuthName)
+                               ->createCoordinateReferenceSystem(targetCRSCode);
+
+    const bool ETRFtoETRF = starts_with(sourceCRS->nameStr(), "ETRF") &&
+                            starts_with(targetCRS->nameStr(), "ETRF");
+
+    const bool NAD83_CSRS_to_NAD83_CSRS =
+        starts_with(sourceCRS->nameStr(), "NAD83(CSRS)") &&
+        starts_with(targetCRS->nameStr(), "NAD83(CSRS)");
+
     if (allowedIntermediateObjectType == ObjectType::GEOGRAPHIC_CRS) {
-        auto sourceCRS = d->createFactory(sourceCRSAuthName)
-                             ->createGeodeticCRS(sourceCRSCode);
-        auto targetCRS = d->createFactory(targetCRSAuthName)
-                             ->createGeodeticCRS(targetCRSCode);
-        const auto &sourceDatum = sourceCRS->datum();
-        const auto &targetDatum = targetCRS->datum();
-        if (sourceDatum && sourceDatum->publicationDate().has_value() &&
-            targetDatum && targetDatum->publicationDate().has_value()) {
-            const auto sourceDate(sourceDatum->publicationDate()->toString());
-            const auto targetDate(targetDatum->publicationDate()->toString());
-            minDate = std::min(sourceDate, targetDate);
-            // Check that the datum of the intermediateCRS has a publication
-            // date most recent that the one of the source and the target CRS
-            // Except when using the usual WGS84 pivot which happens to have a
-            // NULL publication date.
-            criterionOnIntermediateCRS =
-                "AND EXISTS(SELECT 1 FROM geodetic_crs x "
-                "JOIN geodetic_datum y "
-                "ON "
-                "y.auth_name = x.datum_auth_name AND "
-                "y.code = x.datum_code "
-                "WHERE "
-                "x.auth_name = v1.target_crs_auth_name AND "
-                "x.code = v1.target_crs_code AND "
-                "x.type IN ('geographic 2D', 'geographic 3D') AND "
-                "(y.publication_date IS NULL OR "
-                "(y.publication_date >= '" +
-                minDate + "'))) ";
-        } else {
+        const auto &sourceGeogCRS =
+            dynamic_cast<const crs::GeographicCRS *>(sourceCRS.get());
+        const auto &targetGeogCRS =
+            dynamic_cast<const crs::GeographicCRS *>(targetCRS.get());
+        if (sourceGeogCRS && targetGeogCRS) {
+            const auto &sourceDatum = sourceGeogCRS->datum();
+            const auto &targetDatum = targetGeogCRS->datum();
+            if (sourceDatum && sourceDatum->publicationDate().has_value() &&
+                targetDatum && targetDatum->publicationDate().has_value()) {
+                const auto sourceDate(
+                    sourceDatum->publicationDate()->toString());
+                const auto targetDate(
+                    targetDatum->publicationDate()->toString());
+                minDate = std::min(sourceDate, targetDate);
+                // Check that the datum of the intermediateCRS has a publication
+                // date most recent that the one of the source and the target
+                // CRS Except when using the usual WGS84 pivot which happens to
+                // have a NULL publication date.
+                criterionOnIntermediateCRS =
+                    "AND EXISTS(SELECT 1 FROM geodetic_crs x "
+                    "JOIN geodetic_datum y "
+                    "ON "
+                    "y.auth_name = x.datum_auth_name AND "
+                    "y.code = x.datum_code "
+                    "WHERE "
+                    "x.auth_name = v1.target_crs_auth_name AND "
+                    "x.code = v1.target_crs_code AND "
+                    "x.type IN ('geographic 2D', 'geographic 3D') AND "
+                    "(y.publication_date IS NULL OR "
+                    "(y.publication_date >= '" +
+                    minDate + "'))) ";
+            }
+        }
+        if (criterionOnIntermediateCRS.empty()) {
             criterionOnIntermediateCRS =
                 "AND EXISTS(SELECT 1 FROM geodetic_crs x WHERE "
                 "x.auth_name = v1.target_crs_auth_name AND "
@@ -7180,9 +7810,12 @@ AuthorityFactory::createFromCRSCodesWithIntermediates(
     auto params = ListOfParams{sourceCRSAuthName, sourceCRSCode,
                                targetCRSAuthName, targetCRSCode};
     std::string additionalWhere(
-        "AND v1.deprecated = 0 AND v2.deprecated = 0 "
-        "AND intersects_bbox(south_lat1, west_lon1, north_lat1, east_lon1, "
-        "south_lat2, west_lon2, north_lat2, east_lon2) = 1 ");
+        skipIntermediateExtentIntersection
+            ? "AND v1.deprecated = 0 AND v2.deprecated = 0 "
+            : "AND v1.deprecated = 0 AND v2.deprecated = 0 "
+              "AND intersects_bbox(south_lat1, west_lon1, north_lat1, "
+              "east_lon1, south_lat2, west_lon2, north_lat2, "
+              "east_lon2) = 1 ");
     if (!allowedAuthorities.empty()) {
         additionalWhere += "AND v1.auth_name IN (";
         for (size_t i = 0; i < allowedAuthorities.size(); i++) {
@@ -7318,6 +7951,41 @@ AuthorityFactory::createFromCRSCodesWithIntermediates(
     if (discardSuperseded) {
         res = filterOutSuperseded(std::move(res));
     }
+
+    const auto checkPivot = [ETRFtoETRF, NAD83_CSRS_to_NAD83_CSRS, &sourceCRS,
+                             &targetCRS](const crs::CRSPtr &intermediateCRS) {
+        // Make sure that ETRF2000 to ETRF2014 doesn't go through ITRF9x or
+        // ITRF>2014
+        if (ETRFtoETRF && intermediateCRS &&
+            starts_with(intermediateCRS->nameStr(), "ITRF")) {
+            const auto normalizeDate = [](int v) {
+                return (v >= 80 && v <= 99) ? v + 1900 : v;
+            };
+            const int srcDate = normalizeDate(
+                atoi(sourceCRS->nameStr().c_str() + strlen("ETRF")));
+            const int tgtDate = normalizeDate(
+                atoi(targetCRS->nameStr().c_str() + strlen("ETRF")));
+            const int intermDate = normalizeDate(
+                atoi(intermediateCRS->nameStr().c_str() + strlen("ITRF")));
+            if (srcDate > 0 && tgtDate > 0 && intermDate > 0) {
+                if (intermDate < std::min(srcDate, tgtDate) ||
+                    intermDate > std::max(srcDate, tgtDate)) {
+                    return false;
+                }
+            }
+        }
+
+        // Make sure that NAD83(CSRS)[x] to NAD83(CSRS)[y) doesn't go through
+        // NAD83 generic. Cf https://github.com/OSGeo/PROJ/issues/4464
+        if (NAD83_CSRS_to_NAD83_CSRS && intermediateCRS &&
+            (intermediateCRS->nameStr() == "NAD83" ||
+             intermediateCRS->nameStr() == "WGS 84")) {
+            return false;
+        }
+
+        return true;
+    };
+
     for (const auto &row : res) {
         const auto &table1 = row[0];
         const auto &auth_name1 = row[1];
@@ -7336,6 +8004,9 @@ AuthorityFactory::createFromCRSCodesWithIntermediates(
                                    targetCRSAuthName, targetCRSCode)) {
                 continue;
             }
+            if (!checkPivot(op1->targetCRS())) {
+                continue;
+            }
             auto op2 =
                 d->createFactory(auth_name2)
                     ->createCoordinateOperation(
@@ -7347,7 +8018,7 @@ AuthorityFactory::createFromCRSCodesWithIntermediates(
 
             listTmp.emplace_back(
                 operation::ConcatenatedOperation::createComputeMetadata(
-                    {op1, op2}, false));
+                    {std::move(op1), std::move(op2)}, false));
         } catch (const std::exception &e) {
             // Mostly for debugging purposes when using an inconsistent
             // database
@@ -7374,6 +8045,7 @@ AuthorityFactory::createFromCRSCodesWithIntermediates(
     if (discardSuperseded) {
         res = filterOutSuperseded(std::move(res));
     }
+
     for (const auto &row : res) {
         const auto &table1 = row[0];
         const auto &auth_name1 = row[1];
@@ -7392,6 +8064,9 @@ AuthorityFactory::createFromCRSCodesWithIntermediates(
                                    targetCRSAuthName, targetCRSCode)) {
                 continue;
             }
+            if (!checkPivot(op1->targetCRS())) {
+                continue;
+            }
             auto op2 =
                 d->createFactory(auth_name2)
                     ->createCoordinateOperation(
@@ -7403,7 +8078,7 @@ AuthorityFactory::createFromCRSCodesWithIntermediates(
 
             listTmp.emplace_back(
                 operation::ConcatenatedOperation::createComputeMetadata(
-                    {op1, op2->inverse()}, false));
+                    {std::move(op1), op2->inverse()}, false));
         } catch (const std::exception &e) {
             // Mostly for debugging purposes when using an inconsistent
             // database
@@ -7469,6 +8144,9 @@ AuthorityFactory::createFromCRSCodesWithIntermediates(
                                    targetCRSAuthName, targetCRSCode)) {
                 continue;
             }
+            if (!checkPivot(op1->sourceCRS())) {
+                continue;
+            }
             auto op2 =
                 d->createFactory(auth_name2)
                     ->createCoordinateOperation(
@@ -7480,7 +8158,7 @@ AuthorityFactory::createFromCRSCodesWithIntermediates(
 
             listTmp.emplace_back(
                 operation::ConcatenatedOperation::createComputeMetadata(
-                    {op1->inverse(), op2}, false));
+                    {op1->inverse(), std::move(op2)}, false));
         } catch (const std::exception &e) {
             // Mostly for debugging purposes when using an inconsistent
             // database
@@ -7523,6 +8201,9 @@ AuthorityFactory::createFromCRSCodesWithIntermediates(
                         code1, true, usePROJAlternativeGridNames, table1);
             if (useIrrelevantPivot(op1, sourceCRSAuthName, sourceCRSCode,
                                    targetCRSAuthName, targetCRSCode)) {
+                continue;
+            }
+            if (!checkPivot(op1->sourceCRS())) {
                 continue;
             }
             auto op2 =
@@ -7586,7 +8267,8 @@ AuthorityFactory::createBetweenGeodeticCRSWithDatumBasedIntermediates(
     bool considerKnownGridsAsAvailable, bool discardSuperseded,
     const std::vector<std::string> &allowedAuthorities,
     const metadata::ExtentPtr &intersectingExtent1,
-    const metadata::ExtentPtr &intersectingExtent2) const {
+    const metadata::ExtentPtr &intersectingExtent2,
+    bool skipIntermediateExtentIntersection) const {
 
     std::vector<operation::CoordinateOperationNNPtr> listTmp;
 
@@ -7601,6 +8283,10 @@ AuthorityFactory::createBetweenGeodeticCRSWithDatumBasedIntermediates(
     if (!sourceGeodCRS || !targetGeodCRS) {
         return listTmp;
     }
+
+    const bool NAD83_CSRS_to_NAD83_CSRS =
+        starts_with(sourceGeodCRS->nameStr(), "NAD83(CSRS)") &&
+        starts_with(targetGeodCRS->nameStr(), "NAD83(CSRS)");
 
     const auto GetListCRSWithSameDatum = [this](const crs::GeodeticCRS *crs,
                                                 const std::string &crsAuthName,
@@ -7654,78 +8340,85 @@ AuthorityFactory::createBetweenGeodeticCRSWithDatumBasedIntermediates(
     }
 
     ListOfParams params;
-    const auto BuildSQLPart =
-        [this, &allowedAuthorities, &params, &listSourceCRS,
-         &listTargetCRS](bool isSourceCRS, bool selectOnTarget) {
-            std::string situation;
-            if (isSourceCRS)
-                situation = "src";
-            else
-                situation = "tgt";
-            if (selectOnTarget)
-                situation += "_is_tgt";
-            else
-                situation += "_is_src";
-            const std::string prefix1(selectOnTarget ? "source" : "target");
-            const std::string prefix2(selectOnTarget ? "target" : "source");
-            std::string sql("SELECT '");
-            sql += situation;
-            sql += "' as situation, v.table_name, v.auth_name, "
-                   "v.code, v.name, gcrs.datum_auth_name, gcrs.datum_code, "
-                   "a.west_lon, a.south_lat, a.east_lon, a.north_lat "
-                   "FROM coordinate_operation_view v "
-                   "JOIN geodetic_crs gcrs on gcrs.auth_name = ";
-            sql += prefix1;
-            sql += "_crs_auth_name AND gcrs.code = ";
-            sql += prefix1;
-            sql += "_crs_code "
+    const auto BuildSQLPart = [this, NAD83_CSRS_to_NAD83_CSRS,
+                               &allowedAuthorities, &params, &listSourceCRS,
+                               &listTargetCRS](bool isSourceCRS,
+                                               bool selectOnTarget) {
+        std::string situation;
+        if (isSourceCRS)
+            situation = "src";
+        else
+            situation = "tgt";
+        if (selectOnTarget)
+            situation += "_is_tgt";
+        else
+            situation += "_is_src";
+        const std::string prefix1(selectOnTarget ? "source" : "target");
+        const std::string prefix2(selectOnTarget ? "target" : "source");
+        std::string sql("SELECT '");
+        sql += situation;
+        sql += "' as situation, v.table_name, v.auth_name, "
+               "v.code, v.name, gcrs.datum_auth_name, gcrs.datum_code, "
+               "a.west_lon, a.south_lat, a.east_lon, a.north_lat "
+               "FROM coordinate_operation_view v "
+               "JOIN geodetic_crs gcrs on gcrs.auth_name = ";
+        sql += prefix1;
+        sql += "_crs_auth_name AND gcrs.code = ";
+        sql += prefix1;
+        sql += "_crs_code "
 
-                   "LEFT JOIN usage u ON "
-                   "u.object_table_name = v.table_name AND "
-                   "u.object_auth_name = v.auth_name AND "
-                   "u.object_code = v.code "
-                   "LEFT JOIN extent a "
-                   "ON a.auth_name = u.extent_auth_name AND "
-                   "a.code = u.extent_code "
-                   "WHERE v.deprecated = 0 AND (";
+               "LEFT JOIN usage u ON "
+               "u.object_table_name = v.table_name AND "
+               "u.object_auth_name = v.auth_name AND "
+               "u.object_code = v.code "
+               "LEFT JOIN extent a "
+               "ON a.auth_name = u.extent_auth_name AND "
+               "a.code = u.extent_code "
+               "WHERE v.deprecated = 0 AND (";
 
-            std::string cond;
+        std::string cond;
 
-            const auto &list = isSourceCRS ? listSourceCRS : listTargetCRS;
-            for (const auto &row : list) {
-                if (!cond.empty())
-                    cond += " OR ";
-                cond += '(';
-                cond += prefix2;
-                cond += "_crs_auth_name = ? AND ";
-                cond += prefix2;
-                cond += "_crs_code = ?)";
-                params.emplace_back(row[0]);
-                params.emplace_back(row[1]);
+        const auto &list = isSourceCRS ? listSourceCRS : listTargetCRS;
+        for (const auto &row : list) {
+            if (!cond.empty())
+                cond += " OR ";
+            cond += '(';
+            cond += prefix2;
+            cond += "_crs_auth_name = ? AND ";
+            cond += prefix2;
+            cond += "_crs_code = ?)";
+            params.emplace_back(row[0]);
+            params.emplace_back(row[1]);
+        }
+
+        sql += cond;
+        sql += ") ";
+
+        if (!allowedAuthorities.empty()) {
+            sql += "AND v.auth_name IN (";
+            for (size_t i = 0; i < allowedAuthorities.size(); i++) {
+                if (i > 0)
+                    sql += ',';
+                sql += '?';
             }
-
-            sql += cond;
             sql += ") ";
-
-            if (!allowedAuthorities.empty()) {
-                sql += "AND v.auth_name IN (";
-                for (size_t i = 0; i < allowedAuthorities.size(); i++) {
-                    if (i > 0)
-                        sql += ',';
-                    sql += '?';
-                }
-                sql += ") ";
-                for (const auto &allowedAuthority : allowedAuthorities) {
-                    params.emplace_back(allowedAuthority);
-                }
+            for (const auto &allowedAuthority : allowedAuthorities) {
+                params.emplace_back(allowedAuthority);
             }
-            if (d->hasAuthorityRestriction()) {
-                sql += "AND v.auth_name = ? ";
-                params.emplace_back(d->authority());
-            }
+        }
+        if (d->hasAuthorityRestriction()) {
+            sql += "AND v.auth_name = ? ";
+            params.emplace_back(d->authority());
+        }
+        if (NAD83_CSRS_to_NAD83_CSRS) {
+            // Make sure that NAD83(CSRS)[x] to NAD83(CSRS)[y) doesn't go
+            // through NAD83 generic. Cf
+            // https://github.com/OSGeo/PROJ/issues/4464
+            sql += "AND gcrs.name NOT IN ('NAD83', 'WGS 84') ";
+        }
 
-            return sql;
-        };
+        return sql;
+    };
 
     std::string sql(BuildSQLPart(true, true));
     sql += "UNION ALL ";
@@ -7822,7 +8515,8 @@ AuthorityFactory::createBetweenGeodeticCRSWithDatumBasedIntermediates(
                 auto bbox2 = metadata::GeographicBoundingBox::create(
                     trfmTarget.west, trfmTarget.south, trfmTarget.east,
                     trfmTarget.north);
-                if (!bbox1->intersects(bbox2))
+                if (!skipIntermediateExtentIntersection &&
+                    !bbox1->intersects(bbox2))
                     continue;
                 bool okBbox2 = true;
                 for (const auto bbox : extraBbox)
@@ -7965,6 +8659,25 @@ AuthorityFactory::createBetweenGeodeticCRSWithDatumBasedIntermediates(
         }
     }
 
+    std::string sourceDatumPubDate;
+    const auto sourceDatum = sourceGeodCRS->datumNonNull(d->context());
+    if (sourceDatum->publicationDate().has_value()) {
+        sourceDatumPubDate = sourceDatum->publicationDate()->toString();
+    }
+
+    std::string targetDatumPubDate;
+    const auto targetDatum = targetGeodCRS->datumNonNull(d->context());
+    if (targetDatum->publicationDate().has_value()) {
+        targetDatumPubDate = targetDatum->publicationDate()->toString();
+    }
+
+    const std::string mostAncientDatumPubDate =
+        (!targetDatumPubDate.empty() &&
+         (sourceDatumPubDate.empty() ||
+          targetDatumPubDate < sourceDatumPubDate))
+            ? targetDatumPubDate
+            : sourceDatumPubDate;
+
     auto opFactory = operation::CoordinateOperationFactory::create();
     for (const auto &pair : candidates) {
         const auto &trfmSource = pair.first;
@@ -7990,6 +8703,37 @@ AuthorityFactory::createBetweenGeodeticCRSWithDatumBasedIntermediates(
         const auto &op2Target = op2NN->targetCRS();
         if (!(op1Source && op1Target && op2Source && op2Target)) {
             continue;
+        }
+
+        // Skip operations using a datum that is older than the source or
+        // target datum (e.g to avoid ED50 to WGS84 to go through NTF)
+        if (!mostAncientDatumPubDate.empty()) {
+            const auto isOlderCRS = [this, &mostAncientDatumPubDate](
+                                        const crs::CRSPtr &crs) {
+                const auto geogCRS =
+                    dynamic_cast<const crs::GeodeticCRS *>(crs.get());
+                if (geogCRS) {
+                    const auto datum = geogCRS->datumNonNull(d->context());
+                    // Hum, theoretically we'd want to check
+                    // datum->publicationDate()->toString() <
+                    // mostAncientDatumPubDate but that would exclude doing
+                    // IG05/12 Intermediate CRS to ITRF2014 through ITRF2008,
+                    // since IG05/12 Intermediate CRS has been published later
+                    // than ITRF2008. So use a cut of date for ancient vs
+                    // "modern" era.
+                    constexpr const char *CUT_OFF_DATE = "1900-01-01";
+                    if (datum->publicationDate().has_value() &&
+                        datum->publicationDate()->toString() < CUT_OFF_DATE &&
+                        mostAncientDatumPubDate > CUT_OFF_DATE) {
+                        return true;
+                    }
+                }
+                return false;
+            };
+
+            if (isOlderCRS(op1Source) || isOlderCRS(op1Target) ||
+                isOlderCRS(op2Source) || isOlderCRS(op2Target))
+                continue;
         }
 
         std::vector<operation::CoordinateOperationNNPtr> steps;
@@ -8057,7 +8801,7 @@ const std::string &AuthorityFactory::getAuthority() PROJ_PURE_DEFN {
  * @param allowDeprecated whether we should return deprecated objects as well.
  * @return the set of authority codes for spatial reference objects of the given
  * type
- * @throw FactoryException
+ * @throw FactoryException in case of error.
  */
 std::set<std::string>
 AuthorityFactory::getAuthorityCodes(const ObjectType &type,
@@ -8072,7 +8816,7 @@ AuthorityFactory::getAuthorityCodes(const ObjectType &type,
         break;
     case ObjectType::DATUM:
         sql = "SELECT code FROM object_view WHERE table_name IN "
-              "('geodetic_datum', 'vertical_datum') AND ";
+              "('geodetic_datum', 'vertical_datum', 'engineering_datum') AND ";
         break;
     case ObjectType::GEODETIC_REFERENCE_FRAME:
         sql = "SELECT code FROM geodetic_datum WHERE ";
@@ -8087,6 +8831,9 @@ AuthorityFactory::getAuthorityCodes(const ObjectType &type,
     case ObjectType::DYNAMIC_VERTICAL_REFERENCE_FRAME:
         sql = "SELECT code FROM vertical_datum WHERE "
               "frame_reference_epoch IS NOT NULL AND ";
+        break;
+    case ObjectType::ENGINEERING_DATUM:
+        sql = "SELECT code FROM engineering_datum WHERE ";
         break;
     case ObjectType::CRS:
         sql = "SELECT code FROM crs_view WHERE ";
@@ -8120,6 +8867,12 @@ AuthorityFactory::getAuthorityCodes(const ObjectType &type,
         break;
     case ObjectType::COMPOUND_CRS:
         sql = "SELECT code FROM compound_crs WHERE ";
+        break;
+    case ObjectType::ENGINEERING_CRS:
+        sql = "SELECT code FROM engineering_crs WHERE ";
+        break;
+    case ObjectType::DERIVED_PROJECTED_CRS:
+        sql = "SELECT code FROM derived_projected_crs WHERE ";
         break;
     case ObjectType::COORDINATE_OPERATION:
         sql =
@@ -8165,8 +8918,8 @@ AuthorityFactory::getAuthorityCodes(const ObjectType &type,
  *
  * @param code Object code allocated by authority. (e.g. "4326")
  * @return description.
- * @throw NoSuchAuthorityCodeException
- * @throw FactoryException
+ * @throw NoSuchAuthorityCodeException if there is no matching object.
+ * @throw FactoryException in case of other errors.
  */
 std::string
 AuthorityFactory::getDescriptionText(const std::string &code) const {
@@ -8181,7 +8934,9 @@ AuthorityFactory::getDescriptionText(const std::string &code) const {
     for (const auto &row : sqlRes) {
         const auto &tableName = row[1];
         if (tableName == "geodetic_crs" || tableName == "projected_crs" ||
-            tableName == "vertical_crs" || tableName == "compound_crs") {
+            tableName == "vertical_crs" || tableName == "compound_crs" ||
+            tableName == "engineering_crs" ||
+            tableName == "derived_projected_crs") {
             return row[0];
         } else if (text.empty()) {
             text = row[0];
@@ -8199,7 +8954,7 @@ AuthorityFactory::getDescriptionText(const std::string &code) const {
  * a CRS object for each of them and getting the information from this CRS
  * object, but this implementation has much less overhead.
  *
- * @throw FactoryException
+ * @throw FactoryException in case of error.
  */
 std::list<AuthorityFactory::CRSInfo> AuthorityFactory::getCRSInfoList() const {
 
@@ -8281,6 +9036,26 @@ std::list<AuthorityFactory::CRSInfo> AuthorityFactory::getCRSInfoList() const {
         sql += "WHERE c.auth_name = ? ";
         params.emplace_back(d->authority());
     }
+    // FIXME: we can't handle non-EARTH compound CRS for now
+    sql += "UNION ALL SELECT c.auth_name, c.code, c.name, 'engineering', "
+           "c.deprecated, "
+           "a.west_lon, a.south_lat, a.east_lon, a.north_lat, "
+           "a.description, NULL, 'Earth' FROM engineering_crs c ";
+    sql += getSqlArea("engineering_crs");
+    if (d->hasAuthorityRestriction()) {
+        sql += "WHERE c.auth_name = ? ";
+        params.emplace_back(d->authority());
+    }
+    // FIXME: we can't handle non-EARTH compound CRS for now
+    sql += "UNION ALL SELECT c.auth_name, c.code, c.name, 'derived projected', "
+           "c.deprecated, "
+           "a.west_lon, a.south_lat, a.east_lon, a.north_lat, "
+           "a.description, NULL, 'Earth' FROM derived_projected_crs c ";
+    sql += getSqlArea("derived_projected_crs");
+    if (d->hasAuthorityRestriction()) {
+        sql += "WHERE c.auth_name = ? ";
+        params.emplace_back(d->authority());
+    }
     sql += ") r ORDER BY auth_name, code";
     auto sqlRes = d->run(sql, params);
     std::list<AuthorityFactory::CRSInfo> res;
@@ -8290,20 +9065,24 @@ std::list<AuthorityFactory::CRSInfo> AuthorityFactory::getCRSInfoList() const {
         info.code = row[1];
         info.name = row[2];
         const auto &type = row[3];
-        if (type == GEOG_2D) {
+        if (type == CRS_SUBTYPE_GEOG_2D) {
             info.type = AuthorityFactory::ObjectType::GEOGRAPHIC_2D_CRS;
-        } else if (type == GEOG_3D) {
+        } else if (type == CRS_SUBTYPE_GEOG_3D) {
             info.type = AuthorityFactory::ObjectType::GEOGRAPHIC_3D_CRS;
-        } else if (type == GEOCENTRIC) {
+        } else if (type == CRS_SUBTYPE_GEOCENTRIC) {
             info.type = AuthorityFactory::ObjectType::GEOCENTRIC_CRS;
-        } else if (type == OTHER) {
+        } else if (type == CRS_SUBTYPE_OTHER) {
             info.type = AuthorityFactory::ObjectType::GEODETIC_CRS;
-        } else if (type == PROJECTED) {
+        } else if (type == CRS_SUBTYPE_PROJECTED) {
             info.type = AuthorityFactory::ObjectType::PROJECTED_CRS;
-        } else if (type == VERTICAL) {
+        } else if (type == CRS_SUBTYPE_VERTICAL) {
             info.type = AuthorityFactory::ObjectType::VERTICAL_CRS;
-        } else if (type == COMPOUND) {
+        } else if (type == CRS_SUBTYPE_COMPOUND) {
             info.type = AuthorityFactory::ObjectType::COMPOUND_CRS;
+        } else if (type == CRS_SUBTYPE_ENGINEERING) {
+            info.type = AuthorityFactory::ObjectType::ENGINEERING_CRS;
+        } else if (type == CRS_SUBTYPE_DERIVED_PROJECTED) {
+            info.type = AuthorityFactory::ObjectType::DERIVED_PROJECTED_CRS;
         }
         info.deprecated = row[4] == "1";
         if (row[5].empty()) {
@@ -8340,7 +9119,7 @@ AuthorityFactory::CelestialBodyInfo::CelestialBodyInfo() : authName{}, name{} {}
 // ---------------------------------------------------------------------------
 
 /** \brief Return the list of units.
- * @throw FactoryException
+ * @throw FactoryException in case of error.
  *
  * @since 7.1
  */
@@ -8390,7 +9169,7 @@ std::list<AuthorityFactory::UnitInfo> AuthorityFactory::getUnitList() const {
 // ---------------------------------------------------------------------------
 
 /** \brief Return the list of celestial bodies.
- * @throw FactoryException
+ * @throw FactoryException in case of error.
  *
  * @since 8.1
  */
@@ -8432,7 +9211,7 @@ AuthorityFactory::getCelestialBodyList() const {
  * @param outAuthName Authority name of the official name that has been found.
  * @param outCode Code of the official name that has been found.
  * @return official name (or empty if not found).
- * @throw FactoryException
+ * @throw FactoryException in case of error.
  */
 std::string AuthorityFactory::getOfficialNameFromAlias(
     const std::string &aliasedName, const std::string &tableName,
@@ -8489,8 +9268,12 @@ std::string AuthorityFactory::getOfficialNameFromAlias(
             params.push_back(tableName);
         }
         if (!source.empty()) {
-            sql += " AND source = ?";
-            params.push_back(source);
+            if (source == "ESRI") {
+                sql += " AND source IN ('ESRI', 'ESRI_OLD')";
+            } else {
+                sql += " AND source = ?";
+                params.push_back(source);
+            }
         }
         auto res = d->run(sql, params);
         if (res.empty()) {
@@ -8540,7 +9323,7 @@ std::string AuthorityFactory::getOfficialNameFromAlias(
  * @param limitResultCount Maximum number of results to return.
  * Or 0 for unlimited.
  * @return list of matched objects.
- * @throw FactoryException
+ * @throw FactoryException in case of error.
  */
 std::list<common::IdentifiedObjectNNPtr>
 AuthorityFactory::createObjectsFromName(
@@ -8572,14 +9355,15 @@ AuthorityFactory::createObjectsFromName(
  * @param approximateMatch Whether approximate name identification is allowed.
  * @param limitResultCount Maximum number of results to return.
  * Or 0 for unlimited.
+ * @param useAliases Whether querying the alias_name table is allowed
  * @return list of matched objects.
- * @throw FactoryException
+ * @throw FactoryException in case of error.
  */
 std::list<AuthorityFactory::PairObjectName>
 AuthorityFactory::createObjectsFromNameEx(
     const std::string &searchedName,
     const std::vector<ObjectType> &allowedObjectTypes, bool approximateMatch,
-    size_t limitResultCount) const {
+    size_t limitResultCount, bool useAliases) const {
     std::string searchedNameWithoutDeprecated(searchedName);
     bool deprecated = false;
     if (ends_with(searchedNameWithoutDeprecated, " (deprecated)")) {
@@ -8607,8 +9391,9 @@ AuthorityFactory::createObjectsFromNameEx(
         if (allowedObjectTypes.empty()) {
             for (const auto &tableName :
                  {"prime_meridian", "ellipsoid", "geodetic_datum",
-                  "vertical_datum", "geodetic_crs", "projected_crs",
-                  "vertical_crs", "compound_crs", "conversion",
+                  "vertical_datum", "engineering_datum", "geodetic_crs",
+                  "projected_crs", "derived_projected_crs", "vertical_crs",
+                  "compound_crs", "engineering_crs", "conversion",
                   "helmert_transformation", "grid_transformation",
                   "other_transformation", "concatenated_operation"}) {
                 if (!(startsWithDUnderscore &&
@@ -8632,6 +9417,8 @@ AuthorityFactory::createObjectsFromNameEx(
                     if (!startsWithDUnderscore) {
                         res.emplace_back(
                             TableType("vertical_datum", std::string()));
+                        res.emplace_back(
+                            TableType("engineering_datum", std::string()));
                     }
                     break;
                 case ObjectType::GEODETIC_REFERENCE_FRAME:
@@ -8650,36 +9437,57 @@ AuthorityFactory::createObjectsFromNameEx(
                     res.emplace_back(
                         TableType("vertical_datum", "frame_reference_epoch"));
                     break;
+                case ObjectType::ENGINEERING_DATUM:
+                    res.emplace_back(
+                        TableType("engineering_datum", std::string()));
+                    break;
                 case ObjectType::CRS:
                     res.emplace_back(TableType("geodetic_crs", std::string()));
                     res.emplace_back(TableType("projected_crs", std::string()));
                     res.emplace_back(TableType("vertical_crs", std::string()));
                     res.emplace_back(TableType("compound_crs", std::string()));
+                    res.emplace_back(
+                        TableType("engineering_crs", std::string()));
+                    res.emplace_back(
+                        TableType("derived_projected_crs", std::string()));
                     break;
                 case ObjectType::GEODETIC_CRS:
                     res.emplace_back(TableType("geodetic_crs", std::string()));
                     break;
                 case ObjectType::GEOCENTRIC_CRS:
-                    res.emplace_back(TableType("geodetic_crs", GEOCENTRIC));
+                    res.emplace_back(
+                        TableType("geodetic_crs", CRS_SUBTYPE_GEOCENTRIC));
                     break;
                 case ObjectType::GEOGRAPHIC_CRS:
-                    res.emplace_back(TableType("geodetic_crs", GEOG_2D));
-                    res.emplace_back(TableType("geodetic_crs", GEOG_3D));
+                    res.emplace_back(
+                        TableType("geodetic_crs", CRS_SUBTYPE_GEOG_2D));
+                    res.emplace_back(
+                        TableType("geodetic_crs", CRS_SUBTYPE_GEOG_3D));
                     break;
                 case ObjectType::GEOGRAPHIC_2D_CRS:
-                    res.emplace_back(TableType("geodetic_crs", GEOG_2D));
+                    res.emplace_back(
+                        TableType("geodetic_crs", CRS_SUBTYPE_GEOG_2D));
                     break;
                 case ObjectType::GEOGRAPHIC_3D_CRS:
-                    res.emplace_back(TableType("geodetic_crs", GEOG_3D));
+                    res.emplace_back(
+                        TableType("geodetic_crs", CRS_SUBTYPE_GEOG_3D));
                     break;
                 case ObjectType::PROJECTED_CRS:
                     res.emplace_back(TableType("projected_crs", std::string()));
+                    break;
+                case ObjectType::DERIVED_PROJECTED_CRS:
+                    res.emplace_back(
+                        TableType("derived_projected_crs", std::string()));
                     break;
                 case ObjectType::VERTICAL_CRS:
                     res.emplace_back(TableType("vertical_crs", std::string()));
                     break;
                 case ObjectType::COMPOUND_CRS:
                     res.emplace_back(TableType("compound_crs", std::string()));
+                    break;
+                case ObjectType::ENGINEERING_CRS:
+                    res.emplace_back(
+                        TableType("engineering_crs", std::string()));
                     break;
                 case ObjectType::COORDINATE_OPERATION:
                     res.emplace_back(TableType("conversion", std::string()));
@@ -8766,40 +9574,42 @@ AuthorityFactory::createObjectsFromNameEx(
             params.emplace_back(d->authority());
         }
 
-        sql += " UNION SELECT '";
-        sql += tableNameTypePair.first;
-        sql += "' AS table_name, "
-               "ov.auth_name AS auth_name, "
-               "ov.code AS code, a.alt_name AS name, "
-               "ov.deprecated AS deprecated, 1 as is_alias FROM ";
-        sql += tableNameTypePair.first;
-        sql += " ov "
-               "JOIN alias_name a ON "
-               "ov.auth_name = a.auth_name AND ov.code = a.code WHERE "
-               "a.table_name = '";
-        sql += tableNameTypePair.first;
-        sql += "' ";
-        if (!tableNameTypePair.second.empty()) {
-            if (tableNameTypePair.second == "frame_reference_epoch") {
-                sql += "AND ov.frame_reference_epoch IS NOT NULL ";
-            } else if (tableNameTypePair.second == "ensemble") {
-                sql += "AND ov.ensemble_accuracy IS NOT NULL ";
-            } else {
-                sql += "AND ov.type = '";
-                sql += tableNameTypePair.second;
-                sql += "' ";
+        if (useAliases) {
+            sql += " UNION SELECT '";
+            sql += tableNameTypePair.first;
+            sql += "' AS table_name, "
+                   "ov.auth_name AS auth_name, "
+                   "ov.code AS code, a.alt_name AS name, "
+                   "ov.deprecated AS deprecated, 1 as is_alias FROM ";
+            sql += tableNameTypePair.first;
+            sql += " ov "
+                   "JOIN alias_name a ON "
+                   "ov.auth_name = a.auth_name AND ov.code = a.code WHERE "
+                   "a.source != 'EPSG_OLD' AND a.table_name = '";
+            sql += tableNameTypePair.first;
+            sql += "' ";
+            if (!tableNameTypePair.second.empty()) {
+                if (tableNameTypePair.second == "frame_reference_epoch") {
+                    sql += "AND ov.frame_reference_epoch IS NOT NULL ";
+                } else if (tableNameTypePair.second == "ensemble") {
+                    sql += "AND ov.ensemble_accuracy IS NOT NULL ";
+                } else {
+                    sql += "AND ov.type = '";
+                    sql += tableNameTypePair.second;
+                    sql += "' ";
+                }
             }
-        }
-        if (deprecated) {
-            sql += "AND ov.deprecated = 1 ";
-        }
-        if (!approximateMatch) {
-            sql += "AND a.alt_name = ? COLLATE NOCASE ";
-            params.push_back(searchedNameWithoutDeprecated);
-        }
-        if (d->hasAuthorityRestriction()) {
-            sql += "AND ov.auth_name = ? ";
-            params.emplace_back(d->authority());
+            if (deprecated) {
+                sql += "AND ov.deprecated = 1 ";
+            }
+            if (!approximateMatch) {
+                sql += "AND a.alt_name = ? COLLATE NOCASE ";
+                params.push_back(searchedNameWithoutDeprecated);
+            }
+            if (d->hasAuthorityRestriction()) {
+                sql += "AND ov.auth_name = ? ";
+                params.emplace_back(d->authority());
+            }
         }
     }
 
@@ -8841,12 +9651,11 @@ AuthorityFactory::createObjectsFromNameEx(
             for (const auto &row : listOfRow) {
                 const auto &auth_name = row[1];
                 const auto &code = row[2];
-                const auto key =
-                    std::pair<std::string, std::string>(auth_name, code);
+                auto key = std::pair<std::string, std::string>(auth_name, code);
                 if (setIdentified.find(key) != setIdentified.end()) {
                     continue;
                 }
-                setIdentified.insert(key);
+                setIdentified.insert(std::move(key));
                 auto factory = d->createFactory(auth_name);
                 const auto &name = row[3];
                 res.emplace_back(
@@ -8874,12 +9683,12 @@ AuthorityFactory::createObjectsFromNameEx(
 
                     const auto &auth_name = row[1];
                     const auto &code = row[2];
-                    const auto key =
+                    auto key =
                         std::pair<std::string, std::string>(auth_name, code);
                     if (setIdentified.find(key) != setIdentified.end()) {
                         continue;
                     }
-                    setIdentified.insert(key);
+                    setIdentified.insert(std::move(key));
                     auto factory = d->createFactory(auth_name);
                     res.emplace_back(PairObjectName(
                         factory->createGeodeticDatum(code), name));
@@ -8897,7 +9706,8 @@ AuthorityFactory::createObjectsFromNameEx(
         auto sqlRes = d->run(sql, params);
         bool isFirst = true;
         bool firstIsDeprecated = false;
-        bool foundExactMatch = false;
+        size_t countExactMatch = 0;
+        size_t countExactMatchOnAlias = 0;
         std::size_t hashCodeFirstMatch = 0;
         for (const auto &row : sqlRes) {
             const auto &name = row[3];
@@ -8918,12 +9728,11 @@ AuthorityFactory::createObjectsFromNameEx(
             const auto &table_name = row[0];
             const auto &auth_name = row[1];
             const auto &code = row[2];
-            const auto key =
-                std::pair<std::string, std::string>(auth_name, code);
+            auto key = std::pair<std::string, std::string>(auth_name, code);
             if (setIdentified.find(key) != setIdentified.end()) {
                 continue;
             }
-            setIdentified.insert(key);
+            setIdentified.insert(std::move(key));
             const auto &deprecatedStr = row[4];
             if (isFirst) {
                 firstIsDeprecated = deprecatedStr == "1";
@@ -8969,14 +9778,20 @@ AuthorityFactory::createObjectsFromNameEx(
                         return NN_NO_CHECK(datumEnsemble);
                     }
                     return factory->createVerticalDatum(l_code);
+                } else if (l_table_name == "engineering_datum") {
+                    return factory->createEngineeringDatum(l_code);
                 } else if (l_table_name == "geodetic_crs") {
                     return factory->createGeodeticCRS(l_code);
                 } else if (l_table_name == "projected_crs") {
                     return factory->createProjectedCRS(l_code);
+                } else if (l_table_name == "derived_projected_crs") {
+                    return factory->createDerivedProjectedCRS(l_code);
                 } else if (l_table_name == "vertical_crs") {
                     return factory->createVerticalCRS(l_code);
                 } else if (l_table_name == "compound_crs") {
                     return factory->createCompoundCRS(l_code);
+                } else if (l_table_name == "engineering_crs") {
+                    return factory->createEngineeringCRS(l_code);
                 } else if (l_table_name == "conversion") {
                     return factory->createConversion(l_code);
                 } else if (l_table_name == "grid_transformation" ||
@@ -8988,9 +9803,12 @@ AuthorityFactory::createObjectsFromNameEx(
                 throw std::runtime_error("Unsupported table_name");
             };
             const auto obj = getObject(table_name, code);
-            if (metadata::Identifier::canonicalizeName(obj->nameStr()) ==
-                canonicalizedSearchedName) {
-                foundExactMatch = true;
+            if (metadata::Identifier::isEquivalentName(
+                    obj->nameStr().c_str(), searchedName.c_str(), false)) {
+                countExactMatch++;
+            } else if (metadata::Identifier::isEquivalentName(
+                           name.c_str(), searchedName.c_str(), false)) {
+                countExactMatchOnAlias++;
             }
 
             const auto objPtr = obj.get();
@@ -9006,14 +9824,21 @@ AuthorityFactory::createObjectsFromNameEx(
             }
         }
 
-        // If we found a name that is an exact match, and all objects have the
-        // same type, and we are not in approximate mode, only keep the
-        // object(s) with the exact name match.
-        if (foundExactMatch && hashCodeFirstMatch != 0 && !approximateMatch) {
+        // If we found several objects that are an exact match, and all objects
+        // have the same type, and we are not in approximate mode, only keep the
+        // objects with the exact name match.
+        if ((countExactMatch + countExactMatchOnAlias) >= 1 &&
+            hashCodeFirstMatch != 0 && !approximateMatch) {
             std::list<PairObjectName> resTmp;
+            bool biggerDifferencesAllowed = (countExactMatch == 0);
             for (const auto &pair : res) {
-                if (metadata::Identifier::canonicalizeName(
-                        pair.first->nameStr()) == canonicalizedSearchedName) {
+                if (metadata::Identifier::isEquivalentName(
+                        pair.first->nameStr().c_str(), searchedName.c_str(),
+                        biggerDifferencesAllowed) ||
+                    (countExactMatch == 0 &&
+                     metadata::Identifier::isEquivalentName(
+                         pair.second.c_str(), searchedName.c_str(),
+                         biggerDifferencesAllowed))) {
                     resTmp.emplace_back(pair);
                 }
             }
@@ -9024,6 +9849,7 @@ AuthorityFactory::createObjectsFromNameEx(
     auto sortLambda = [](const PairObjectName &a, const PairObjectName &b) {
         const auto &aName = a.first->nameStr();
         const auto &bName = b.first->nameStr();
+
         if (aName.size() < bName.size()) {
             return true;
         }
@@ -9076,7 +9902,7 @@ AuthorityFactory::createObjectsFromNameEx(
  * @param name Searched name.
  * @param approximateMatch Whether approximate name identification is allowed.
  * @return list of (auth_name, code) of matched objects.
- * @throw FactoryException
+ * @throw FactoryException in case of error.
  */
 std::list<std::pair<std::string, std::string>>
 AuthorityFactory::listAreaOfUseFromName(const std::string &name,
@@ -9358,12 +10184,26 @@ AuthorityFactory::createProjectedCRSFromExisting(
     }
 
     std::string sql(
-        "SELECT projected_crs.auth_name, projected_crs.code FROM projected_crs "
+        "SELECT projected_crs.auth_name, projected_crs.code, "
+        "projected_crs.name FROM projected_crs "
         "JOIN conversion_table conv ON "
         "projected_crs.conversion_auth_name = conv.auth_name AND "
-        "projected_crs.conversion_code = conv.code WHERE "
+        "projected_crs.conversion_code = conv.code "
+        "JOIN geodetic_crs gcrs ON "
+        "gcrs.auth_name = projected_crs.geodetic_crs_auth_name AND "
+        "gcrs.code = projected_crs.geodetic_crs_code "
+        "JOIN geodetic_datum datum ON "
+        "datum.auth_name = gcrs.datum_auth_name AND "
+        "datum.code = gcrs.datum_code "
+        "JOIN ellipsoid ellps ON "
+        "ellps.auth_name = datum.ellipsoid_auth_name AND "
+        "ellps.code = datum.ellipsoid_code "
+        "WHERE "
+        "abs(ellps.semi_major_axis - ?) <= 1e-4 * ellps.semi_major_axis AND "
         "projected_crs.deprecated = 0 AND ");
     ListOfParams params;
+    params.emplace_back(
+        toString(crs->baseCRS()->ellipsoid()->semiMajorAxis().value()));
     if (!candidatesGeodCRS.empty()) {
         sql += buildSqlLookForAuthNameCode(candidatesGeodCRS, params,
                                            "projected_crs.geodetic_crs_");
@@ -9474,6 +10314,20 @@ AuthorityFactory::createProjectedCRSFromExisting(
         sql += "))";
     }
     auto sqlRes = d->run(sql, params);
+
+    for (const auto &row : sqlRes) {
+        const auto &name = row[2];
+        if (metadata::Identifier::isEquivalentName(crs->nameStr().c_str(),
+                                                   name.c_str())) {
+            const auto &auth_name = row[0];
+            const auto &code = row[1];
+            res.emplace_back(
+                d->createFactory(auth_name)->createProjectedCRS(code));
+        }
+    }
+    if (!res.empty()) {
+        return res;
+    }
 
     params.clear();
 
@@ -9790,8 +10644,8 @@ struct NoSuchAuthorityCodeException::Private {
 NoSuchAuthorityCodeException::NoSuchAuthorityCodeException(
     const std::string &message, const std::string &authority,
     const std::string &code)
-    : FactoryException(message),
-      d(internal::make_unique<Private>(authority, code)) {}
+    : FactoryException(message), d(std::make_unique<Private>(authority, code)) {
+}
 
 // ---------------------------------------------------------------------------
 
@@ -9801,7 +10655,7 @@ NoSuchAuthorityCodeException::~NoSuchAuthorityCodeException() = default;
 
 NoSuchAuthorityCodeException::NoSuchAuthorityCodeException(
     const NoSuchAuthorityCodeException &other)
-    : FactoryException(other), d(internal::make_unique<Private>(*(other.d))) {}
+    : FactoryException(other), d(std::make_unique<Private>(*(other.d))) {}
 //! @endcond
 
 // ---------------------------------------------------------------------------

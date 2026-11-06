@@ -183,7 +183,7 @@ Conversion::alterParametersLinearUnit(const common::UnitOfMeasure &unit,
  * @param methodIn the operation method.
  * @param values the values.
  * @return a new Conversion.
- * @throws InvalidOperation
+ * @throws InvalidOperation if the object cannot be constructed.
  */
 ConversionNNPtr Conversion::create(const util::PropertyMap &properties,
                                    const OperationMethodNNPtr &methodIn,
@@ -212,7 +212,7 @@ ConversionNNPtr Conversion::create(const util::PropertyMap &properties,
  * @param values the operation values. Constraint:
  * values.size() == parameters.size()
  * @return a new Conversion.
- * @throws InvalidOperation
+ * @throws InvalidOperation if the object cannot be constructed.
  */
 ConversionNNPtr Conversion::create(
     const util::PropertyMap &propertiesConversion,
@@ -251,7 +251,7 @@ getUTMConversionProperty(const util::PropertyMap &properties, int zone,
         conversionName += (north ? 'N' : 'S');
 
         return createMapNameEPSGCode(conversionName,
-                                     (north ? 16000 : 17000) + zone);
+                                     (north ? 16000 : 16100) + zone);
     } else {
         return properties;
     }
@@ -276,8 +276,7 @@ createConversion(const util::PropertyMap &properties,
                      metadata::Identifier::EPSG)
                 .set(metadata::Identifier::CODE_KEY, param->epsg_code);
         }
-        auto parameter = OperationParameter::create(paramProperties);
-        parameters.push_back(parameter);
+        parameters.push_back(OperationParameter::create(paramProperties));
     }
 
     auto methodProperties = util::PropertyMap().set(
@@ -744,11 +743,11 @@ ConversionNNPtr Conversion::createLambertConicConformal_2SP_Belgium(
 
 /** \brief Instantiate a conversion based on the
  * <a href="../../../operations/projections/aeqd.html">
- * Modified Azimuthal Equidistant</a> projection method.
+ * Azimuthal Equidistant</a> projection method.
  *
  * This method is defined as
- * <a href="https://epsg.org/coord-operation-method_9832/index.html">
- * EPSG:9832</a>.
+ * <a href="https://epsg.org/coord-operation-method_1125/index.html">
+ * EPSG:1125</a>.
  *
  * @param properties See \ref general_properties of the conversion. If the name
  * is not provided, it is automatically set.
@@ -762,7 +761,7 @@ ConversionNNPtr Conversion::createAzimuthalEquidistant(
     const util::PropertyMap &properties, const common::Angle &latitudeNatOrigin,
     const common::Angle &longitudeNatOrigin, const common::Length &falseEasting,
     const common::Length &falseNorthing) {
-    return create(properties, EPSG_CODE_METHOD_MODIFIED_AZIMUTHAL_EQUIDISTANT,
+    return create(properties, EPSG_CODE_METHOD_AZIMUTHAL_EQUIDISTANT,
                   createParams(latitudeNatOrigin, longitudeNatOrigin,
                                falseEasting, falseNorthing));
 }
@@ -1752,6 +1751,8 @@ ConversionNNPtr Conversion::createPopularVisualisationPseudoMercator(
 
 // ---------------------------------------------------------------------------
 
+// clang-format off
+
 /** \brief Instantiate a conversion based on the
  * <a href="../../../operations/projections/merc.html">
  * Mercator</a> projection method, using its spherical formulation
@@ -1760,8 +1761,7 @@ ConversionNNPtr Conversion::createPopularVisualisationPseudoMercator(
  * sphere at centerLat.
  *
  * This method is defined as
- * <a
- * href="https://epsg.org/coord-operation-method_1026/Mercator-Spherical.html">
+ * <a href="https://epsg.org/coord-operation-method_1026/Mercator-Spherical.html">
  * EPSG:1026</a>.
  *
  * @param properties See \ref general_properties of the conversion. If the name
@@ -1781,6 +1781,8 @@ ConversionNNPtr Conversion::createMercatorSpherical(
         properties, EPSG_CODE_METHOD_MERCATOR_SPHERICAL,
         createParams(centerLat, centerLong, falseEasting, falseNorthing));
 }
+
+// clang-format on
 
 // ---------------------------------------------------------------------------
 
@@ -1886,6 +1888,36 @@ ConversionNNPtr Conversion::createOrthographic(
     return create(
         properties, EPSG_CODE_METHOD_ORTHOGRAPHIC,
         createParams(centerLat, centerLong, falseEasting, falseNorthing));
+}
+
+// ---------------------------------------------------------------------------
+
+/** \brief Instantiate a conversion based on the
+ * <a href="../../../operations/projections/ortho.html">
+ * Orthographic</a> projection method.
+ *
+ * This method is defined as
+ * <a href="https://epsg.org/coord-operation-method_1130/index.html">
+ * EPSG:1130</a>.
+ *
+ * @param properties See \ref general_properties of the conversion. If the name
+ * is not provided, it is automatically set.
+ * @param centerLat See \ref center_latitude
+ * @param centerLong See \ref center_longitude
+ * @param azimuthInitialLine See \ref azimuth_initial_line
+ * @param scale See \ref scale_factor_initial_line
+ * @param falseEasting See \ref false_easting
+ * @param falseNorthing See \ref false_northing
+ * @return a new Conversion.
+ */
+ConversionNNPtr Conversion::createLocalOrthographic(
+    const util::PropertyMap &properties, const common::Angle &centerLat,
+    const common::Angle &centerLong, const common::Angle &azimuthInitialLine,
+    const common::Scale &scale, const common::Length &falseEasting,
+    const common::Length &falseNorthing) {
+    return create(properties, EPSG_CODE_METHOD_LOCAL_ORTHOGRAPHIC,
+                  createParams(centerLat, centerLong, azimuthInitialLine, scale,
+                               falseEasting, falseNorthing));
 }
 
 // ---------------------------------------------------------------------------
@@ -2591,7 +2623,7 @@ Conversion::createGeographicGeocentric(const crs::CRSNNPtr &sourceCRS,
 /** \brief Instantiate a conversion between a GeographicCRS and a spherical
  * planetocentric GeodeticCRS
  *
- * This method peforms conversion between geodetic latitude and geocentric
+ * This method performs conversion between geodetic latitude and geocentric
  * latitude
  *
  * @return a new Conversion.
@@ -2680,9 +2712,11 @@ CoordinateOperationNNPtr Conversion::inverse() const {
         if (convFactor == 0) {
             throw InvalidOperation("Invalid conversion factor");
         }
+        // coverity[divide_by_zero]
+        const double invConvFactor = 1.0 / convFactor;
         auto conv = createChangeVerticalUnit(
             createPropertiesForInverse(this, false, false),
-            common::Scale(1.0 / convFactor));
+            common::Scale(invConvFactor));
         conv->setCRSs(this, true);
         return conv;
     }
@@ -2847,6 +2881,7 @@ ConversionPtr Conversion::convertToOtherMethod(int targetEPSGCode) const {
             EPSG_CODE_PARAMETER_SCALE_FACTOR_AT_NATURAL_ORIGIN);
         if (!(k0 > 0 && k0 <= 1.0 + 1e-10))
             return nullptr;
+        // coverity[divide_by_zero]
         const double dfStdP1Lat =
             (k0 >= 1.0)
                 ? 0.0
@@ -3125,7 +3160,7 @@ static void getESRIMethodNameAndParams(const Conversion *conv,
                    EPSG_CODE_METHOD_HOTINE_OBLIQUE_MERCATOR_VARIANT_A) {
             if (std::abs(
                     conv->parameterValueNumericAsSI(
-                        EPSG_CODE_PARAMETER_AZIMUTH_INITIAL_LINE) -
+                        EPSG_CODE_PARAMETER_AZIMUTH_PROJECTION_CENTRE) -
                     conv->parameterValueNumericAsSI(
                         EPSG_CODE_PARAMETER_ANGLE_RECTIFIED_TO_SKEW_GRID)) <
                 1e-15) {
@@ -3142,7 +3177,7 @@ static void getESRIMethodNameAndParams(const Conversion *conv,
                    EPSG_CODE_METHOD_HOTINE_OBLIQUE_MERCATOR_VARIANT_B) {
             if (std::abs(
                     conv->parameterValueNumericAsSI(
-                        EPSG_CODE_PARAMETER_AZIMUTH_INITIAL_LINE) -
+                        EPSG_CODE_PARAMETER_AZIMUTH_PROJECTION_CENTRE) -
                     conv->parameterValueNumericAsSI(
                         EPSG_CODE_PARAMETER_ANGLE_RECTIFIED_TO_SKEW_GRID)) <
                 1e-15) {
@@ -3172,6 +3207,16 @@ static void getESRIMethodNameAndParams(const Conversion *conv,
                 esriMethodName = "Stereographic_North_Pole";
             } else {
                 esriMethodName = "Stereographic_South_Pole";
+            }
+        } else if (esriMapping->epsg_code ==
+                   EPSG_CODE_METHOD_LAMBERT_CYLINDRICAL_EQUAL_AREA) {
+            if (std::abs(conv->parameterValueNumeric(
+                             EPSG_CODE_PARAMETER_LATITUDE_1ST_STD_PARALLEL,
+                             common::UnitOfMeasure::DEGREE) -
+                         30.0) < 1e-10) {
+                esriMethodName = "Behrmann";
+            } else {
+                esriMethodName = "Cylindrical_Equal_Area";
             }
         }
     }
@@ -3214,8 +3259,8 @@ const char *Conversion::getWKT1GDALMethodName() const {
 
 void Conversion::_exportToWKT(io::WKTFormatter *formatter) const {
     const auto &l_method = method();
-    const auto &methodName = l_method->nameStr();
-    const auto methodEPSGCode = l_method->getEPSGCode();
+    std::string methodName = l_method->nameStr();
+    auto methodEPSGCode = l_method->getEPSGCode();
     const bool isWKT2 = formatter->version() == io::WKTFormatter::Version::WKT2;
 
     if (!isWKT2 && formatter->useESRIDialect()) {
@@ -3253,6 +3298,29 @@ void Conversion::_exportToWKT(io::WKTFormatter *formatter) const {
 #endif
 
     bool bAlreadyWritten = false;
+
+    bool methodWritten = false;
+
+    const MethodMapping *mapping = !isWKT2 && !formatter->useESRIDialect()
+                                       ? getMapping(l_method.get())
+                                       : nullptr;
+
+    if (!isWKT2 && methodEPSGCode == EPSG_CODE_METHOD_MERCATOR_SPHERICAL) {
+        auto projCRS =
+            dynamic_cast<const crs::ProjectedCRS *>(targetCRS().get());
+        if (projCRS && projCRS->baseCRS()->ellipsoid()->isSphere()) {
+            methodName = EPSG_NAME_METHOD_MERCATOR_VARIANT_A;
+            methodEPSGCode = EPSG_CODE_METHOD_MERCATOR_VARIANT_A;
+            if (!formatter->useESRIDialect()) {
+                methodWritten = true;
+                formatter->startNode(io::WKTConstants::PROJECTION, false);
+                formatter->addQuotedString("Mercator_1SP");
+                formatter->endNode();
+                mapping = getMapping(methodEPSGCode);
+            }
+        }
+    }
+
     if (!isWKT2 && formatter->useESRIDialect()) {
         const ESRIParamMapping *esriParams = nullptr;
         const char *esriMethodName = nullptr;
@@ -3359,10 +3427,18 @@ void Conversion::_exportToWKT(io::WKTFormatter *formatter) const {
     }
 
     if (!bAlreadyWritten) {
-        l_method->_exportToWKT(formatter);
+        if (!methodWritten) {
+            l_method->_exportToWKT(formatter);
+        }
 
-        const MethodMapping *mapping =
-            !isWKT2 ? getMapping(l_method.get()) : nullptr;
+        if (!isWKT2 && methodEPSGCode == EPSG_CODE_METHOD_MERCATOR_VARIANT_A &&
+            parameterValueNumericAsSI(
+                EPSG_CODE_PARAMETER_LATITUDE_OF_NATURAL_ORIGIN) != 0.0) {
+            throw io::FormattingException(
+                std::string("Unsupported value for ") +
+                EPSG_NAME_PARAMETER_LATITUDE_OF_NATURAL_ORIGIN);
+        }
+
         bool hasInterpolationCRSParameter = false;
         for (const auto &genOpParamvalue : parameterValues()) {
             const auto opParamvalue =
@@ -3447,7 +3523,7 @@ void Conversion::_exportToJSON(
         formatter->MakeObjectContext("Conversion", !identifiers().empty()));
 
     writer->AddObjKey("name");
-    auto l_name = nameStr();
+    const auto &l_name = nameStr();
     if (l_name.empty()) {
         writer->Add("unnamed");
     } else {
@@ -3539,7 +3615,7 @@ static bool createPROJ4WebMercator(const Conversion *conv,
                                   util::IComparable::Criterion::EQUIVALENT)) {
             auto projUnit = unit.exportToPROJString();
             if (!projUnit.empty()) {
-                units = projUnit;
+                units = std::move(projUnit);
             } else {
                 return false;
             }
@@ -3702,6 +3778,11 @@ void Conversion::_exportToPROJString(
         methodEPSGCode == EPSG_CODE_METHOD_AFFINE_PARAMETRIC_TRANSFORMATION;
     const bool isSimilarity =
         methodEPSGCode == EPSG_CODE_METHOD_SIMILARITY_TRANSFORMATION;
+    // Those methods deal themselves with the unit and axis order of the map
+    // grid they are based on, and emit bin numbers, which are unit-less.
+    const bool isSeismicBinGrid =
+        methodEPSGCode == EPSG_CODE_METHOD_SEISMIC_BIN_GRID_I_EQ_J_PLUS_90 ||
+        methodEPSGCode == EPSG_CODE_METHOD_SEISMIC_BIN_GRID_I_EQ_J_MINUS_90;
     const bool isGeographicGeocentric =
         methodEPSGCode == EPSG_CODE_METHOD_GEOGRAPHIC_GEOCENTRIC;
     const bool isGeographicOffsets =
@@ -3712,8 +3793,9 @@ void Conversion::_exportToPROJString(
         methodEPSGCode == EPSG_CODE_METHOD_HEIGHT_DEPTH_REVERSAL;
     const bool applySourceCRSModifiers =
         !isZUnitConversion && !isAffineParametric && !isSimilarity &&
-        !isAxisOrderReversal(methodEPSGCode) && !isGeographicGeocentric &&
-        !isGeographicOffsets && !isHeightDepthReversal;
+        !isSeismicBinGrid && !isAxisOrderReversal(methodEPSGCode) &&
+        !isGeographicGeocentric && !isGeographicOffsets &&
+        !isHeightDepthReversal;
     bool applyTargetCRSModifiers = applySourceCRSModifiers;
 
     if (formatter->getCRSExport()) {
@@ -3846,6 +3928,8 @@ void Conversion::_exportToPROJString(
     bool bConversionDone = false;
     bool bEllipsoidParametersDone = false;
     bool useApprox = false;
+    bool insertAxisWSU = false;
+    bool negateScaleFactor = false;
     if (methodEPSGCode == EPSG_CODE_METHOD_TRANSVERSE_MERCATOR) {
         // Check for UTM
         int zone = 0;
@@ -3864,11 +3948,33 @@ void Conversion::_exportToPROJString(
             if (!north) {
                 formatter->addParam("south");
             }
+        } else if (l_targetCRS &&
+                   parameterValueNumeric(
+                       EPSG_CODE_PARAMETER_SCALE_FACTOR_AT_NATURAL_ORIGIN,
+                       common::UnitOfMeasure::SCALE_UNITY) < 0 &&
+                   parameterValueNumeric(EPSG_CODE_PARAMETER_FALSE_EASTING,
+                                         common::UnitOfMeasure::METRE) == 0 &&
+                   parameterValueNumeric(EPSG_NAME_PARAMETER_FALSE_NORTHING,
+                                         common::UnitOfMeasure::METRE) == 0) {
+            // Deal with ESRI:102470 that use Transverse Mercator with k=-1
+            // to indicate a westing-southing coordinate system, by inserting a
+            // +axis=wsu and changing k to 1.
+            auto projCRS =
+                dynamic_cast<const crs::ProjectedCRS *>(l_targetCRS.get());
+            if (projCRS) {
+                const auto &axisList = projCRS->coordinateSystem()->axisList();
+                if (axisList[0]->direction() == cs::AxisDirection::EAST &&
+                    axisList[1]->direction() == cs::AxisDirection::NORTH) {
+                    insertAxisWSU = true;
+                    negateScaleFactor = true;
+                }
+            }
         }
+
     } else if (methodEPSGCode ==
                EPSG_CODE_METHOD_HOTINE_OBLIQUE_MERCATOR_VARIANT_A) {
         const double azimuth =
-            parameterValueNumeric(EPSG_CODE_PARAMETER_AZIMUTH_INITIAL_LINE,
+            parameterValueNumeric(EPSG_CODE_PARAMETER_AZIMUTH_PROJECTION_CENTRE,
                                   common::UnitOfMeasure::DEGREE);
         const double angleRectifiedToSkewGrid = parameterValueNumeric(
             EPSG_CODE_PARAMETER_ANGLE_RECTIFIED_TO_SKEW_GRID,
@@ -3888,7 +3994,7 @@ void Conversion::_exportToPROJString(
                              common::UnitOfMeasure::DEGREE));
             formatter->addParam(
                 "k_0", parameterValueNumericAsSI(
-                           EPSG_CODE_PARAMETER_SCALE_FACTOR_INITIAL_LINE));
+                           EPSG_CODE_PARAMETER_SCALE_FACTOR_PROJECTION_CENTRE));
             formatter->addParam("x_0", parameterValueNumericAsSI(
                                            EPSG_CODE_PARAMETER_FALSE_EASTING));
             formatter->addParam("y_0", parameterValueNumericAsSI(
@@ -3897,7 +4003,7 @@ void Conversion::_exportToPROJString(
     } else if (methodEPSGCode ==
                EPSG_CODE_METHOD_HOTINE_OBLIQUE_MERCATOR_VARIANT_B) {
         const double azimuth =
-            parameterValueNumeric(EPSG_CODE_PARAMETER_AZIMUTH_INITIAL_LINE,
+            parameterValueNumeric(EPSG_CODE_PARAMETER_AZIMUTH_PROJECTION_CENTRE,
                                   common::UnitOfMeasure::DEGREE);
         const double angleRectifiedToSkewGrid = parameterValueNumeric(
             EPSG_CODE_PARAMETER_ANGLE_RECTIFIED_TO_SKEW_GRID,
@@ -3917,7 +4023,7 @@ void Conversion::_exportToPROJString(
                              common::UnitOfMeasure::DEGREE));
             formatter->addParam(
                 "k_0", parameterValueNumericAsSI(
-                           EPSG_CODE_PARAMETER_SCALE_FACTOR_INITIAL_LINE));
+                           EPSG_CODE_PARAMETER_SCALE_FACTOR_PROJECTION_CENTRE));
             formatter->addParam(
                 "x_0", parameterValueNumericAsSI(
                            EPSG_CODE_PARAMETER_EASTING_PROJECTION_CENTRE));
@@ -3925,7 +4031,9 @@ void Conversion::_exportToPROJString(
                 "y_0", parameterValueNumericAsSI(
                            EPSG_CODE_PARAMETER_NORTHING_PROJECTION_CENTRE));
         }
-    } else if (methodEPSGCode == EPSG_CODE_METHOD_KROVAK_NORTH_ORIENTED) {
+    } else if (methodEPSGCode == EPSG_CODE_METHOD_KROVAK_NORTH_ORIENTED ||
+               methodEPSGCode ==
+                   EPSG_CODE_METHOD_KROVAK_MODIFIED_NORTH_ORIENTED) {
         double colatitude =
             parameterValueNumeric(EPSG_CODE_PARAMETER_COLATITUDE_CONE_AXIS,
                                   common::UnitOfMeasure::DEGREE);
@@ -4058,10 +4166,12 @@ void Conversion::_exportToPROJString(
         // Look for ESRI method and parameter names (to be opposed
         // to the OGC WKT2 names we use elsewhere, because there's no mapping
         // of those parameters to OGC WKT2)
-        // We also reject non-default values for a number of parameters,
-        // because they are not implemented on PROJ side. The subset we
-        // support can handle ESRI:54098 WGS_1984_Adams_Square_II, but not
+        // We at least support ESRI:54098 WGS_1984_Adams_Square_II and
         // ESRI:54099 WGS_1984_Spilhaus_Ocean_Map_in_Square
+        // More generally, we think our implementation of +proj=spilhaus
+        // matches ESRI Adams_Square_II with just a sqrt(2) factor difference
+        // for the scale factor, with a ~20 cm difference (difference in
+        // ell_int_5() computation?)
         const double falseEasting = parameterValueNumeric(
             "False_Easting", common::UnitOfMeasure::METRE);
         const double falseNorthing = parameterValueNumeric(
@@ -4079,14 +4189,13 @@ void Conversion::_exportToPROJString(
             "Latitude_Of_Center", common::UnitOfMeasure::DEGREE);
         const double XYPlaneRotation = parameterValueNumeric(
             "XY_Plane_Rotation", common::UnitOfMeasure::DEGREE);
-        if (scaleFactor != 1.0 || azimuth != 0.0 || latitudeOfCenter != 0.0 ||
-            XYPlaneRotation != 0.0) {
-            throw io::FormattingException("Unsupported value for one or "
-                                          "several parameters of "
-                                          "Adams_Square_II");
-        }
-        formatter->addStep("adams_ws2");
+
+        formatter->addStep("spilhaus");
+        formatter->addParam("lat_0", latitudeOfCenter);
         formatter->addParam("lon_0", longitudeOfCenter);
+        formatter->addParam("azi", azimuth);
+        formatter->addParam("k_0", M_SQRT2 * scaleFactor);
+        formatter->addParam("rot", XYPlaneRotation);
         formatter->addParam("x_0", falseEasting);
         formatter->addParam("y_0", falseNorthing);
         bConversionDone = true;
@@ -4184,7 +4293,9 @@ void Conversion::_exportToPROJString(
             if (mapping->proj_name_aux) {
                 bool addAux = true;
                 if (internal::starts_with(mapping->proj_name_aux, "axis=")) {
-                    if (mapping->epsg_code == EPSG_CODE_METHOD_KROVAK) {
+                    if (mapping->epsg_code == EPSG_CODE_METHOD_KROVAK ||
+                        mapping->epsg_code ==
+                            EPSG_CODE_METHOD_KROVAK_MODIFIED) {
                         auto projCRS = dynamic_cast<const crs::ProjectedCRS *>(
                             l_targetCRS.get());
                         if (projCRS) {
@@ -4239,6 +4350,10 @@ void Conversion::_exportToPROJString(
                 }
             }
 
+            if (insertAxisWSU) {
+                formatter->addParam("axis", "wsu");
+            }
+
             if (mapping->epsg_code ==
                 EPSG_CODE_METHOD_POLAR_STEREOGRAPHIC_VARIANT_B) {
                 double latitudeStdParallel = parameterValueNumeric(
@@ -4286,6 +4401,11 @@ void Conversion::_exportToPROJString(
                     strcmp(param->proj_name, "lat_1") == 0) {
                     formatter->addParam(param->proj_name, valueConverted);
                     formatter->addParam("lat_0", valueConverted);
+                } else if (
+                    negateScaleFactor &&
+                    param->epsg_code ==
+                        EPSG_CODE_PARAMETER_SCALE_FACTOR_AT_NATURAL_ORIGIN) {
+                    formatter->addParam(param->proj_name, -valueConverted);
                 } else {
                     formatter->addParam(param->proj_name, valueConverted);
                 }
@@ -4560,7 +4680,7 @@ ConversionNNPtr Conversion::createGeographic2DWithHeightOffsets(
         VectorOfParameters{
             createOpParamNameEPSGCode(EPSG_CODE_PARAMETER_LATITUDE_OFFSET),
             createOpParamNameEPSGCode(EPSG_CODE_PARAMETER_LONGITUDE_OFFSET),
-            createOpParamNameEPSGCode(EPSG_CODE_PARAMETER_GEOID_UNDULATION)},
+            createOpParamNameEPSGCode(EPSG_CODE_PARAMETER_GEOID_HEIGHT)},
         VectorOfValues{offsetLat, offsetLong, offsetHeight});
 }
 
@@ -4585,6 +4705,98 @@ Conversion::createVerticalOffset(const util::PropertyMap &properties,
                   VectorOfParameters{createOpParamNameEPSGCode(
                       EPSG_CODE_PARAMETER_VERTICAL_OFFSET)},
                   VectorOfValues{offsetHeight});
+}
+
+// ---------------------------------------------------------------------------
+
+/** \brief Instantiate a conversion with method Affine Parametric
+ *
+ * This method is defined as
+ * <a href="https://epsg.org/coord-operation-method_9624/index.html">
+ * EPSG:9624</a>.
+ *
+ * Use this method for a CRS whose coordinate system has 2 axis.
+ *
+ * @param properties See \ref general_properties of the Conversion.
+ * At minimum the name should be defined.
+ * @param A0 translation term for output first axis
+ * @param A1 coefficient term for output first axis taking that is multiplied
+ * with the value along the source first axis
+ * @param A2 coefficient term for output first axis taking that is multiplied
+ * with the value along the source second axis
+ * @param B0 translation term for output second axis
+ * @param B1 coefficient term for output second axis taking that is multiplied
+ * with the value along the source first axis
+ * @param B2 coefficient term for output second axis taking that is multiplied
+ * with the value along the source second axis
+ * @return new Conversion.
+ *
+ * @since 9.8
+ */
+ConversionNNPtr Conversion::createAffineParametric(
+    const util::PropertyMap &properties, const common::Measure &A0,
+    const common::Scale &A1, const common::Scale &A2, const common::Measure &B0,
+    const common::Scale &B1, const common::Scale &B2) {
+    return create(
+        properties,
+        createMethodMapNameEPSGCode(
+            EPSG_CODE_METHOD_AFFINE_PARAMETRIC_TRANSFORMATION),
+        VectorOfParameters{createOpParamNameEPSGCode(EPSG_CODE_PARAMETER_A0),
+                           createOpParamNameEPSGCode(EPSG_CODE_PARAMETER_A1),
+                           createOpParamNameEPSGCode(EPSG_CODE_PARAMETER_A2),
+                           createOpParamNameEPSGCode(EPSG_CODE_PARAMETER_B0),
+                           createOpParamNameEPSGCode(EPSG_CODE_PARAMETER_B1),
+                           createOpParamNameEPSGCode(EPSG_CODE_PARAMETER_B2)},
+        VectorOfValues{A0, A1, A2, B0, B1, B2});
+}
+
+// ---------------------------------------------------------------------------
+
+/** \brief Instantiate a conversion with method 3D Affine Parametric
+ *
+ * Use this method for a CRS whose coordinate system has 3 axis.
+ *
+ * @param properties See \ref general_properties of the Conversion.
+ * At minimum the name should be defined.
+ * @param A0 translation term for output first axis
+ * @param A1 coefficient term for output first axis taking that is multiplied
+ * with the value along the source first axis
+ * @param A2 coefficient term for output first axis taking that is multiplied
+ * with the value along the source second axis
+ * @param A3 coefficient term for output first axis taking that is multiplied
+ * with the value along the source third axis
+ * @param B0 translation term for output second axis
+ * @param B1 coefficient term for output second axis taking that is multiplied
+ * with the value along the source first axis
+ * @param B2 coefficient term for output second axis taking that is multiplied
+ * with the value along the source second axis
+ * @param B3 coefficient term for output second axis taking that is multiplied
+ * with the value along the source third axis
+ * @param C0 translation term for output third axis
+ * @param C1 coefficient term for output third axis taking that is multiplied
+ * with the value along the source first axis
+ * @param C2 coefficient term for output third axis taking that is multiplied
+ * with the value along the source second axis
+ * @param C3 coefficient term for output third axis taking that is multiplied
+ * with the value along the source third axis
+ * @return new Conversion.
+ *
+ * @since 9.9
+ */
+ConversionNNPtr Conversion::createAffineParametric(
+    const util::PropertyMap &properties, const common::Measure &A0,
+    const common::Scale &A1, const common::Scale &A2, const common::Scale &A3,
+    const common::Measure &B0, const common::Scale &B1, const common::Scale &B2,
+    const common::Scale &B3, const common::Measure &C0, const common::Scale &C1,
+    const common::Scale &C2, const common::Scale &C3) {
+    return create(
+        properties, PROJ_WKT2_NAME_METHOD_3D_AFFINE_PARAMETRIC_TRANSFORMATION,
+        VectorOfValues{ParameterValue::create(A0), ParameterValue::create(A1),
+                       ParameterValue::create(A2), ParameterValue::create(A3),
+                       ParameterValue::create(B0), ParameterValue::create(B1),
+                       ParameterValue::create(B2), ParameterValue::create(B3),
+                       ParameterValue::create(C0), ParameterValue::create(C1),
+                       ParameterValue::create(C2), ParameterValue::create(C3)});
 }
 
 // ---------------------------------------------------------------------------

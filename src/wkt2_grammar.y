@@ -122,6 +122,7 @@
 %token T_RANGEMEANING           "RANGEMEANING"
 %token T_exact                  "exact"
 %token T_wraparound             "wraparound"
+%token T_DEFININGTRANSFORMATION "DEFININGTRANSFORMATION"
 
 /* WKT2 alternate (longer or shorter) */
 %token T_GEODETICCRS            "GEODETICCRS";
@@ -569,6 +570,8 @@ conversion_factor: unsigned_numeric_literal
 
 coordinate_system_scope_extent_identifier_remark: spatial_cs_scope_extent_identifier_remark | wkt2015temporal_cs_scope_extent_identifier_remark | temporalcountmeasure_cs_scope_extent_identifier_remark | ordinaldatetime_cs_scope_extent_identifier_remark
 
+coordinate_system_defining_transformation_scope_extent_identifier_remark: spatial_cs_defining_transformation_scope_extent_identifier_remark
+
 spatial_cs_scope_extent_identifier_remark: cs_keyword left_delimiter spatial_cs_type
             wkt_separator dimension
             opt_separator_identifier_list
@@ -576,10 +579,37 @@ spatial_cs_scope_extent_identifier_remark: cs_keyword left_delimiter spatial_cs_
             wkt_separator spatial_axis
             opt_separator_spatial_axis_list_opt_separator_cs_unit_scope_extent_identifier_remark
 
+spatial_cs_defining_transformation_scope_extent_identifier_remark: cs_keyword left_delimiter spatial_cs_type
+            wkt_separator dimension
+            opt_separator_identifier_list
+            right_delimiter
+            wkt_separator spatial_axis
+            opt_separator_spatial_axis_list_opt_defining_transformation_opt_separator_cs_unit_scope_extent_identifier_remark
+
 opt_separator_spatial_axis_list_opt_separator_cs_unit_scope_extent_identifier_remark:
   | wkt_separator cs_unit opt_separator_scope_extent_identifier_remark
   | wkt_separator spatial_axis opt_separator_spatial_axis_list_opt_separator_cs_unit_scope_extent_identifier_remark
   | wkt_separator no_opt_separator_scope_extent_identifier_remark
+
+opt_defining_transformation_separator_scope_extent_identifier_remark:
+    | wkt_separator no_opt_defining_transformation_separator_scope_extent_identifier_remark
+
+defining_transformation:
+    T_DEFININGTRANSFORMATION left_delimiter defining_transformation_name opt_separator_identifier right_delimiter
+
+defining_transformation_name: quoted_latin_text
+
+no_opt_defining_transformation_separator_scope_extent_identifier_remark:
+      defining_transformation
+    | defining_transformation wkt_separator no_opt_defining_transformation_separator_scope_extent_identifier_remark
+    | scope_extent_opt_identifier_list_opt_remark
+    | identifier opt_identifier_list_remark
+    | remark
+
+opt_separator_spatial_axis_list_opt_defining_transformation_opt_separator_cs_unit_scope_extent_identifier_remark:
+  | wkt_separator cs_unit opt_defining_transformation_separator_scope_extent_identifier_remark
+  | wkt_separator spatial_axis opt_separator_spatial_axis_list_opt_defining_transformation_opt_separator_cs_unit_scope_extent_identifier_remark
+  | wkt_separator no_opt_defining_transformation_separator_scope_extent_identifier_remark
 
 wkt2015temporal_cs_scope_extent_identifier_remark: cs_keyword left_delimiter T_TEMPORAL
             wkt_separator dimension
@@ -824,7 +854,6 @@ datum_ensemble: geodetic_datum_ensemble_without_pm | vertical_datum_ensemble
 geodetic_datum_ensemble_without_pm: datum_ensemble_keyword
                          left_delimiter
                          datum_ensemble_name
-                         wkt_separator datum_ensemble_member
                          datum_ensemble_member_list_ellipsoid_accuracy_identifier_list
                          right_delimiter
 
@@ -917,7 +946,7 @@ static_geodetic_crs: geodetic_crs_keyword
                      wkt_separator
                      geodetic_reference_frame_or_geodetic_datum_ensemble_without_pm
                      wkt_separator
-                     opt_prime_meridian_coordinate_system_scope_extent_identifier_remark
+                     opt_prime_meridian_coordinate_system_defining_transformation_scope_extent_identifier_remark
                      right_delimiter
 
 dynamic_geodetic_crs: geodetic_crs_keyword
@@ -926,7 +955,7 @@ dynamic_geodetic_crs: geodetic_crs_keyword
                      wkt_separator
                      geodetic_reference_frame_without_pm
                      wkt_separator
-                     opt_prime_meridian_coordinate_system_scope_extent_identifier_remark
+                     opt_prime_meridian_coordinate_system_defining_transformation_scope_extent_identifier_remark
                      right_delimiter
 
 static_geographic_crs: geographic_crs_keyword
@@ -934,7 +963,7 @@ static_geographic_crs: geographic_crs_keyword
                      wkt_separator
                      geodetic_reference_frame_or_geodetic_datum_ensemble_without_pm
                      wkt_separator
-                     opt_prime_meridian_coordinate_system_scope_extent_identifier_remark
+                     opt_prime_meridian_coordinate_system_defining_transformation_scope_extent_identifier_remark
                      right_delimiter
 
 dynamic_geographic_crs: geographic_crs_keyword
@@ -943,12 +972,12 @@ dynamic_geographic_crs: geographic_crs_keyword
                      wkt_separator
                      geodetic_reference_frame_without_pm
                      wkt_separator
-                     opt_prime_meridian_coordinate_system_scope_extent_identifier_remark
+                     opt_prime_meridian_coordinate_system_defining_transformation_scope_extent_identifier_remark
                      right_delimiter
 
-opt_prime_meridian_coordinate_system_scope_extent_identifier_remark:
-      prime_meridian wkt_separator coordinate_system_scope_extent_identifier_remark
-    | coordinate_system_scope_extent_identifier_remark
+opt_prime_meridian_coordinate_system_defining_transformation_scope_extent_identifier_remark:
+      prime_meridian wkt_separator coordinate_system_defining_transformation_scope_extent_identifier_remark
+    | coordinate_system_defining_transformation_scope_extent_identifier_remark
 
 crs_name: quoted_latin_text
 
@@ -1393,8 +1422,17 @@ derived_crs_name: quoted_latin_text
 base_projected_crs: base_projected_crs_keyword left_delimiter base_crs_name
                     wkt_separator base_geodetic_geographic_crs
                     wkt_separator map_projection
-                    opt_separator_identifier_list
+                    // Current WKT grammar (as of WKT2 18-010r11) does not allow a
+                    // BASEPROJCRS.CS node, but there are situations where this is
+                    // ambiguous and we want to allow one.
+                    // Cf WKTParser::Private::buildProjectedCRS() for more details
+                    // Otherwise this should only be a opt_separator_identifier_list
+                    base_projected_crs_opt_separator_cs_identifier
                     right_delimiter
+
+base_projected_crs_opt_separator_cs_identifier:
+    | wkt_separator spatial_cs_scope_extent_identifier_remark
+    | wkt_separator no_opt_separator_scope_extent_identifier_remark
 
 base_projected_crs_keyword: T_BASEPROJCRS
 

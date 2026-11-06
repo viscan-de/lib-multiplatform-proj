@@ -270,6 +270,66 @@
         "type": "poly"
     },
     {
+        "filename": "dsea.png",
+        "latmax": 90,
+        "latmin": -90,
+        "lonmax": 180,
+        "lonmin": -180,
+        "name": "dsea",
+        "projstring": "+proj=dsea",
+        "res": "low",
+        "type": "line",
+        "delta_cut": 1e6
+    },
+    {
+        "filename": "dsea_a5.png",
+        "latmax": 90,
+        "latmin": -90,
+        "lonmax": 180,
+        "lonmin": -180,
+        "name": "dsea_a5",
+        "projstring": "+proj=dsea +net=a5",
+        "res": "low",
+        "type": "line",
+        "delta_cut": 1e6
+    },
+    {
+        "filename": "dsea_crescent.png",
+        "latmax": 90,
+        "latmin": -90,
+        "lonmax": 180,
+        "lonmin": -180,
+        "name": "dsea_crescent",
+        "projstring": "+proj=dsea +net=crescent",
+        "res": "low",
+        "type": "line",
+        "delta_cut": 1e6
+    },
+    {
+        "filename": "dsea_flower.png",
+        "latmax": 90,
+        "latmin": -90,
+        "lonmax": 180,
+        "lonmin": -180,
+        "name": "dsea_flower",
+        "projstring": "+proj=dsea +net=flower",
+        "res": "low",
+        "type": "line",
+        "delta_cut": 1e6
+    },
+    {
+        "filename": "airocean.png",
+        "latmax": 90,
+        "latmin": -90,
+        "lonmax": 180,
+        "lonmin": -180,
+        "name": "airocean",
+        "projstring": "+proj=airocean",
+        "res": "low",
+        "type": "line",
+        "delta_cut": 1e6
+    },
+    {
         "filename": "eck1.png",
         "latmax": 90,
         "latmin": -90,
@@ -545,6 +605,29 @@
         "type": "poly"
     },
     {
+        "filename": "healpix.png",
+        "latmax": 90,
+        "latmin": -90,
+        "lonmax": 180,
+        "lonmin": -180,
+        "name": "healpix",
+        "projstring": "+proj=healpix",
+        "res": "low",
+        "type": "line",
+        "delta_cut": 1e6
+    },
+    {
+        "filename": "hourglass.png",
+        "latmax": 90,
+        "latmin": -90,
+        "lonmax": 180,
+        "lonmin": -180,
+        "name": "hourglass",
+        "projstring": "+proj=hourglass",
+        "res": "low",
+        "type": "poly"
+    },
+    {
         "filename": "igh.png",
         "latmax": 90,
         "latmin": -90,
@@ -612,6 +695,18 @@
         "type": "line"
     },
     {
+        "filename": "interrupted.png",
+        "latmax": 90,
+        "latmin": -90,
+        "lonmax": 180,
+        "lonmin": -180,
+        "name": "interrupted",
+        "projstring": "+proj=interrupted +base=sinu",
+        "res": "low",
+        "type": "line",
+        "delta_cut": 1e6
+    },
+    {
         "filename": "isea.png",
         "latmax": 90,
         "latmin": -90,
@@ -619,6 +714,54 @@
         "lonmin": -180,
         "name": "isea",
         "projstring": "+proj=isea",
+        "res": "low",
+        "type": "line",
+        "delta_cut": 1e6
+    },
+    {
+        "filename": "isea_pole.png",
+        "latmax": 90,
+        "latmin": -90,
+        "lonmax": 180,
+        "lonmin": -180,
+        "name": "isea_pole",
+        "projstring": "+proj=isea +orient=pole",
+        "res": "low",
+        "type": "line",
+        "delta_cut": 1e6
+    },
+    {
+        "filename": "ivea.png",
+        "latmax": 90,
+        "latmin": -90,
+        "lonmax": 180,
+        "lonmin": -180,
+        "name": "ivea",
+        "projstring": "+proj=ivea",
+        "res": "low",
+        "type": "line",
+        "delta_cut": 1e6
+    },
+    {
+        "filename": "ivea_pole.png",
+        "latmax": 90,
+        "latmin": -90,
+        "lonmax": 180,
+        "lonmin": -180,
+        "name": "ivea_pole",
+        "projstring": "+proj=ivea +orient=pole",
+        "res": "low",
+        "type": "line",
+        "delta_cut": 1e6
+    },
+    {
+        "filename": "isea_dual.png",
+        "latmax": 90,
+        "latmin": -90,
+        "lonmax": 180,
+        "lonmin": -180,
+        "name": "isea_dual",
+        "projstring": "+proj=isea +dual",
         "res": "low",
         "type": "line",
         "delta_cut": 1e6
@@ -1267,6 +1410,18 @@
         "type": "poly"
     },
     {
+        "filename": "rhealpix.png",
+        "latmax": 90,
+        "latmin": -90,
+        "lonmax": 180,
+        "lonmin": -180,
+        "name": "rhealpix",
+        "projstring": "+proj=rhealpix",
+        "res": "low",
+        "type": "line",
+        "delta_cut": 1e6
+    },
+    {
         "filename": "robin.png",
         "latmax": 90,
         "latmin": -90,
@@ -1334,6 +1489,18 @@
         "delta_cut": 1e7
     },
     {
+        "filename": "spilhaus.png",
+        "latmax": 90,
+        "latmin": -90,
+        "lonmax": 180,
+        "lonmin": -180,
+        "name": "spilhaus",
+        "projstring": "+proj=spilhaus",
+        "res": "low",
+        "type": "line",
+        "delta_cut": 1e6
+    },
+    {
         "filename": "stere.png",
         "latmax": 90.0,
         "latmin": 50.0,
@@ -1346,13 +1513,13 @@
     },
     {
         "filename": "sterea.png",
-        "latmax": 90,
-        "latmin": 50,
-        "lonmax": 180,
-        "lonmin": -180,
+        "latmax": 70,
+        "latmin": 30,
+        "lonmax": 50,
+        "lonmin": -50,
         "name": "sterea",
-        "projstring": "+proj=sterea +lat_0=90",
-        "res": "low",
+        "projstring": "+proj=sterea +lat_0=52.1561605555556 +lon_0=5.38763888888889 +k=0.9999079 +x_0=155000 +y_0=463000 +ellps=bessel",
+        "res": "med",
         "type": "poly"
     },
     {
@@ -1424,6 +1591,18 @@
         "type": "poly"
     },
     {
+        "filename": "tmerczoned.png",
+        "latmax": 90,
+        "latmin": -90,
+        "lonmax": 180,
+        "lonmin": -180,
+        "name": "tmerczoned",
+        "projstring": "+proj=tmerczoned +width=6",
+        "res": "med",
+        "type": "line",
+        "delta_cut": 1e5
+    },
+    {
         "filename": "tobmerc.png",
         "latmax": 80,
         "latmin": -80,
@@ -1455,6 +1634,42 @@
         "projstring": "+proj=tpers +h=5500000 +lat_0=40",
         "res": "low",
         "type": "poly"
+    },
+    {
+        "filename": "tsea.png",
+        "latmax": 90,
+        "latmin": -90,
+        "lonmax": 180,
+        "lonmin": -180,
+        "name": "tsea",
+        "projstring": "+proj=tsea",
+        "res": "low",
+        "type": "line",
+        "delta_cut": 1e6
+    },
+    {
+        "filename": "tsea_triangle.png",
+        "latmax": 90,
+        "latmin": -90,
+        "lonmax": 180,
+        "lonmin": -180,
+        "name": "tsea_triangle",
+        "projstring": "+proj=tsea +net=triangle",
+        "res": "low",
+        "type": "line",
+        "delta_cut": 1e6
+    },
+    {
+        "filename": "tsea_dual.png",
+        "latmax": 90,
+        "latmin": -90,
+        "lonmax": 180,
+        "lonmin": -180,
+        "name": "tsea_dual",
+        "projstring": "+proj=tsea +dual",
+        "res": "low",
+        "type": "line",
+        "delta_cut": 1e6
     },
     {
         "filename": "ups.png",

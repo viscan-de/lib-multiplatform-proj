@@ -97,6 +97,17 @@ PROJBasedOperationNNPtr PROJBasedOperation::create(
     op->setProperties(
         addDefaultNameIfNeeded(properties, "PROJ-based coordinate operation"));
     op->setAccuracies(accuracies);
+
+    auto formatter = io::PROJStringFormatter::create();
+    try {
+        formatter->ingestPROJString(PROJString);
+        op->setRequiresPerCoordinateInputTime(
+            formatter->requiresPerCoordinateInputTime());
+    } catch (const io::ParsingException &e) {
+        throw util::UnsupportedOperationException(
+            std::string("PROJBasedOperation::create() failed: ") + e.what());
+    }
+
     return op;
 }
 
@@ -118,7 +129,7 @@ PROJBasedOperationNNPtr PROJBasedOperation::create(
     if (inverse) {
         formatter->stopInversion();
     }
-    auto projString = formatter->toString();
+    const auto &projString = formatter->toString();
 
     auto method = OperationMethod::create(
         util::PropertyMap().set(common::IdentifiedObject::NAME_KEY,
@@ -135,6 +146,9 @@ PROJBasedOperationNNPtr PROJBasedOperation::create(
     op->projStringExportable_ = projExportable.as_nullable();
     op->inverse_ = inverse;
     op->setHasBallparkTransformation(hasBallparkTransformation);
+    op->setRequiresPerCoordinateInputTime(
+        formatter->requiresPerCoordinateInputTime());
+
     return op;
 }
 
@@ -170,6 +184,8 @@ CoordinateOperationNNPtr PROJBasedOperation::inverse() const {
                     interpolationCRS());
     }
     op->setHasBallparkTransformation(hasBallparkTransformation());
+    op->setRequiresPerCoordinateInputTime(
+        formatter->requiresPerCoordinateInputTime());
     return util::nn_static_pointer_cast<CoordinateOperation>(op);
 }
 
@@ -209,7 +225,7 @@ void PROJBasedOperation::_exportToJSON(
         !identifiers().empty()));
 
     writer->AddObjKey("name");
-    auto l_name = nameStr();
+    const auto &l_name = nameStr();
     if (l_name.empty()) {
         writer->Add("unnamed");
     } else {
@@ -297,7 +313,7 @@ PROJBasedOperation::gridsNeeded(const io::DatabaseContextPtr &databaseContext,
                     desc.fullName, desc.packageName, desc.url,
                     desc.directDownload, desc.openLicense, desc.available);
             }
-            res.insert(desc);
+            res.insert(std::move(desc));
         }
     } catch (const io::ParsingException &) {
     }

@@ -43,7 +43,6 @@
  *
  *****************************************************************************/
 /* based upon Snyder and Linck, USGS-NMD */
-#define PJ_LIB_
 
 #include <errno.h>
 #include <math.h>
@@ -61,7 +60,7 @@ PROJ_HEAD(lsat, "Space oblique for LANDSAT")
 #define TOL 1e-7
 
 namespace { // anonymous namespace
-struct pj_opaque {
+struct pj_som_data {
     double a2, a4, b, c1, c3;
     double q, t, u, w, p22, sa, ca, xj, rlm, rlm2;
     double alf;
@@ -69,7 +68,7 @@ struct pj_opaque {
 } // anonymous namespace
 
 static void seraz0(double lam, double mult, PJ *P) {
-    struct pj_opaque *Q = static_cast<struct pj_opaque *>(P->opaque);
+    struct pj_som_data *Q = static_cast<struct pj_som_data *>(P->opaque);
     double sdsq, h, s, fc, sd, sq, d_1 = 0;
 
     lam *= DEG_TO_RAD;
@@ -92,7 +91,7 @@ static void seraz0(double lam, double mult, PJ *P) {
 
 static PJ_XY som_e_forward(PJ_LP lp, PJ *P) { /* Ellipsoidal, forward */
     PJ_XY xy = {0.0, 0.0};
-    struct pj_opaque *Q = static_cast<struct pj_opaque *>(P->opaque);
+    struct pj_som_data *Q = static_cast<struct pj_som_data *>(P->opaque);
     int l, nn;
     double lamt = 0.0, xlam, sdsq, c, d, s, lamdp = 0.0, phidp, lampp, tanph;
     double lamtp, cl, sd, sp, sav, tanphi;
@@ -155,7 +154,7 @@ static PJ_XY som_e_forward(PJ_LP lp, PJ *P) { /* Ellipsoidal, forward */
 
 static PJ_LP som_e_inverse(PJ_XY xy, PJ *P) { /* Ellipsoidal, inverse */
     PJ_LP lp = {0.0, 0.0};
-    struct pj_opaque *Q = static_cast<struct pj_opaque *>(P->opaque);
+    struct pj_som_data *Q = static_cast<struct pj_som_data *>(P->opaque);
     int nn;
     double lamt, sdsq, s, lamdp, phidp, sppsq, dd, sd, sl, fac, scl, sav, spp;
 
@@ -205,9 +204,9 @@ static PJ_LP som_e_inverse(PJ_XY xy, PJ *P) { /* Ellipsoidal, inverse */
     return lp;
 }
 
-static PJ *setup(PJ *P) {
-    double esc, ess, lam;
-    struct pj_opaque *Q = static_cast<struct pj_opaque *>(P->opaque);
+static PJ *som_setup(PJ *P) {
+    double esc, ess;
+    struct pj_som_data *Q = static_cast<struct pj_som_data *>(P->opaque);
     Q->sa = sin(Q->alf);
     Q->ca = cos(Q->alf);
     if (fabs(Q->ca) < 1e-9)
@@ -223,9 +222,9 @@ static PJ *setup(PJ *P) {
     Q->rlm2 = Q->rlm + M_TWOPI;
     Q->a2 = Q->a4 = Q->b = Q->c1 = Q->c3 = 0.;
     seraz0(0., 1., P);
-    for (lam = 9.; lam <= 81.0001; lam += 18.)
+    for (int lam = 9; lam <= 81; lam += 18)
         seraz0(lam, 4., P);
-    for (lam = 18; lam <= 72.0001; lam += 18.)
+    for (int lam = 18; lam <= 72; lam += 18)
         seraz0(lam, 2., P);
     seraz0(90., 1., P);
     Q->a2 /= 30.;
@@ -240,9 +239,9 @@ static PJ *setup(PJ *P) {
     return P;
 }
 
-PJ *PROJECTION(som) {
-    struct pj_opaque *Q =
-        static_cast<struct pj_opaque *>(calloc(1, sizeof(struct pj_opaque)));
+PJ *PJ_PROJECTION(som) {
+    struct pj_som_data *Q = static_cast<struct pj_som_data *>(
+        calloc(1, sizeof(struct pj_som_data)));
     if (nullptr == Q)
         return pj_default_destructor(P, PROJ_ERR_OTHER /*ENOMEM*/);
     P->opaque = Q;
@@ -273,14 +272,14 @@ PJ *PROJECTION(som) {
 
     Q->rlm = 0;
 
-    return setup(P);
+    return som_setup(P);
 }
 
-PJ *PROJECTION(misrsom) {
+PJ *PJ_PROJECTION(misrsom) {
     int path;
 
-    struct pj_opaque *Q =
-        static_cast<struct pj_opaque *>(calloc(1, sizeof(struct pj_opaque)));
+    struct pj_som_data *Q = static_cast<struct pj_som_data *>(
+        calloc(1, sizeof(struct pj_som_data)));
     if (nullptr == Q)
         return pj_default_destructor(P, PROJ_ERR_OTHER /*ENOMEM*/);
     P->opaque = Q;
@@ -298,13 +297,13 @@ PJ *PROJECTION(misrsom) {
 
     Q->rlm = 0;
 
-    return setup(P);
+    return som_setup(P);
 }
 
-PJ *PROJECTION(lsat) {
+PJ *PJ_PROJECTION(lsat) {
     int land, path;
-    struct pj_opaque *Q =
-        static_cast<struct pj_opaque *>(calloc(1, sizeof(struct pj_opaque)));
+    struct pj_som_data *Q = static_cast<struct pj_som_data *>(
+        calloc(1, sizeof(struct pj_som_data)));
     if (nullptr == Q)
         return pj_default_destructor(P, PROJ_ERR_OTHER /*ENOMEM*/);
     P->opaque = Q;
@@ -338,5 +337,7 @@ PJ *PROJECTION(lsat) {
 
     Q->rlm = M_PI * (1. / 248. + .5161290322580645);
 
-    return setup(P);
+    return som_setup(P);
 }
+
+#undef TOL

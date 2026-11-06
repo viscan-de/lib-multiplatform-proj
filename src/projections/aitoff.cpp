@@ -5,6 +5,7 @@
  * Author:   Gerald Evenden (1995)
  *           Drazen Tutic, Lovro Gradiser (2015) - add inverse
  *           Thomas Knudsen (2016) - revise/add regression tests
+ *           Robert Kleffner (2026) - closed-form Aitoff inverse
  *
  ******************************************************************************
  * Copyright (c) 1995, Gerald Evenden
@@ -28,22 +29,20 @@
  * DEALINGS IN THE SOFTWARE.
  *****************************************************************************/
 
-#define PJ_LIB_
-
 #include <errno.h>
 #include <math.h>
 
 #include "proj.h"
 #include "proj_internal.h"
 
-namespace { // anonymous namespace
+namespace pj_aitoff_ns {
 enum Mode { AITOFF = 0, WINKEL_TRIPEL = 1 };
-} // anonymous namespace
+}
 
 namespace { // anonymous namespace
-struct pj_opaque {
+struct pj_aitoff_data {
     double cosphi1;
-    enum Mode mode;
+    enum pj_aitoff_ns::Mode mode;
 };
 } // anonymous namespace
 
@@ -56,8 +55,7 @@ FORWARD(aitoff_s_forward); /* spheroid */
 
 static PJ_XY aitoff_s_forward(PJ_LP lp, PJ *P) { /* Spheroidal, forward */
     PJ_XY xy = {0.0, 0.0};
-    struct pj_opaque *Q = static_cast<struct pj_opaque *>(P->opaque);
-    double c, d;
+    struct pj_aitoff_data *Q = static_cast<struct pj_aitoff_data *>(P->opaque);
 
 #if 0
     // Likely domain of validity for wintri in +over mode. Should be confirmed
@@ -67,45 +65,94 @@ static PJ_XY aitoff_s_forward(PJ_LP lp, PJ *P) { /* Spheroidal, forward */
         return xy;
     }
 #endif
-    c = 0.5 * lp.lam;
-    d = acos(cos(lp.phi) * cos(c));
-    if (d != 0.0) { /* basic Aitoff */
-        xy.x = 2. * d * cos(lp.phi) * sin(c) * (xy.y = 1. / sin(d));
-        xy.y *= d * sin(lp.phi);
-    } else
-        xy.x = xy.y = 0.;
-    if (Q->mode == WINKEL_TRIPEL) {
+    const double sin_half_lam = sin(0.5 * lp.lam);
+    const double sin_phi = sin(lp.phi);
+    const double cos_phi = cos(lp.phi);
+    /* basic Aitoff; computing it with atan2 (instead of standard acos)
+     * keeps relative accuracy near the origin. */
+    const double sin_alpha = hypot(cos_phi * sin_half_lam, sin_phi);
+    /* alpha / sin(alpha), with limit 1 at the origin */
+    const double A =
+        sin_alpha == 0
+            ? 1.
+            : atan2(sin_alpha, cos_phi * cos(0.5 * lp.lam)) / sin_alpha;
+    xy.x = 2. * cos_phi * sin_half_lam * A;
+    xy.y = sin_phi * A;
+    if (Q->mode == pj_aitoff_ns::WINKEL_TRIPEL) {
         xy.x = (xy.x + lp.lam * Q->cosphi1) * 0.5;
         xy.y = (xy.y + lp.phi) * 0.5;
     }
     return (xy);
 }
 
-/***********************************************************************************
+/******************************************************************************
  *
- * Inverse functions added by Drazen Tutic and Lovro Gradiser based on paper:
+ * Closed-form inverse of the Aitoff projection. Short form equations are:
  *
- * I.Özbug Biklirici and Cengizhan Ipbüker. A General Algorithm for the Inverse
- * Transformation of Map Projections Using Jacobian Matrices. In Proceedings of
- *the Third International Symposium Mathematical & Computational Applications,
- * pages 175{182, Turkey, September 2002.
+ *     alpha  = hypot(x/2, y)      (angular distance to (phi, lambda/2))
+ *     phi    = asin(y * sin(alpha) / alpha)
+ *     lambda = 2 * atan2((x/2) * sin(alpha), alpha * cos(alpha))
  *
- * Expected accuracy is defined by EPSILON = 1e-12. Should be appropriate for
- * most applications of Aitoff and Winkel Tripel projections.
+ * atan2 places lambda/2 in (-pi, pi]. The domain of the inverse is therefore
+ * the whole ellipse x^2 + 4*y^2 <= (2*pi)^2, on which the sphere is double
+ * covered; longitudes beyond +/-pi are returned only with +over. The poles
+ * need no special case.
  *
- * Longitudes of 180W and 180E can be mixed in solution obtained.
+ * Reference:
+ *   J. P. Snyder (1987). Map Projections -- A Working Manual. USGS
+ *   Professional Paper 1395, pp. 195-197.
  *
- * Inverse for Aitoff projection in poles is undefined, longitude value of 0 is
- *assumed.
+ *****************************************************************************/
+
+/* Returns false, leaving *lp untouched, when (x, y) is outside the ellipse
+ * x^2 + 4*y^2 = (2*pi)^2 and so has no preimage. */
+static bool aitoff_s_inverse_closed(PJ_XY xy, PJ_LP *lp) {
+    const double half_x = 0.5 * xy.x;
+    const double alpha = hypot(half_x, xy.y);
+    const double sin_alpha = sin(alpha);
+    const double cos_alpha = cos(alpha);
+    /* Testing sin_alpha is needed because with long doubles sin(M_PI) < 0. */
+    if (alpha > M_PI || sin_alpha < 0)
+        return false;
+    /* The asin argument is guaranteed to lie in [-1, 1]: hypot(a, b) >= |b|
+     * and 0 <= sin_alpha <= 1. */
+    lp->phi = alpha == 0.0 ? xy.y : asin((xy.y / alpha) * sin_alpha);
+    lp->lam = 2. * atan2(half_x * sin_alpha, alpha * cos_alpha);
+    return true;
+}
+
+/******************************************************************************
  *
- * Contact : dtutic@geof.hr
- * Date: 2015-02-16
+ * Inverse of the Aitoff and Winkel Tripel projections.
  *
- ************************************************************************************/
+ * Aitoff uses the closed form above. Winkel Tripel, the mean of the Aitoff and
+ * equirectangular projections, has no known closed-form inverse; it is inverted
+ * with the Newton-Raphson method of Bildirici and Ipbuker (2002), added by
+ * Drazen Tutic and Lovro Gradiser (2015). Expected accuracy is defined by
+ * EPSILON = 1e-12, appropriate for most applications of the projection.
+ *
+ * Reference:
+ *   I. O. Bildirici and C. Ipbuker (2002). A General Algorithm for the Inverse
+ *   Transformation of Map Projections Using Jacobian Matrices. Proceedings of
+ *   the Third International Symposium on Mathematical and Computational
+ *   Applications, pp. 175-182, Turkey.
+ *
+ * Contact: dtutic at geof.hr, 2015-02-16
+ *
+ *****************************************************************************/
 
 static PJ_LP aitoff_s_inverse(PJ_XY xy, PJ *P) { /* Spheroidal, inverse */
     PJ_LP lp = {0.0, 0.0};
-    struct pj_opaque *Q = static_cast<struct pj_opaque *>(P->opaque);
+    struct pj_aitoff_data *Q = static_cast<struct pj_aitoff_data *>(P->opaque);
+
+    if (Q->mode == pj_aitoff_ns::AITOFF) {
+        if (!aitoff_s_inverse_closed(xy, &lp)) {
+            proj_errno_set(P, PROJ_ERR_COORD_TRANSFM_OUTSIDE_PROJECTION_DOMAIN);
+            lp.lam = lp.phi = HUGE_VAL;
+        }
+        return lp;
+    }
+
     int iter, MAXITER = 10, round = 0, MAXROUND = 20;
     double EPSILON = 1e-12, D, C, f1, f2, f1p, f1l, f2p, f2l, dp, dl, sl, sp,
            cp, cl, x, y;
@@ -141,7 +188,7 @@ static PJ_LP aitoff_s_inverse(PJ_XY xy, PJ *P) { /* Spheroidal, inverse */
             f1l = cp * cp * sl * sl / C + D * cp * cl * sp * sp;
             f2p = sp * sp * cl / C + D * sl * sl * cp;
             f2l = 0.5 * (sp * cp * sl / C - D * sp * cp * cp * sl * cl);
-            if (Q->mode == WINKEL_TRIPEL) {
+            if (Q->mode == pj_aitoff_ns::WINKEL_TRIPEL) {
                 f1 = 0.5 * (f1 + lp.lam * Q->cosphi1);
                 f2 = 0.5 * (f2 + lp.phi);
                 f1p *= 0.5;
@@ -167,8 +214,6 @@ static PJ_LP aitoff_s_inverse(PJ_XY xy, PJ *P) { /* Spheroidal, inverse */
             lp.phi -=
                 2. * (lp.phi +
                       M_PI_2); /* correct if symmetrical solution for Aitoff */
-        if ((fabs(fabs(lp.phi) - M_PI_2) < EPSILON) && (Q->mode == AITOFF))
-            lp.lam = 0.; /* if pole in Aitoff, return longitude of 0 */
 
         /* calculate x,y coordinates with solution obtained */
         if ((D = acos(cos(lp.phi) * cos(C = 0.5 * lp.lam))) !=
@@ -178,7 +223,7 @@ static PJ_LP aitoff_s_inverse(PJ_XY xy, PJ *P) { /* Spheroidal, inverse */
             y *= D * sin(lp.phi);
         } else
             x = y = 0.;
-        if (Q->mode == WINKEL_TRIPEL) {
+        if (Q->mode == pj_aitoff_ns::WINKEL_TRIPEL) {
             x = (x + lp.lam * Q->cosphi1) * 0.5;
             y = (y + lp.phi) * 0.5;
         }
@@ -197,32 +242,32 @@ static PJ_LP aitoff_s_inverse(PJ_XY xy, PJ *P) { /* Spheroidal, inverse */
     return lp;
 }
 
-static PJ *setup(PJ *P) {
+static PJ *pj_aitoff_setup(PJ *P) {
     P->inv = aitoff_s_inverse;
     P->fwd = aitoff_s_forward;
     P->es = 0.;
     return P;
 }
 
-PJ *PROJECTION(aitoff) {
-    struct pj_opaque *Q =
-        static_cast<struct pj_opaque *>(calloc(1, sizeof(struct pj_opaque)));
+PJ *PJ_PROJECTION(aitoff) {
+    struct pj_aitoff_data *Q = static_cast<struct pj_aitoff_data *>(
+        calloc(1, sizeof(struct pj_aitoff_data)));
     if (nullptr == Q)
         return pj_default_destructor(P, PROJ_ERR_OTHER /*ENOMEM*/);
     P->opaque = Q;
 
-    Q->mode = AITOFF;
-    return setup(P);
+    Q->mode = pj_aitoff_ns::AITOFF;
+    return pj_aitoff_setup(P);
 }
 
-PJ *PROJECTION(wintri) {
-    struct pj_opaque *Q =
-        static_cast<struct pj_opaque *>(calloc(1, sizeof(struct pj_opaque)));
+PJ *PJ_PROJECTION(wintri) {
+    struct pj_aitoff_data *Q = static_cast<struct pj_aitoff_data *>(
+        calloc(1, sizeof(struct pj_aitoff_data)));
     if (nullptr == Q)
         return pj_default_destructor(P, PROJ_ERR_OTHER /*ENOMEM*/);
     P->opaque = Q;
 
-    Q->mode = WINKEL_TRIPEL;
+    Q->mode = pj_aitoff_ns::WINKEL_TRIPEL;
     if (pj_param(P->ctx, P->params, "tlat_1").i) {
         if ((Q->cosphi1 = cos(pj_param(P->ctx, P->params, "rlat_1").f)) == 0.) {
             proj_log_error(
@@ -232,5 +277,5 @@ PJ *PROJECTION(wintri) {
         }
     } else /* 50d28' or acos(2/pi) */
         Q->cosphi1 = 0.636619772367581343;
-    return setup(P);
+    return pj_aitoff_setup(P);
 }

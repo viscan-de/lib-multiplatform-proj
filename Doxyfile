@@ -766,7 +766,7 @@ WARN_LOGFILE           =
 # spaces. See also FILE_PATTERNS and EXTENSION_MAPPING
 # Note: If this tag is empty the current directory is searched.
 
-INPUT                  = src/iso19111 src/iso19111/operation include/proj src/proj.h src/proj_experimental.h src/general_doc.dox src/filemanager.cpp src/networkfilemanager.cpp src/4D_api.cpp
+INPUT                  = src/iso19111 src/iso19111/operation include/proj src/proj.h src/proj_experimental.h src/general_doc.dox src/filemanager.cpp src/networkfilemanager.cpp src/coordinates.cpp src/trans_bounds.cpp
 
 # This tag can be used to specify the character encoding of the source files
 # that doxygen parses. Internally doxygen uses the UTF-8 encoding. Doxygen uses
@@ -1160,15 +1160,6 @@ HTML_COLORSTYLE_SAT    = 100
 # This tag requires that the tag GENERATE_HTML is set to YES.
 
 HTML_COLORSTYLE_GAMMA  = 80
-
-# If the HTML_TIMESTAMP tag is set to YES then the footer of each generated HTML
-# page will contain the date and time when the page was generated. Setting this
-# to YES can help to show when doxygen was last run and thus if the
-# documentation is up to date.
-# The default value is: NO.
-# This tag requires that the tag GENERATE_HTML is set to YES.
-
-HTML_TIMESTAMP         = NO
 
 # If the HTML_DYNAMIC_SECTIONS tag is set to YES then the generated HTML
 # documentation will contain sections that can be hidden and shown after the
@@ -2019,7 +2010,8 @@ PREDEFINED             =    DOXYGEN_ENABLED \
                             PROJ_OPAQUE_PRIVATE_DATA= \
                             PROJ_PRIVATE=private \
                             PROJ_PURE_DECL= \
-                            noexceptoverride="noexcept override"
+                            noexceptoverride="noexcept override" \
+                            PROJ_NO_RETURN=
 
 # If the MACRO_EXPANSION and EXPAND_ONLY_PREDEF tags are set to YES then this
 # tag can be used to specify a list of macro names that should be expanded. The

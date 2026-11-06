@@ -47,8 +47,6 @@
  * https://github.com/google/s2geometry/blob/0c4c460bdfe696da303641771f9def900b3e440f/src/s2/util/math/vector.h
  ****************************************************************************/
 
-#define PJ_LIB_
-
 /* enable predefined math constants M_* for MS Visual Studio */
 #if defined(_MSC_VER) || defined(_WIN32)
 #ifndef _USE_MATH_DEFINES
@@ -83,7 +81,7 @@ static std::map<std::string, S2ProjectionType> stringToS2ProjectionType{
     {"none", NoUVtoST}};
 
 namespace { // anonymous namespace
-struct pj_opaque {
+struct pj_s2 {
     enum Face face;
     double a_squared;
     double one_minus_f;
@@ -148,23 +146,26 @@ static double STtoUV(double s, S2ProjectionType s2_projection) {
 }
 
 static double UVtoST(double u, S2ProjectionType s2_projection) {
+    double ret = u;
     switch (s2_projection) {
     case Linear:
-        return 0.5 * (u + 1);
+        ret = 0.5 * (u + 1);
         break;
     case Quadratic:
         if (u >= 0)
-            return 0.5 * std::sqrt(1 + 3 * u);
+            ret = 0.5 * std::sqrt(1 + 3 * u);
         else
-            return 1 - 0.5 * std::sqrt(1 - 3 * u);
+            ret = 1 - 0.5 * std::sqrt(1 - 3 * u);
         break;
     case Tangent: {
         volatile double a = std::atan(u);
-        return (2 * M_1_PI) * (a + M_PI_4);
-    } break;
-    default:
-        return u;
+        ret = (2 * M_1_PI) * (a + M_PI_4);
+        break;
     }
+    case NoUVtoST:
+        break;
+    }
+    return ret;
 }
 
 inline PJ_XYZ FaceUVtoXYZ(int face, double u, double v) {
@@ -336,7 +337,7 @@ inline bool UVtoSphereXYZ(int face, double u, double v, PJ_XYZ *xyz) {
 //
 // ============================================
 static PJ_XY s2_forward(PJ_LP lp, PJ *P) {
-    struct pj_opaque *Q = static_cast<struct pj_opaque *>(P->opaque);
+    struct pj_s2 *Q = static_cast<struct pj_s2 *>(P->opaque);
     double lat;
 
     /* Convert the geodetic latitude to a geocentric latitude.
@@ -372,7 +373,7 @@ static PJ_XY s2_forward(PJ_LP lp, PJ *P) {
 
 static PJ_LP s2_inverse(PJ_XY xy, PJ *P) {
     PJ_LP lp = {0.0, 0.0};
-    struct pj_opaque *Q = static_cast<struct pj_opaque *>(P->opaque);
+    struct pj_s2 *Q = static_cast<struct pj_s2 *>(P->opaque);
 
     // Do the S2 projections to get from s,t to u,v to x,y,z
     double u = STtoUV(xy.x, Q->UVtoST);
@@ -405,9 +406,9 @@ static PJ_LP s2_inverse(PJ_XY xy, PJ *P) {
     return lp;
 }
 
-PJ *PROJECTION(s2) {
-    struct pj_opaque *Q =
-        static_cast<struct pj_opaque *>(calloc(1, sizeof(struct pj_opaque)));
+PJ *PJ_PROJECTION(s2) {
+    struct pj_s2 *Q =
+        static_cast<struct pj_s2 *>(calloc(1, sizeof(struct pj_s2)));
     if (nullptr == Q)
         return pj_default_destructor(P, PROJ_ERR_OTHER /*ENOMEM*/);
     P->opaque = Q;

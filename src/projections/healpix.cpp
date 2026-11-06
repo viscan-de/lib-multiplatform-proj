@@ -29,7 +29,6 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  *****************************************************************************/
-#define PJ_LIB_
 
 #include <errno.h>
 #include <math.h>
@@ -67,7 +66,7 @@ PROJ_HEAD(rhealpix, "rHEALPix") "\n\tSph&Ell\n\tnorth_square= south_square=";
 #define EPS 1e-15
 
 namespace { // anonymous namespace
-struct pj_opaque {
+struct pj_healpix_data {
     int north_square;
     int south_square;
     double rot_xy;
@@ -225,25 +224,18 @@ static int in_image(double x, double y, int proj, int north_square,
 
 /**
  * Return the authalic latitude of latitude alpha (if inverse=0) or
- * return the approximate latitude of authalic latitude alpha (if inverse=1).
+ * return the latitude of authalic latitude alpha (if inverse=1).
  * P contains the relevant ellipsoid parameters.
  **/
 static double auth_lat(PJ *P, double alpha, int inverse) {
-    struct pj_opaque *Q = static_cast<struct pj_opaque *>(P->opaque);
+    const struct pj_healpix_data *Q =
+        static_cast<const struct pj_healpix_data *>(P->opaque);
     if (inverse == 0) {
-        /* Authalic latitude. */
-        double q = pj_qsfn(sin(alpha), P->e, 1.0 - P->es);
-        double qp = Q->qp;
-        double ratio = q / qp;
-
-        if (fabs(ratio) > 1) {
-            /* Rounding error. */
-            ratio = sign(ratio);
-        }
-        return asin(ratio);
+        /* Authalic latitude from geographic latitude. */
+        return pj_authalic_lat(alpha, sin(alpha), cos(alpha), Q->apa, P, Q->qp);
     } else {
-        /* Approximation to inverse authalic latitude. */
-        return pj_authlat(alpha, Q->apa);
+        /* Geographic latitude from authalic latitude. */
+        return pj_authalic_lat_inverse(alpha, Q->apa, P, Q->qp);
     }
 }
 
@@ -500,18 +492,21 @@ static PJ_XY combine_caps(double x, double y, int north_square,
 
 static PJ_XY s_healpix_forward(PJ_LP lp, PJ *P) { /* sphere  */
     (void)P;
-    struct pj_opaque *Q = static_cast<struct pj_opaque *>(P->opaque);
+    struct pj_healpix_data *Q =
+        static_cast<struct pj_healpix_data *>(P->opaque);
     return rotate(healpix_sphere(lp), -Q->rot_xy);
 }
 
 static PJ_XY e_healpix_forward(PJ_LP lp, PJ *P) { /* ellipsoid  */
     lp.phi = auth_lat(P, lp.phi, 0);
-    struct pj_opaque *Q = static_cast<struct pj_opaque *>(P->opaque);
+    struct pj_healpix_data *Q =
+        static_cast<struct pj_healpix_data *>(P->opaque);
     return rotate(healpix_sphere(lp), -Q->rot_xy);
 }
 
 static PJ_LP s_healpix_inverse(PJ_XY xy, PJ *P) { /* sphere */
-    struct pj_opaque *Q = static_cast<struct pj_opaque *>(P->opaque);
+    struct pj_healpix_data *Q =
+        static_cast<struct pj_healpix_data *>(P->opaque);
     xy = rotate(xy, Q->rot_xy);
 
     /* Check whether (x, y) lies in the HEALPix image */
@@ -528,7 +523,8 @@ static PJ_LP s_healpix_inverse(PJ_XY xy, PJ *P) { /* sphere */
 
 static PJ_LP e_healpix_inverse(PJ_XY xy, PJ *P) { /* ellipsoid */
     PJ_LP lp = {0.0, 0.0};
-    struct pj_opaque *Q = static_cast<struct pj_opaque *>(P->opaque);
+    struct pj_healpix_data *Q =
+        static_cast<struct pj_healpix_data *>(P->opaque);
     xy = rotate(xy, Q->rot_xy);
 
     /* Check whether (x, y) lies in the HEALPix image. */
@@ -545,14 +541,16 @@ static PJ_LP e_healpix_inverse(PJ_XY xy, PJ *P) { /* ellipsoid */
 }
 
 static PJ_XY s_rhealpix_forward(PJ_LP lp, PJ *P) { /* sphere */
-    struct pj_opaque *Q = static_cast<struct pj_opaque *>(P->opaque);
+    struct pj_healpix_data *Q =
+        static_cast<struct pj_healpix_data *>(P->opaque);
 
     PJ_XY xy = healpix_sphere(lp);
     return combine_caps(xy.x, xy.y, Q->north_square, Q->south_square, 0);
 }
 
 static PJ_XY e_rhealpix_forward(PJ_LP lp, PJ *P) { /* ellipsoid */
-    struct pj_opaque *Q = static_cast<struct pj_opaque *>(P->opaque);
+    struct pj_healpix_data *Q =
+        static_cast<struct pj_healpix_data *>(P->opaque);
     PJ_XY xy;
     lp.phi = auth_lat(P, lp.phi, 0);
     xy = healpix_sphere(lp);
@@ -560,7 +558,8 @@ static PJ_XY e_rhealpix_forward(PJ_LP lp, PJ *P) { /* ellipsoid */
 }
 
 static PJ_LP s_rhealpix_inverse(PJ_XY xy, PJ *P) { /* sphere */
-    struct pj_opaque *Q = static_cast<struct pj_opaque *>(P->opaque);
+    struct pj_healpix_data *Q =
+        static_cast<struct pj_healpix_data *>(P->opaque);
 
     /* Check whether (x, y) lies in the rHEALPix image. */
     if (in_image(xy.x, xy.y, 1, Q->north_square, Q->south_square) == 0) {
@@ -576,7 +575,8 @@ static PJ_LP s_rhealpix_inverse(PJ_XY xy, PJ *P) { /* sphere */
 }
 
 static PJ_LP e_rhealpix_inverse(PJ_XY xy, PJ *P) { /* ellipsoid */
-    struct pj_opaque *Q = static_cast<struct pj_opaque *>(P->opaque);
+    struct pj_healpix_data *Q =
+        static_cast<struct pj_healpix_data *>(P->opaque);
     PJ_LP lp = {0.0, 0.0};
 
     /* Check whether (x, y) lies in the rHEALPix image. */
@@ -593,34 +593,34 @@ static PJ_LP e_rhealpix_inverse(PJ_XY xy, PJ *P) { /* ellipsoid */
     return lp;
 }
 
-static PJ *destructor(PJ *P, int errlev) { /* Destructor */
+static PJ *pj_healpix_data_destructor(PJ *P, int errlev) { /* Destructor */
     if (nullptr == P)
         return nullptr;
 
     if (nullptr == P->opaque)
         return pj_default_destructor(P, errlev);
 
-    free(static_cast<struct pj_opaque *>(P->opaque)->apa);
+    free(static_cast<struct pj_healpix_data *>(P->opaque)->apa);
     return pj_default_destructor(P, errlev);
 }
 
-PJ *PROJECTION(healpix) {
-    struct pj_opaque *Q =
-        static_cast<struct pj_opaque *>(calloc(1, sizeof(struct pj_opaque)));
+PJ *PJ_PROJECTION(healpix) {
+    struct pj_healpix_data *Q = static_cast<struct pj_healpix_data *>(
+        calloc(1, sizeof(struct pj_healpix_data)));
     if (nullptr == Q)
         return pj_default_destructor(P, PROJ_ERR_OTHER /*ENOMEM*/);
     P->opaque = Q;
-    P->destructor = destructor;
+    P->destructor = pj_healpix_data_destructor;
 
     double angle = pj_param(P->ctx, P->params, "drot_xy").f;
     Q->rot_xy = PJ_TORAD(angle);
 
     if (P->es != 0.0) {
-        Q->apa = pj_authset(P->es); /* For auth_lat(). */
+        Q->apa = pj_authalic_lat_compute_coeffs(P->n); /* For auth_lat(). */
         if (nullptr == Q->apa)
-            return destructor(P, PROJ_ERR_OTHER /*ENOMEM*/);
-        Q->qp = pj_qsfn(1.0, P->e, P->one_es); /* For auth_lat(). */
-        P->a = P->a * sqrt(0.5 * Q->qp); /* Set P->a to authalic radius. */
+            return pj_healpix_data_destructor(P, PROJ_ERR_OTHER /*ENOMEM*/);
+        Q->qp = pj_authalic_lat_q(1.0, P); /* For auth_lat(). */
+        P->a = P->a * sqrt(0.5 * Q->qp);   /* Set P->a to authalic radius. */
         pj_calc_ellipsoid_params(
             P, P->a, P->es); /* Ensure we have a consistent parameter set */
         P->fwd = e_healpix_forward;
@@ -633,13 +633,13 @@ PJ *PROJECTION(healpix) {
     return P;
 }
 
-PJ *PROJECTION(rhealpix) {
-    struct pj_opaque *Q =
-        static_cast<struct pj_opaque *>(calloc(1, sizeof(struct pj_opaque)));
+PJ *PJ_PROJECTION(rhealpix) {
+    struct pj_healpix_data *Q = static_cast<struct pj_healpix_data *>(
+        calloc(1, sizeof(struct pj_healpix_data)));
     if (nullptr == Q)
         return pj_default_destructor(P, PROJ_ERR_OTHER /*ENOMEM*/);
     P->opaque = Q;
-    P->destructor = destructor;
+    P->destructor = pj_healpix_data_destructor;
 
     Q->north_square = pj_param(P->ctx, P->params, "inorth_square").i;
     Q->south_square = pj_param(P->ctx, P->params, "isouth_square").i;
@@ -649,20 +649,22 @@ PJ *PROJECTION(rhealpix) {
         proj_log_error(
             P,
             _("Invalid value for north_square: it should be in [0,3] range."));
-        return destructor(P, PROJ_ERR_INVALID_OP_ILLEGAL_ARG_VALUE);
+        return pj_healpix_data_destructor(
+            P, PROJ_ERR_INVALID_OP_ILLEGAL_ARG_VALUE);
     }
     if (Q->south_square < 0 || Q->south_square > 3) {
         proj_log_error(
             P,
             _("Invalid value for south_square: it should be in [0,3] range."));
-        return destructor(P, PROJ_ERR_INVALID_OP_ILLEGAL_ARG_VALUE);
+        return pj_healpix_data_destructor(
+            P, PROJ_ERR_INVALID_OP_ILLEGAL_ARG_VALUE);
     }
     if (P->es != 0.0) {
-        Q->apa = pj_authset(P->es); /* For auth_lat(). */
+        Q->apa = pj_authalic_lat_compute_coeffs(P->n); /* For auth_lat(). */
         if (nullptr == Q->apa)
-            return destructor(P, PROJ_ERR_OTHER /*ENOMEM*/);
-        Q->qp = pj_qsfn(1.0, P->e, P->one_es); /* For auth_lat(). */
-        P->a = P->a * sqrt(0.5 * Q->qp); /* Set P->a to authalic radius. */
+            return pj_healpix_data_destructor(P, PROJ_ERR_OTHER /*ENOMEM*/);
+        Q->qp = pj_authalic_lat_q(1.0, P); /* For auth_lat(). */
+        P->a = P->a * sqrt(0.5 * Q->qp);   /* Set P->a to authalic radius. */
         P->ra = 1.0 / P->a;
         P->fwd = e_rhealpix_forward;
         P->inv = e_rhealpix_inverse;
@@ -673,3 +675,10 @@ PJ *PROJECTION(rhealpix) {
 
     return P;
 }
+
+#undef R1
+#undef R2
+#undef R3
+#undef IDENT
+#undef ROT
+#undef EPS

@@ -91,13 +91,13 @@ UnitOfMeasure::UnitOfMeasure(const std::string &nameIn, double toSIIn,
                              UnitOfMeasure::Type typeIn,
                              const std::string &codeSpaceIn,
                              const std::string &codeIn)
-    : d(internal::make_unique<Private>(nameIn, toSIIn, typeIn, codeSpaceIn,
-                                       codeIn)) {}
+    : d(std::make_unique<Private>(nameIn, toSIIn, typeIn, codeSpaceIn,
+                                  codeIn)) {}
 
 // ---------------------------------------------------------------------------
 
 UnitOfMeasure::UnitOfMeasure(const UnitOfMeasure &other)
-    : d(internal::make_unique<Private>(*(other.d))) {}
+    : d(std::make_unique<Private>(*(other.d))) {}
 
 // ---------------------------------------------------------------------------
 
@@ -119,12 +119,7 @@ UnitOfMeasure &UnitOfMeasure::operator=(const UnitOfMeasure &other) {
 // ---------------------------------------------------------------------------
 
 //! @cond Doxygen_Suppress
-UnitOfMeasure &UnitOfMeasure::operator=(UnitOfMeasure &&other) {
-    *d = std::move(*(other.d));
-    other.d = nullptr;
-    BaseObject::operator=(std::move(static_cast<BaseObject &&>(other)));
-    return *this;
-}
+UnitOfMeasure &UnitOfMeasure::operator=(UnitOfMeasure &&) = default;
 //! @endcond
 
 // ---------------------------------------------------------------------------
@@ -376,12 +371,12 @@ struct Measure::Private {
 /** \brief Instantiate a Measure.
  */
 Measure::Measure(double valueIn, const UnitOfMeasure &unitIn)
-    : d(internal::make_unique<Private>(valueIn, unitIn)) {}
+    : d(std::make_unique<Private>(valueIn, unitIn)) {}
 
 // ---------------------------------------------------------------------------
 
 Measure::Measure(const Measure &other)
-    : d(internal::make_unique<Private>(*(other.d))) {}
+    : d(std::make_unique<Private>(*(other.d))) {}
 
 // ---------------------------------------------------------------------------
 
@@ -555,18 +550,18 @@ struct DateTime::Private {
 
 // ---------------------------------------------------------------------------
 
-DateTime::DateTime() : d(internal::make_unique<Private>(std::string())) {}
+DateTime::DateTime() : d(std::make_unique<Private>(std::string())) {}
 
 // ---------------------------------------------------------------------------
 
 DateTime::DateTime(const std::string &str)
-    : d(internal::make_unique<Private>(str)) {}
+    : d(std::make_unique<Private>(str)) {}
 
 // ---------------------------------------------------------------------------
 
 //! @cond Doxygen_Suppress
 DateTime::DateTime(const DateTime &other)
-    : d(internal::make_unique<Private>(*(other.d))) {}
+    : d(std::make_unique<Private>(*(other.d))) {}
 //! @endcond
 
 // ---------------------------------------------------------------------------
@@ -626,12 +621,12 @@ struct IdentifiedObject::Private {
 
 // ---------------------------------------------------------------------------
 
-IdentifiedObject::IdentifiedObject() : d(internal::make_unique<Private>()) {}
+IdentifiedObject::IdentifiedObject() : d(std::make_unique<Private>()) {}
 
 // ---------------------------------------------------------------------------
 
 IdentifiedObject::IdentifiedObject(const IdentifiedObject &other)
-    : d(internal::make_unique<Private>(*(other.d))) {}
+    : d(std::make_unique<Private>(*(other.d))) {}
 
 // ---------------------------------------------------------------------------
 
@@ -941,9 +936,13 @@ bool IdentifiedObject::_isEquivalentTo(
         }
         // TODO test id etc
     } else {
-        if (!metadata::Identifier::isEquivalentName(
-                nameStr().c_str(), otherIdObj->nameStr().c_str())) {
-            return hasEquivalentNameToUsingAlias(otherIdObj, dbContext);
+        const auto &l_name = nameStr();
+        const auto &otherName = otherIdObj->nameStr();
+        if (!metadata::Identifier::isEquivalentName(l_name.c_str(),
+                                                    otherName.c_str()) &&
+            !hasEquivalentNameToUsingAlias(otherIdObj, dbContext)) {
+            return (l_name == "unknown" && otherName == "unnamed") ||
+                   (l_name == "unnamed" && otherName == "unknown");
         }
     }
     return true;
@@ -975,13 +974,13 @@ struct ObjectDomain::Private {
 //! @cond Doxygen_Suppress
 ObjectDomain::ObjectDomain(const optional<std::string> &scopeIn,
                            const ExtentPtr &extent)
-    : d(internal::make_unique<Private>(scopeIn, extent)) {}
+    : d(std::make_unique<Private>(scopeIn, extent)) {}
 //! @endcond
 
 // ---------------------------------------------------------------------------
 
 ObjectDomain::ObjectDomain(const ObjectDomain &other)
-    : d(internal::make_unique<Private>(*(other.d))) {}
+    : d(std::make_unique<Private>(*(other.d))) {}
 
 // ---------------------------------------------------------------------------
 
@@ -1167,12 +1166,12 @@ struct ObjectUsage::Private {
 
 // ---------------------------------------------------------------------------
 
-ObjectUsage::ObjectUsage() : d(internal::make_unique<Private>()) {}
+ObjectUsage::ObjectUsage() : d(std::make_unique<Private>()) {}
 
 // ---------------------------------------------------------------------------
 
 ObjectUsage::ObjectUsage(const ObjectUsage &other)
-    : IdentifiedObject(other), d(internal::make_unique<Private>(*(other.d))) {}
+    : IdentifiedObject(other), d(std::make_unique<Private>(*(other.d))) {}
 
 // ---------------------------------------------------------------------------
 
@@ -1262,7 +1261,7 @@ void ObjectUsage::baseExportToWKT(WKTFormatter *formatter) const {
     if (formatter->outputId()) {
         formatID(formatter);
     }
-    if (isWKT2) {
+    if (isWKT2 && formatter->outputUsage()) {
         formatRemarks(formatter);
     }
 }
@@ -1320,17 +1319,17 @@ struct DataEpoch::Private {
 
 // ---------------------------------------------------------------------------
 
-DataEpoch::DataEpoch() : d(internal::make_unique<Private>(Measure())) {}
+DataEpoch::DataEpoch() : d(std::make_unique<Private>(Measure())) {}
 
 // ---------------------------------------------------------------------------
 
 DataEpoch::DataEpoch(const Measure &coordinateEpochIn)
-    : d(internal::make_unique<Private>(coordinateEpochIn)) {}
+    : d(std::make_unique<Private>(coordinateEpochIn)) {}
 
 // ---------------------------------------------------------------------------
 
 DataEpoch::DataEpoch(const DataEpoch &other)
-    : d(internal::make_unique<Private>(*(other.d))) {}
+    : d(std::make_unique<Private>(*(other.d))) {}
 
 // ---------------------------------------------------------------------------
 

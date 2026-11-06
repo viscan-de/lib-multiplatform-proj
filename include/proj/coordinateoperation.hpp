@@ -196,7 +196,8 @@ class PROJ_GCC_DLL CoordinateOperation : public common::ObjectUsage,
     coordinateTransformer(PJ_CONTEXT *ctx) const;
 
     /** \brief Return the inverse of the coordinate operation.
-     * @throw util::UnsupportedOperationException
+     *
+     * \throw util::UnsupportedOperationException if inverse is not available
      */
     PROJ_DLL virtual CoordinateOperationNNPtr inverse() const = 0;
 
@@ -210,6 +211,8 @@ class PROJ_GCC_DLL CoordinateOperation : public common::ObjectUsage,
                        bool considerKnownGridsAsAvailable) const;
 
     PROJ_DLL bool hasBallparkTransformation() const;
+
+    PROJ_DLL bool requiresPerCoordinateInputTime() const;
 
     PROJ_DLL static const std::string OPERATION_VERSION_KEY;
 
@@ -238,6 +241,10 @@ class PROJ_GCC_DLL CoordinateOperation : public common::ObjectUsage,
                                const crs::CRSNNPtr &targetCRSIn,
                                const crs::CRSPtr &interpolationCRSIn);
     PROJ_INTERNAL void
+    setCRSsUpdateInverse(const crs::CRSNNPtr &sourceCRSIn,
+                         const crs::CRSNNPtr &targetCRSIn,
+                         const crs::CRSPtr &interpolationCRSIn);
+    PROJ_INTERNAL void
     setInterpolationCRS(const crs::CRSPtr &interpolationCRSIn);
     PROJ_INTERNAL void setCRSs(const CoordinateOperation *in,
                                bool inverseSourceTarget);
@@ -245,6 +252,8 @@ class PROJ_GCC_DLL CoordinateOperation : public common::ObjectUsage,
     void setAccuracies(
         const std::vector<metadata::PositionalAccuracyNNPtr> &accuracies);
     PROJ_INTERNAL void setHasBallparkTransformation(bool b);
+
+    PROJ_INTERNAL void setRequiresPerCoordinateInputTime(bool b);
 
     PROJ_INTERNAL void
     setSourceCoordinateEpoch(const util::optional<common::DataEpoch> &epoch);
@@ -1324,6 +1333,13 @@ class PROJ_GCC_DLL Conversion : public SingleOperation {
         const common::Angle &centerLong, const common::Length &falseEasting,
         const common::Length &falseNorthing);
 
+    PROJ_DLL static ConversionNNPtr createLocalOrthographic(
+        const util::PropertyMap &properties, const common::Angle &centerLat,
+        const common::Angle &centerLong,
+        const common::Angle &azimuthInitialLine, const common::Scale &scale,
+        const common::Length &falseEasting,
+        const common::Length &falseNorthing);
+
     PROJ_DLL static ConversionNNPtr createAmericanPolyconic(
         const util::PropertyMap &properties, const common::Angle &centerLat,
         const common::Angle &centerLong, const common::Length &falseEasting,
@@ -1477,6 +1493,21 @@ class PROJ_GCC_DLL Conversion : public SingleOperation {
     PROJ_DLL static ConversionNNPtr
     createVerticalOffset(const util::PropertyMap &properties,
                          const common::Length &offsetHeight);
+
+    PROJ_DLL static ConversionNNPtr
+    createAffineParametric(const util::PropertyMap &properties,
+                           const common::Measure &A0, const common::Scale &A1,
+                           const common::Scale &A2, const common::Measure &B0,
+                           const common::Scale &B1, const common::Scale &B2);
+
+    PROJ_DLL static ConversionNNPtr
+    createAffineParametric(const util::PropertyMap &properties,
+                           const common::Measure &A0, const common::Scale &A1,
+                           const common::Scale &A2, const common::Scale &A3,
+                           const common::Measure &B0, const common::Scale &B1,
+                           const common::Scale &B2, const common::Scale &B3,
+                           const common::Measure &C0, const common::Scale &C1,
+                           const common::Scale &C2, const common::Scale &C3);
 
     PROJ_DLL ConversionPtr convertToOtherMethod(int targetEPSGCode) const;
 
@@ -1683,6 +1714,12 @@ class PROJ_GCC_DLL Transformation : public SingleOperation {
         const common::Angle &offsetLong, const common::Length &offsetHeight,
         const std::vector<metadata::PositionalAccuracyNNPtr> &accuracies);
 
+    PROJ_DLL static TransformationNNPtr createCartesianGridOffsets(
+        const util::PropertyMap &properties, const crs::CRSNNPtr &sourceCRSIn,
+        const crs::CRSNNPtr &targetCRSIn, const common::Length &eastingOffset,
+        const common::Length &northingOffset,
+        const std::vector<metadata::PositionalAccuracyNNPtr> &accuracies);
+
     PROJ_DLL static TransformationNNPtr createVerticalOffset(
         const util::PropertyMap &properties, const crs::CRSNNPtr &sourceCRSIn,
         const crs::CRSNNPtr &targetCRSIn, const common::Length &offsetHeight,
@@ -1696,10 +1733,10 @@ class PROJ_GCC_DLL Transformation : public SingleOperation {
     PROJ_PRIVATE :
         //! @cond Doxygen_Suppress
         PROJ_INTERNAL const std::string &
-        getNTv2Filename() const;
+        getPROJ4NadgridsCompatibleFilename() const;
 
-    PROJ_FOR_TEST std::vector<double>
-    getTOWGS84Parameters() const; // throw(io::FormattingException)
+    PROJ_FOR_TEST std::vector<double> getTOWGS84Parameters(
+        bool canThrowException) const; // throw(io::FormattingException)
 
     PROJ_INTERNAL const std::string &getHeightToGeographic3DFilename() const;
 
@@ -1737,6 +1774,7 @@ class PROJ_GCC_DLL Transformation : public SingleOperation {
     PROJ_INTERNAL void _exportToPROJString(io::PROJStringFormatter *formatter)
         const override; // throw(FormattingException)
 
+    PROJ_FRIEND(CoordinateOperation);
     PROJ_FRIEND(CoordinateOperationFactory);
     PROJ_FRIEND(SingleOperation);
     PROJ_INTERNAL TransformationNNPtr inverseAsTransformation() const;
@@ -1886,10 +1924,10 @@ class PROJ_GCC_DLL ConcatenatedOperation final : public CoordinateOperation {
         const override; // throw(FormattingException)
 
     PROJ_INTERNAL static void
-    fixStepsDirection(const crs::CRSNNPtr &concatOpSourceCRS,
-                      const crs::CRSNNPtr &concatOpTargetCRS,
-                      std::vector<CoordinateOperationNNPtr> &operationsInOut,
-                      const io::DatabaseContextPtr &dbContext);
+    fixSteps(const crs::CRSNNPtr &concatOpSourceCRS,
+             const crs::CRSNNPtr &concatOpTargetCRS,
+             std::vector<CoordinateOperationNNPtr> &operationsInOut,
+             const io::DatabaseContextPtr &dbContext, bool fixDirectionAllowed);
     //! @endcond
 
   protected:
@@ -1908,6 +1946,11 @@ class PROJ_GCC_DLL ConcatenatedOperation final : public CoordinateOperation {
     PROJ_OPAQUE_PRIVATE_DATA
     ConcatenatedOperation &
     operator=(const ConcatenatedOperation &other) = delete;
+
+    PROJ_INTERNAL
+    static void setCRSsUpdateInverse(CoordinateOperation *co,
+                                     const crs::CRSNNPtr &sourceCRS,
+                                     const crs::CRSNNPtr &targetCRS);
 };
 
 // ---------------------------------------------------------------------------

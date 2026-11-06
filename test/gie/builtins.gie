@@ -44,6 +44,8 @@ accept  -2 1
 expect  -222571.608757106 110653.326743030
 accept  -2 -1
 expect  -222706.306508391 -110484.267144400
+accept  150 50
+expect  16468399.3582 5275043.9815
 
 direction inverse
 accept  200 100
@@ -54,6 +56,8 @@ accept  -200 100
 expect  -0.001796631 0.000904369
 accept  -200 -100
 expect  -0.001796630 -0.000904370
+accept  16468399.3582 5275043.9815
+expect  150 50
 
 -------------------------------------------------------------------------------
 operation +proj=aea   +R=6400000    +lat_1=0 +lat_2=2
@@ -127,6 +131,34 @@ roundtrip   100
 # point opposite projection center is undefined
 accept  180     0
 expect  failure errno coord_transfm_outside_projection_domain
+
+-------------------------------------------------------------------------------
+# Spherical accuracy near the projection center and near the antipode, where a
+# forward using acos can be off by hundreds of metres just outside the antipodal
+# cutoff. Expected values cross-checked against spherical geodesics.
+-------------------------------------------------------------------------------
+operation +proj=aeqd +R=6400000 +lat_0=0
+-------------------------------------------------------------------------------
+tolerance 0.1 mm
+accept  0.000011459155902616 0.000005729577951308
+expect  1.28 0.64
+roundtrip 100
+accept  179.99994270422047 0
+expect  20106186.5829747 0
+roundtrip 100
+
+-------------------------------------------------------------------------------
+operation +proj=aeqd +R=6400000 +lat_0=40
+-------------------------------------------------------------------------------
+tolerance 0.1 mm
+accept  0.000011459155902616 40.000005729577951
+expect  0.980536805 0.640000063
+accept  30 60
+expect  1662323.920096250 2560502.459379668
+roundtrip 100
+accept  179.99 -39.99
+expect  12227589.751270 15958961.844794
+roundtrip 100
 
 -------------------------------------------------------------------------------
 # Test equatorial aspect of the ellipsoidal azimuthal equidistant. Test data from
@@ -466,6 +498,10 @@ expect  -223379.458811696 111706.742883853
 accept  -2 -1
 expect  -223379.458811696 -111706.742883853
 
+# About 0.1 m from the origin; an acos-based forward collapses this to 0,0
+accept  0.0000011459155903 0.0000005729577951
+expect  0.128 0.064
+
 direction inverse
 accept  200 100
 expect  0.001790493 0.000895247
@@ -475,6 +511,56 @@ accept  -200 100
 expect  -0.001790493 0.000895247
 accept  -200 -100
 expect  -0.001790493 -0.000895247
+
+# Inverse at interior points; input x/y computed with the forward projection
+direction inverse
+accept  2783578.563317653 4512225.413913478
+expect  30 40
+accept  -8014380.291396681 2395844.852480214
+expect  -75 20
+accept  8983838.624520272 -8054689.356660859
+expect  150 -60
+
+# The origin
+accept  0 0
+expect  0 0
+
+# Points outside the bounding ellipse x^2 + 4 y^2 = (2 pi R)^2 have no preimage
+accept  41000000 0
+expect  failure errno coord_transfm_outside_projection_domain
+
+# Round trips, including at the poles and the antimeridian
+direction forward
+accept  30 40
+roundtrip 100
+accept  -75 20
+roundtrip 100
+accept  150 -60
+roundtrip 100
+accept  179 89
+roundtrip 100
+accept  0 90
+roundtrip 100
+accept  180 0
+roundtrip 100
+
+-------------------------------------------------------------------------------
+operation +proj=aitoff   +R=6400000   +over
+-------------------------------------------------------------------------------
+tolerance 0.1 mm
+# With +over, the domain extends to the full ellipse with semiaxes 2 pi R and
+# pi R, on which the sphere is double covered
+direction inverse
+accept  23003371.041774839 6193033.156583068
+expect  240 25
+accept  -15044905.474035570 -12624174.634360289
+expect  -300 -40
+
+direction forward
+accept  240 25
+roundtrip 100
+accept  -300 -40
+roundtrip 100
 
 
 ===============================================================================
@@ -920,6 +1006,21 @@ accept  179.99433652777776 -16.841456527777776
 expect  16015.28901692     13369.66005367
 roundtrip 1
 
+
+-------------------------------------------------------------------------------
+# Scenario of https://github.com/OSGeo/PROJ/issues/4385
+-------------------------------------------------------------------------------
+operation +proj=cass +lat_0=50.6177 +lon_0=-1.19725 +x_0=500000 +y_0=100000 +ellps=airy +units=m
+
+tolerance 0.1 mm
+direction inverse
+
+accept 300000 100000
+expect -4.022094267169   50.583438725252
+
+accept 500000 100000
+expect -1.19725 50.6177
+
 ===============================================================================
 # Central Conic
 # 	Sph
@@ -1001,6 +1102,8 @@ accept  -2 1
 expect  -222638.981586547 110568.812396267
 accept  -2 -1
 expect  -222638.981586547 -110568.812396266
+accept  150 50
+expect  16697923.6190 4865983.5552
 
 direction inverse
 accept  200 100
@@ -1011,6 +1114,8 @@ accept  -200 100
 expect  -0.001796631 0.000904369
 accept  -200 -100
 expect  -0.001796631 -0.000904369
+accept  16697923.6190 4865983.5552
+expect  150 50
 
 -------------------------------------------------------------------------------
 operation +proj=cea   +R=6400000
@@ -1161,6 +1266,215 @@ expect  -223377.422876954 111701.072127637
 accept  -2 -1
 expect  -223377.422876954 -111701.072127637
 
+
+===============================================================================
+# Airocean
+# 	Sph., Ellps.
+# (Each of the 23 faces tested separately around their center, inverse included)
+===============================================================================
+
+-------------------------------------------------------------------------------
+operation +proj=airocean   +ellps=GRS80
+-------------------------------------------------------------------------------
+tolerance 0.1 mm
+accept 23 28
+expect 13572113.73386754 23493648.55327798
+accept 71 46
+expect 9714915.991790695 23488176.361173604
+accept 147 75
+expect 7723484.49359606 20087141.837650128
+accept -77 61
+expect 9679376.816000767 16802749.593532257
+accept -26 35
+expect 15458567.83864155 20091165.592037637
+accept 29 -13
+expect 15471813.400558881 26802282.415074058
+accept 71 -25
+expect 9737210.823606653 30219178.19260869
+accept 97 10
+expect 7670302.042847798 26816601.848991044
+accept 169 35
+expect 3883710.702444233 20135415.72144515
+accept -151 13
+expect 3859776.9744116343 13387384.422000753
+accept -109 24
+expect 7674343.074326526 13366009.083146008
+accept -84 -9
+expect 9673007.441581018 10144952.26955531
+accept -42 -4
+expect 13562062.520622183 10107761.706502315
+accept -11 -34
+expect 13627060.52678455 3383645.5697278716
+accept 155 -35
+expect 1873264.8705730252 30211340.763352156
+accept -158 -28
+expect 1871227.8450291778 10115901.323020123
+accept -109 -46
+expect 7708744.672461299 6722251.06988263
+accept -36 -75
+expect 9665810.798055789 3381177.9821538515
+accept 98 -49
+expect 4806946.337586326 33007546.454859577
+accept 114 -72
+expect 7708905.600709579 1101689.019137724
+accept 143 -9
+expect 3219027.0687154396 27948068.75709961
+accept 123 7
+expect 5239165.493429321 26821978.017945066
+accept 147 16
+expect 2635947.740851659 22373572.978527334
+
+direction inverse
+accept 13600000 23500000
+expect 22.77346472511832 27.745464601997153
+accept 9700000 23500000
+expect 71.26673004703193 45.89205035111361
+accept 7700000 20100000
+expect 146.99339940860168 74.69909794660227
+accept 9700000 16800000
+expect -76.55528563752168 60.90966578454296
+accept 15500000 20100000
+expect -26.125789701735282 34.531335035632864
+accept 15500000 26800000
+expect 28.72566754254401 -13.176397846758185
+accept 9700000 30200000
+expect 71.49135806675328 -24.84162689595362
+accept 7700000 26800000
+expect 96.67476470896398 10.214265110489109
+accept 3900000 20100000
+expect 169.4467058181239 35.245717462371594
+accept 3900000 13400000
+expect -150.6222299120939 13.304599775998279
+accept 7700000 13400000
+expect -108.74281284723317 24.422067806064522
+accept 9700000 10100000
+expect -83.65325201216521 -9.486900253798344
+accept 13600000 10100000
+expect -41.56143010477453 -4.013493146314863
+accept 13600000 3400000
+expect -11.279582965366556 -34.27261608163502
+accept 1900000 30200000
+expect 154.64715194333021 -34.84574824559832
+accept 1900000 10100000
+expect -157.58387651437764 -28.052389289696965
+accept 7700000 6700000
+expect -109.19369493541197 -46.23421830648926
+accept 9700000 3400000
+expect -35.93009713541779 -74.56175824137314
+accept 4800000 33000000
+expect 98.172013849367 -49.00298561868703
+accept 7700000 1100000
+expect 114.26109340373671 -71.94195405675616
+accept 3200000 27900000
+expect 143.30076636407907 -8.522097079186306
+accept 5200000 26800000
+expect 123.44730422061694 7.179239072128023
+accept 2600000 22400000
+expect 146.8547812565557 15.542304306692937
+accept 0 0
+expect failure
+
+
+-------------------------------------------------------------------------------
+operation +proj=airocean   +orient=horizontal  +ellps=GRS80
+-------------------------------------------------------------------------------
+tolerance 0.1 mm
+accept 23 28
+expect 13391387.087562159 13572113.73386754
+accept 71 46
+expect 13396859.279666536 9714915.991790695
+accept 147 75
+expect 16797893.80319001 7723484.49359606
+accept -77 61
+expect 20082286.04730788 9679376.816000767
+accept -26 35
+expect 16793870.048802502 15458567.83864155
+accept 29 -13
+expect 10082753.22576608 15471813.400558881
+accept 71 -25
+expect 6665857.448231446 9737210.823606653
+accept 97 10
+expect 10068433.791849095 7670302.042847798
+accept 169 35
+expect 16749619.919394989 3883710.702444233
+accept -151 13
+expect 23497651.218839385 3859776.9744116343
+accept -109 24
+expect 23519026.557694133 7674343.074326526
+accept -84 -9
+expect 26740083.371284828 9673007.441581018
+accept -42 -4
+expect 26777273.934337825 13562062.520622183
+accept -11 -34
+expect 33501390.07111227 13627060.52678455
+accept 155 -35
+expect 6673694.877487984 1873264.8705730252
+accept -158 -28
+expect 26769134.317820016 1871227.8450291778
+accept -109 -46
+expect 30162784.570957504 7708744.672461299
+accept -36 -75
+expect 33503857.658686288 9665810.798055789
+accept 98 -49
+expect 3877489.1859805635 4806946.337586326
+accept 114 -72
+expect 35783346.62170241 7708905.600709579
+accept 143 -9
+expect 8936966.883740531 3219027.0687154396
+accept 123 7
+expect 10063057.622895071 5239165.493429321
+accept 147 16
+expect 14511462.662312808 2635947.740851659
+
+direction inverse
+accept 13400000 13600000
+expect 22.653513921934305 27.877587719075937
+accept 13400000 9700000
+expect 71.23213038171733 46.05944622180928
+accept 16800000 7700000
+expect 147.55671447322464 74.77832986646499
+accept 20100000 9700000
+expect -76.64598925873727 60.747020624548
+accept 16800000 15500000
+expect -26.3124065099563 34.601485830443536
+accept 10100000 15500000
+expect 28.619135182474427 -13.042018999526977
+accept 6700000 9700000
+expect 71.5162610671907 -24.673252485600123
+accept 10100000 7700000
+expect 96.68789658312737 10.383985604100156
+accept 16800000 3900000
+expect 169.65090726985764 35.27199233196341
+accept 23500000 3900000
+expect -150.55720908958426 13.14679150488858
+accept 23500000 7700000
+expect -108.71768234825969 24.253726008211544
+accept 26800000 9700000
+expect -83.64031642722364 -9.65664821408901
+accept 26800000 13600000
+expect -41.53248336979641 -4.181271680064457
+accept 33500000 13600000
+expect -11.077997959623605 -34.30009883727707
+accept 6700000 1900000
+expect 154.6653022651957 -34.676851253860285
+accept 26800000 1900000
+expect -157.5153533577128 -28.210938432335496
+accept 30200000 7700000
+expect -109.22990606962236 -46.40145478927908
+accept 33500000 9700000
+expect -35.386955975332214 -74.64821453762985
+accept 3900000 4800000
+expect 98.362008540559 -48.89629332838504
+accept 35800000 7700000
+expect 114.04215001020711 -71.79634907735154
+accept 9000000 3200000
+expect 143.33006363443351 -8.36301544647104
+accept 10100000 5200000
+expect 123.47123951316074 7.342196526699235
+accept 14500000 2600000
+expect 147.01335056698537 15.59184037944909
+accept 0 0
+expect failure
 
 ===============================================================================
 # Eckert I
@@ -1397,11 +1711,12 @@ expect  -0.002029979 -0.000789630
 
 ===============================================================================
 # Equidistant Cylindrical (Plate Carree)
-# 	Cyl, Sph
+# 	Cyl, Sph&Ell
 # 	lat_ts=[, lat_0=0]
 ===============================================================================
 
 -------------------------------------------------------------------------------
+# Spherical case
 operation +proj=eqc   +a=6400000
 -------------------------------------------------------------------------------
 tolerance 0.1 mm
@@ -1423,6 +1738,143 @@ accept  -200 100
 expect  -0.001790493 0.000895247
 accept  -200 -100
 expect  -0.001790493 -0.000895247
+
+-------------------------------------------------------------------------------
+# Ellipsoidal case (EPSG:1028)
+# Test values from IOGP Guidance Note 7-2, Section 3.2.5
+# WGS84 ellipsoid: a=6378137, 1/f=298.257223563
+# Standard parallel: 0° (lat_ts=0)
+# Input: lat=55°, lon=10°
+# Expected: E=1113194.91, N=6097230.31
+operation +proj=eqc +ellps=WGS84 +lat_ts=0
+-------------------------------------------------------------------------------
+tolerance 0.01 m
+accept  10 55
+expect  1113194.91 6097230.31
+
+direction inverse
+accept  1113194.91 6097230.31
+expect  10 55
+
+-------------------------------------------------------------------------------
+# Ellipsoidal case - high latitude test
+# WGS84 ellipsoid
+# Input: lat=71.9993230521°, lon=-143.9999611505°
+# Expected:
+#   E=-16030002.350, N=7992053.817
+operation +proj=eqc +ellps=WGS84 +lat_ts=0
+-------------------------------------------------------------------------------
+tolerance 0.1 m
+accept  -143.9999611505 71.9993230521
+expect  -16030002.350 7992053.817
+
+direction inverse
+accept  -16030002.350 7992053.817
+expect  -143.9999611505 71.9993230521
+
+-------------------------------------------------------------------------------
+# Ellipsoidal case - Edge cases
+# WGS84 ellipsoid, lat_ts=0
+# Tests for origin, hemispheres, date line, near-pole
+operation +proj=eqc +ellps=WGS84 +lat_ts=0
+-------------------------------------------------------------------------------
+tolerance 0.001 m
+
+# Origin (0, 0)
+accept  0 0
+expect  0.0 0.0
+
+# Southern hemisphere (10, -45)
+accept  10 -45
+expect  1113194.90793 -4984944.37798
+
+# Date line (180, 30)
+accept  180 30
+expect  20037508.34279 3320113.39794
+
+# Near north pole (0, 89)
+accept  0 89
+expect  0.0 9890271.86440
+
+# San Francisco (-122.4194, 37.7749)
+accept  -122.4194 37.7749
+expect  -13627665.27122 4182513.19136
+
+direction inverse
+# Inverse tests for edge cases
+accept  0.0 0.0
+expect  0 0
+
+accept  1113194.90793 -4984944.37798
+expect  10 -45
+
+accept  20037508.34279 3320113.39794
+expect  180 30
+
+accept  0.0 9890271.86440
+expect  0 89
+
+accept  -13627665.27122 4182513.19136
+expect  -122.4194 37.7749
+
+-------------------------------------------------------------------------------
+# Ellipsoidal case with non-zero standard parallel (lat_ts=45)
+# WGS84 ellipsoid
+# Tests the ν₁ cos(φ₁) scaling factor for easting
+operation +proj=eqc +ellps=WGS84 +lat_ts=45
+-------------------------------------------------------------------------------
+tolerance 0.01 m
+
+# Paris region (2, 49)
+accept  2 49
+expect  157693.670 5429627.632
+
+# Origin (0, 0) - northing should still be 0
+accept  0 0
+expect  0.0 0.0
+
+# High latitude (10, 70)
+accept  10 70
+expect  788468.351 7768980.728
+
+direction inverse
+accept  157693.670 5429627.632
+expect  2 49
+
+accept  0.0 0.0
+expect  0 0
+
+accept  788468.351 7768980.728
+expect  10 70
+
+-------------------------------------------------------------------------------
+# Ellipsoidal case with lat_ts=30 and lat_0=45 (non-zero origin)
+# Tests meridional arc offset M₀
+operation +proj=eqc +ellps=WGS84 +lat_ts=30 +lat_0=45
+-------------------------------------------------------------------------------
+tolerance 0.01 m
+
+# At the origin latitude, northing should be 0
+accept  0 45
+expect  0.0 0.0
+
+# Above origin
+accept  0 60
+expect  0.0 1669128.442
+
+# Below origin
+accept  0 30
+expect  0.0 -1664830.980
+
+direction inverse
+accept  0.0 0.0
+expect  0 45
+
+accept  0.0 1669128.442
+expect  0 60
+
+accept  0.0 -1664830.980
+expect  0 30
 
 
 ===============================================================================
@@ -2575,6 +3027,30 @@ roundtrip 1
 accept  -2 -1
 expect  -1314402.165573241888   -124066.283433859542
 roundtrip 1
+accept -39.99 0.1
+expect -5135117.0707450127	12406.8672748194
+roundtrip 1
+accept -40.01 0.1
+expect -5137140.6776947584	12406.8672748194
+roundtrip 1
+accept -99.99 -0.1
+expect -11169097.7713819221	-12406.8672748194
+roundtrip 1
+accept -100.01 -0.1
+expect -11171118.5438199658	-12406.8672748194
+roundtrip 1
+accept -19.99 -0.1
+expect -3123793.9498816459	-12406.8672748194
+roundtrip 1
+accept -20.01 -0.1
+expect -3125812.8326452221	-12406.8672748194
+roundtrip 1
+accept 79.99 -0.1
+expect 6930815.0545556545	-12406.8672748194
+roundtrip 1
+accept 80.01 -0.1
+expect 6932837.7166681662	-12406.8672748194
+roundtrip 1
 
 accept  -100.0 22.0
 expect  -11170107.212763708085   2703699.326638640370
@@ -2626,6 +3102,30 @@ expect  -1760076.593363992404   124066.283433859542
 roundtrip 1
 accept  -2 -1
 expect  -1759793.139928588411   -124066.283433859542
+roundtrip 1
+accept -89.99 0.1
+expect -10608821.9887007959	12406.8672748194
+roundtrip 1
+accept -90.01 0.1
+expect -10610845.5956505425	12406.8672748194
+roundtrip 1
+accept 59.99 0.1
+expect 4474097.1799880061	12406.8672748194
+roundtrip 1
+accept 60.01 0.1
+expect 4476121.7317749839	12406.8672748194
+roundtrip 1
+accept -59.99 -0.1
+expect -7591833.0556381932	-12406.8672748194
+roundtrip 1
+accept -60.01 -0.1
+expect -7593856.6625879407	-12406.8672748194
+roundtrip 1
+accept 89.99 -0.1
+expect 7491086.1130506080	-12406.8672748194
+roundtrip 1
+accept 90.01 -0.1
+expect 7493109.7200003546	-12406.8672748194
 roundtrip 1
 
 accept -140.0 22.0
@@ -2707,26 +3207,242 @@ expect  0.000898315284   0.000000000000
 
 
 ===============================================================================
-# Icosahedral Snyder Equal Area
-# 	Sph
+# Tetrahedral Snyder Equal Area
+# 	Sph&Ell
 ===============================================================================
 
 -------------------------------------------------------------------------------
-operation +proj=isea   +a=6400000
+operation +proj=tsea +R=6371007.18091875
 -------------------------------------------------------------------------------
-tolerance 0.1 mm
-accept  2 1
-expect  -1097074.948022474 3442909.309037183
-accept  2 -1
-expect  -1097074.948264795 3233611.728585708
-accept  -2 1
-expect  -1575486.353641554 3442168.342028188
-accept  -2 -1
-expect  -1575486.353880283 3234352.695594706
+tolerance 0.2 mm
 
-operation +proj=isea   +mode=hex +resolution=31
-accept  0 0
-expect  failure
+accept 0 0
+expect -7002162.71368800 4042700.52765732
+roundtrip 1
+
+accept 45 0
+expect -3607318.74300090 8724734.47739539
+roundtrip 1
+
+accept 2 49
+expect -12216752.96471957 7182742.29453684
+roundtrip 1
+
+accept -110 54
+expect -16651351.97836581 4682660.28886354
+roundtrip 1
+
+-------------------------------------------------------------------------------
+# Ellipsoid: the linear scale must be the authalic radius R_A = a*sqrt(qp/2),
+# not the semi-major axis a, otherwise absolute area is off by (a/R_A)^2 ~=
+# 1.0022. At the equator authalic lat == geodetic lat, so these lat=0 points
+# reproduce the +R=6371007.18091875 (=R_A) results above to the last digit,
+# pinning the scale. The lat=49 point additionally exercises the authalic
+# latitude mapping.
+operation +proj=tsea +ellps=WGS84
+-------------------------------------------------------------------------------
+tolerance 0.2 mm
+
+accept 0 0
+expect -7002162.71368769 4042700.52765715
+roundtrip 1
+
+accept 45 0
+expect -3607318.74300074 8724734.47739501
+roundtrip 1
+
+accept 2 49
+expect -12200496.13165337 7173649.03578612
+roundtrip 1
+
+-------------------------------------------------------------------------------
+# +orient_lat / +orient_lon / +azi rotate the polyhedron on the sphere.
+# Here the first vertex (apex) lands at the equator on the prime meridian.
+operation +proj=tsea +R=6371007.18091875 +orient_lat=0 +orient_lon=0 +azi=0
+-------------------------------------------------------------------------------
+tolerance 0.2 mm
+
+accept 0 0
+expect -17160609.66302776 9907682.60840717
+roundtrip 1
+
+accept 45 0
+expect 10377221.85600363 8134897.79380681
+roundtrip 1
+
+accept 2 49
+expect 13196457.75916024 3260942.81128537
+roundtrip 1
+
+-------------------------------------------------------------------------------
+# +lat_0 / +lon_0 pan the projected output: (lat_0, lon_0) lands at (0, 0).
+operation +proj=tsea +R=6371007.18091875 +lat_0=49 +lon_0=2
+-------------------------------------------------------------------------------
+tolerance 0.2 mm
+
+accept 2 49
+expect 0 0
+roundtrip 1
+
+accept 0 0
+expect 5214590.25103157 -3140041.76687951
+roundtrip 1
+
+-------------------------------------------------------------------------------
+# +x_0 / +y_0 stack on top of the +lat_0 / +lon_0 pan.
+operation +proj=tsea +R=6371007.18091875 +lat_0=49 +lon_0=2 +x_0=500000 +y_0=1000000
+-------------------------------------------------------------------------------
+tolerance 0.2 mm
+
+accept 2 49
+expect 500000 1000000
+roundtrip 1
+
+accept 0 0
+expect 5714590.25103157 -2140041.76687951
+roundtrip 1
+
+===============================================================================
+# Dodecahedral Snyder Equal Area
+# 	Sph&Ell
+===============================================================================
+
+-------------------------------------------------------------------------------
+operation +proj=dsea +R=6371007.18091875
+-------------------------------------------------------------------------------
+tolerance 0.2 mm
+
+accept 0 0
+expect 0 -3031675.05748085
+roundtrip 1
+
+accept 45 0
+expect 5018607.99435854 -2644265.27628609
+roundtrip 1
+
+accept 2 49
+expect 151412.11757341 2437388.28771295
+roundtrip 1
+
+accept -110 54
+expect -3813952.97764993 8220035.42468884
+roundtrip 1
+
+-------------------------------------------------------------------------------
+# +lat_0 / +lon_0 pan the projected output: (lat_0, lon_0) lands at (0, 0).
+operation +proj=dsea +R=6371007.18091875 +lat_0=49 +lon_0=2
+-------------------------------------------------------------------------------
+tolerance 0.2 mm
+
+accept 2 49
+expect 0 0
+roundtrip 1
+
+accept 0 0
+expect -151412.11757342 -5469063.34519379
+roundtrip 1
+
+-------------------------------------------------------------------------------
+# +net=a5 selects an alternate unfolding tree (and applies an A5 longitude
+# offset of -93°).
+operation +proj=dsea +R=6371007.18091875 +net=a5
+-------------------------------------------------------------------------------
+tolerance 0.2 mm
+
+accept 0 0
+expect -6207281.59771581 -1472479.22190498
+roundtrip 1
+
+accept 45 0
+expect -663460.15390426 -2932991.72938417
+roundtrip 1
+
+===============================================================================
+# Icosahedral Snyder Equal Area
+# 	Sph&Ell
+===============================================================================
+
+-------------------------------------------------------------------------------
+# At default settings on a sphere, the projected origin is the geographic point
+# at (lon=11.25°E, lat≈-30.0945°S) — the bbox centre of icosahedron face F8
+# (the central upper-band face), matching Snyder's published Figure 12.
+# On an ellipsoid, +orient_lon defaults to 11.20° instead of 11.25°.
+-------------------------------------------------------------------------------
+operation +proj=isea +R=6371007.18091875
+-------------------------------------------------------------------------------
+tolerance 0.2 mm
+
+accept 0 0
+expect -1331454.07462099 3323137.77178363
+roundtrip 1
+
+accept 45 0
+expect 4039031.71269420 3206626.90638330
+roundtrip 1
+
+accept 2 49
+expect -642252.939348975 8796229.00931178
+roundtrip 1
+
+accept -110 54
+expect -15321401.5055844 3338358.85897048
+roundtrip 1
+
+-------------------------------------------------------------------------------
+# +lat_0 / +lon_0 pan the projected output: (lat_0, lon_0) lands at (0, 0).
+operation +proj=isea +R=6371007.18091875 +lat_0=49 +lon_0=2
+-------------------------------------------------------------------------------
+tolerance 0.2 mm
+
+accept 2 49
+expect 0 0
+roundtrip 1
+
+accept 0 0
+expect -689201.135272012 -5473091.23752815
+roundtrip 1
+
+===============================================================================
+# Icosahedral Vertex Equal Area
+# 	Sph&Ell
+===============================================================================
+
+-------------------------------------------------------------------------------
+# IVEA is DSEA unfolded onto an icosahedral net, the same used by ISEA
+-------------------------------------------------------------------------------
+operation +proj=ivea +R=6371007.18091875
+-------------------------------------------------------------------------------
+tolerance 0.2 mm
+
+accept 0 0
+expect -1342454.62530261 3323137.77178363
+roundtrip 1
+
+accept 45 0
+expect 4049627.11466059 3200509.64820582
+roundtrip 1
+
+accept 2 49
+expect -631756.96912389 8814441.92132335
+roundtrip 1
+
+accept -110 54
+expect -15321412.39684288 3338362.30436387
+roundtrip 1
+
+-------------------------------------------------------------------------------
+# +lat_0 / +lon_0 pan the projected output: (lat_0, lon_0) lands at (0, 0).
+operation +proj=ivea +R=6371007.18091875 +lat_0=49 +lon_0=2
+-------------------------------------------------------------------------------
+tolerance 0.2 mm
+
+accept 2 49
+expect 0 0
+roundtrip 1
+
+accept 0 0
+expect -710697.65617872 -5491304.14953972
+roundtrip 1
 
 ===============================================================================
 # Kavrayskiy V
@@ -2846,6 +3562,50 @@ operation +proj=krovak +lat_0=-90
 -------------------------------------------------------------------------------
 expect     failure errno invalid_op_illegal_arg_value
 
+
+# Test point from EPSG Guidance Note 7-2
+-------------------------------------------------------------------------------
+operation +proj=krovak +lat_0=49.5 +lon_0=42.5 +k=0.9999 +x_0=0 +y_0=0 +ellps=bessel +pm=ferro
+-------------------------------------------------------------------------------
+tolerance 1.1 cm
+# 16°50'59.179"E, 50°12'32.442"N
+accept  16.849771944444445  50.20901166666667
+expect  -568991.00          -1050538.64
+roundtrip 1
+
+-------------------------------------------------------------------------------
+operation +proj=krovak +lat_0=49.5 +lon_0=42.5 +k=0.9999 +x_0=0 +y_0=0 +ellps=bessel +pm=ferro +czech
+-------------------------------------------------------------------------------
+tolerance 1.1 cm
+# 16°50'59.179"E, 50°12'32.442"N
+accept  16.849771944444445  50.20901166666667
+expect  568991.00           1050538.64
+roundtrip 1
+
+===============================================================================
+# Krovak Modified
+# 	PCyl., Ellps.
+===============================================================================
+
+# Test point from EPSG Guidance Note 7-2
+# Note: all longitudes below are east of Ferro
+-------------------------------------------------------------------------------
+operation +proj=mod_krovak +lat_0=49.5 +lon_0=42.5 +k=0.9999 +x_0=5000000 +y_0=5000000 +ellps=bessel
+-------------------------------------------------------------------------------
+tolerance 1 cm
+# 34°30'59.179"E of Ferro, 50°12'32.442"N
+accept 34.51643861111111 50.20901166666667
+expect -5568990.91       -6050538.71
+roundtrip 1
+
+-------------------------------------------------------------------------------
+operation +proj=mod_krovak +lat_0=49.5 +lon_0=42.5 +k=0.9999 +x_0=5000000 +y_0=5000000 +ellps=bessel +czech
+-------------------------------------------------------------------------------
+tolerance 1 cm
+accept 34.51643861111111 50.20901166666667
+expect 5568990.91        6050538.71
+roundtrip 1
+
 ===============================================================================
 # Laborde
 # 	Cyl, Sph
@@ -2897,6 +3657,8 @@ accept  -2 1
 expect  -222602.471450095 110589.827224410
 accept  -2 -1
 expect  -222602.471450095 -110589.827224409
+accept  150 50
+expect  4372597.1888 10352365.4614
 
 accept  180 0
 expect  failure errno coord_transfm_outside_projection_domain
@@ -2910,6 +3672,8 @@ accept  -200 100
 expect  -0.001796631 0.000904369
 accept  -200 -100
 expect  -0.001796631 -0.000904369
+accept  4372597.1888 10352365.4614
+expect  150 50
 
 accept  13000000 0
 expect  failure errno coord_transfm_outside_projection_domain
@@ -2976,12 +3740,15 @@ accept  0   45
 expect  0   0
 accept  0   0
 expect  0   -4860248.8602
-accept  0   90
-expect  0   4886594.2207
 accept  0   -45
 expect  0   -8984728.0442
 accept  45  45
 expect  3318800.8682    968788.2336
+
+# Passes 0.1 mm except on i386. Cf https://github.com/OSGeo/PROJ/pull/4441#issuecomment-2744141103
+tolerance 50 mm
+accept  0   90
+expect  0   4886594.2207
 
 tolerance 10 cm
 accept  45 45
@@ -5242,6 +6009,26 @@ direction   inverse
 accept      0               6378137.1
 expect      failure         errno coord_transfm_outside_projection_domain
 
+-------------------------------------------------------------------------------
+# Test the Local Orthographic formulation
+
+# Test data from Guidance Note 7 part 2, August 2024,  p. 101
+# Note: The parameters of the CRS in the example are not
+#       exactly the parameters of the CRS in the database for EPSG:10622
+-------------------------------------------------------------------------------
+operation   +proj=ortho +lat_0=37.628969166666664 +lon_0=-122.39394166666668 +k_0=0.9999968 +alpha=27.7927777777777 +x_0=0 +y_0=0 +ellps=GRS80
+-------------------------------------------------------------------------------
+tolerance   0.1 mm
+accept      -122.3846388888889      37.62607694444444
+expect      876.13676       98.97406
+roundtrip   100
+
+# Same with not zero false easting and false northing
+operation   +proj=ortho +lat_0=37.628969166666664 +lon_0=-122.39394166666668 +k_0=0.9999968 +alpha=27.7927777777777 +x_0=10 +y_0=20 +ellps=GRS80
+tolerance   0.1 mm
+accept      -122.3846388888889      37.62607694444444
+expect      886.13676       118.97406
+roundtrip   100
 
 ===============================================================================
 # Perspective Conic
@@ -5896,7 +6683,7 @@ accept 1 0.5
 expect 45 0
 accept 0 0
 expect -45 -35.446011426401625
-accept 1 0 
+accept 1 0
 expect 45 -35.446011426401625
 accept 1 1
 expect 45 35.446011426401625
@@ -6648,6 +7435,28 @@ accept  -200 -100
 expect  -0.001790493 -0.000895247
 
 -------------------------------------------------------------------------------
+# Moon spherical Transverse Msercator (cf https://github.com/OSGeo/PROJ/issues/4673)
+operation +proj=tmerc   +R=1737400
+-------------------------------------------------------------------------------
+tolerance 0.1 mm
+
+accept 0 0
+expect 0 0
+roundtrip 1
+
+accept -4 0
+expect -121392.0501 0
+roundtrip 1
+
+accept -3.9999999 0
+expect -121392.0471 0
+roundtrip 1
+
+accept -4.0000001 0
+expect -121392.0532 0
+roundtrip 1
+
+-------------------------------------------------------------------------------
 # Approx tmerc on a almost spherical ellipsoid, lat_0 north hemisphere
 
 operation +proj=tmerc   +a=6400000 +rf=1e12 +k=0.9 +lat_0=40 +approx
@@ -7238,7 +8047,8 @@ expect  failure errno coord_transfm_outside_projection_domain
 -------------------------------------------------------------------------------
 operation +proj=vandg +a=6400000 +over
 -------------------------------------------------------------------------------
-tolerance 0.25 mm
+# 0.25 is OK for Intel platforms, but on Mac M1 ARM64 we need 0.35
+tolerance 0.35 mm
 
 accept  2 1
 expect  223395.249543407 111704.596633675
@@ -7530,24 +8340,24 @@ expect  -0.001968072 -0.000721216
 operation +proj=wag6   +a=6400000
 -------------------------------------------------------------------------------
 tolerance 0.1 mm
-accept  2 1
-expect  211652.562164410 105831.180787330
-accept  2 -1
-expect  211652.562164410 -105831.180787330
+accept   2 1
+expect   223391.801323985  111701.072127637
+accept   2 -1
+expect   223391.801323985 -111701.072127637
 accept  -2 1
-expect  -211652.562164410 105831.180787330
+expect  -223391.801323985  111701.072127637
 accept  -2 -1
-expect  -211652.562164410 -105831.180787330
+expect  -223391.801323985 -111701.072127637
 
 direction inverse
-accept  200 100
-expect  0.001889802 0.000944901
-accept  200 -100
-expect  0.001889802 -0.000944901
+accept   200 100
+expect   0.001790493  0.000895247
+accept   200 -100
+expect   0.001790493 -0.000895247
 accept  -200 100
-expect  -0.001889802 0.000944901
+expect  -0.001790493  0.000895247
 accept  -200 -100
-expect  -0.001889802 -0.000944901
+expect  -0.001790493 -0.000895247
 
 
 ===============================================================================
@@ -7689,6 +8499,10 @@ accept  -2 1
 expect  -223390.801533485 111703.907505745
 accept  -2 -1
 expect  -223390.801533485 -111703.907505745
+
+# About 0.1 m from the origin; an acos-based forward loses the Aitoff term
+accept  0.0000011459155903 0.0000005729577951
+expect  0.128 0.064
 
 direction inverse
 accept  200 100

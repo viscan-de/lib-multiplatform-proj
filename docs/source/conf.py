@@ -9,8 +9,6 @@ import os
 import sys
 from datetime import date
 
-import sphinx_rtd_theme
-
 sys.path.insert(0, os.path.abspath("."))
 sys.path.insert(0, os.path.abspath("_extensions"))
 
@@ -25,16 +23,16 @@ title = "PROJ coordinate transformation software library"
 author = "PROJ contributors"
 
 # The major project version, used as the replacement for |version|
-version = "9.4"
+version = "9.9"
 
 # The full project version, used as the replacement for |release|
-release = "9.4.0-dev"
+release = "9.9.0"
 
 # PROJ-data version
-data_version = "1.16"
+data_version = "1.25"
 
-today_date = date.today()
-# today_date = date(Y, M, D)  # or use a specific date
+today_date = date.today() # or use a specific date
+#today_date = date(2026, 3, 1)
 today_fmt = "%d %b %Y"
 
 copyright = "1983-{}, PROJ contributors".format(today_date.year)
@@ -119,7 +117,7 @@ html_theme = "sphinx_rtd_theme"
 html_theme_options = {
     "canonical_url": "https://proj.org",
     "logo_only": True,
-    "display_version": True,
+    "version_selector": True,
     "prev_next_buttons_location": "both",
     "style_external_links": False,
     "style_nav_header_background": "#353130",
@@ -130,9 +128,6 @@ html_theme_options = {
     "includehidden": True,
     "titles_only": False,
 }
-
-# Add any paths that contain custom themes here, relative to this directory
-html_theme_path = [sphinx_rtd_theme.get_html_theme_path()]
 
 # Display "Edit on GitHub" link on each page
 # https://docs.readthedocs.io/en/stable/guides/edit-source-links-sphinx.html
@@ -154,7 +149,10 @@ html_favicon = "../images/favicon.png"
 # Add any paths that contain custom static files (such as style sheets)
 html_static_path = ["_static"]
 
-htm_css_files = [
+# For robots.txt
+html_extra_path = ["extra_path"]
+
+html_css_files = [
     "theme_overrides.css",  # override wide tables in RTD theme
 ]
 
@@ -267,3 +265,21 @@ texinfo_documents = [
 
 source_file_root = os.path.join(os.path.dirname(__file__), os.pardir, os.pardir)
 source_file_url_template = "https://github.com/OSGeo/PROJ/blob/master/{}"
+
+# -- Specifics when documentation is built on ReadTheDocs infra
+
+# Cf https://about.readthedocs.com/blog/2024/07/addons-by-default
+
+# Define the canonical URL if you are using a custom domain on Read the Docs
+html_baseurl = os.environ.get("READTHEDOCS_CANONICAL_URL", "")
+
+# Tell Jinja2 templates the build is running on Read the Docs
+if os.environ.get("READTHEDOCS", "") == "True":
+    html_context["READTHEDOCS"] = True
+
+# -- Spelling --------------------------------------------------
+
+# Avoid running git
+spelling_ignore_contributor_names = False
+
+spelling_word_list_filename = ["spelling_wordlist.txt"]

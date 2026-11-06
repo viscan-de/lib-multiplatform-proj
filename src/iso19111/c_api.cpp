@@ -194,41 +194,65 @@ getDBcontextNoException(PJ_CONTEXT *ctx, const char *function) {
 PJ *pj_obj_create(PJ_CONTEXT *ctx, const BaseObjectNNPtr &objIn) {
     auto coordop = dynamic_cast<const CoordinateOperation *>(objIn.get());
     if (coordop) {
-        auto dbContext = getDBcontextNoException(ctx, __FUNCTION__);
-        try {
-            auto formatter = PROJStringFormatter::create(
-                PROJStringFormatter::Convention::PROJ_5, dbContext);
-            auto projString = coordop->exportToPROJString(formatter.get());
-            if (proj_context_is_network_enabled(ctx)) {
-                ctx->defer_grid_opening = true;
-            }
-            auto pj = pj_create_internal(ctx, projString.c_str());
-            ctx->defer_grid_opening = false;
-            if (pj) {
-                pj->iso_obj = objIn;
-                pj->iso_obj_is_coordinate_operation = true;
-                auto sourceEpoch = coordop->sourceCoordinateEpoch();
-                auto targetEpoch = coordop->targetCoordinateEpoch();
-                if (sourceEpoch.has_value()) {
-                    if (!targetEpoch.has_value()) {
-                        pj->hasCoordinateEpoch = true;
-                        pj->coordinateEpoch =
-                            sourceEpoch->coordinateEpoch().convertToUnit(
-                                common::UnitOfMeasure::YEAR);
-                    }
-                } else {
-                    if (targetEpoch.has_value()) {
-                        pj->hasCoordinateEpoch = true;
-                        pj->coordinateEpoch =
-                            targetEpoch->coordinateEpoch().convertToUnit(
-                                common::UnitOfMeasure::YEAR);
-                    }
+        auto singleOp = dynamic_cast<const SingleOperation *>(coordop);
+        bool bTryToExportToProj = true;
+        if (singleOp && singleOp->method()->nameStr() == "unnamed") {
+            // Can happen for example when the GDAL GeoTIFF SRS builder
+            // creates a dummy conversion when building the SRS, before setting
+            // the final map projection. This avoids exportToPROJString() from
+            // throwing an exception.
+            bTryToExportToProj = false;
+        }
+        if (bTryToExportToProj) {
+            try {
+                // Use the database context if already open (e.g. when
+                // coming from proj_create_from_database), so that
+                // substitutePROJAlternativeGridNames() can resolve
+                // grid names via the grid_alternatives table.
+                // Do NOT open the database here — callers such as
+                // proj_create() with a plain pipeline string may run
+                // without proj.db (see commit 63c491eda3).
+                auto dbContext =
+                    ctx->cpp_context
+                        ? ctx->get_cpp_context()->getDatabaseContextIfOpen()
+                        : nullptr;
+                auto formatter = PROJStringFormatter::create(
+                    PROJStringFormatter::Convention::PROJ_5,
+                    std::move(dbContext));
+                auto projString = coordop->exportToPROJString(formatter.get());
+                const bool defer_grid_opening_backup = ctx->defer_grid_opening;
+                if (!defer_grid_opening_backup &&
+                    proj_context_is_network_enabled(ctx)) {
+                    ctx->defer_grid_opening = true;
                 }
-                return pj;
+                auto pj = pj_create_internal(ctx, projString.c_str());
+                ctx->defer_grid_opening = defer_grid_opening_backup;
+                if (pj) {
+                    pj->iso_obj = objIn;
+                    pj->iso_obj_is_coordinate_operation = true;
+                    auto sourceEpoch = coordop->sourceCoordinateEpoch();
+                    auto targetEpoch = coordop->targetCoordinateEpoch();
+                    if (sourceEpoch.has_value()) {
+                        if (!targetEpoch.has_value()) {
+                            pj->hasCoordinateEpoch = true;
+                            pj->coordinateEpoch =
+                                sourceEpoch->coordinateEpoch().convertToUnit(
+                                    common::UnitOfMeasure::YEAR);
+                        }
+                    } else {
+                        if (targetEpoch.has_value()) {
+                            pj->hasCoordinateEpoch = true;
+                            pj->coordinateEpoch =
+                                targetEpoch->coordinateEpoch().convertToUnit(
+                                    common::UnitOfMeasure::YEAR);
+                        }
+                    }
+                    return pj;
+                }
+            } catch (const std::exception &) {
+                // Silence, since we may not always be able to export as a
+                // PROJ string.
             }
-        } catch (const std::exception &) {
-            // Silence, since we may not always be able to export as a
-            // PROJ string.
         }
     }
     auto pj = pj_new();
@@ -380,7 +404,7 @@ const char *proj_context_get_database_path(PJ_CONTEXT *ctx) {
     try {
         // temporary variable must be used as getDBcontext() might create
         // ctx->cpp_context
-        auto osPath(getDBcontext(ctx)->getPath());
+        const std::string osPath(getDBcontext(ctx)->getPath());
         ctx->get_cpp_context()->lastDbPath_ = osPath;
         return ctx->cpp_context->lastDbPath_.c_str();
     } catch (const std::exception &e) {
@@ -542,12 +566,15 @@ PJ *proj_clone(PJ_CONTEXT *ctx, const PJ *obj) {
             if (newPj) {
                 newPj->descr = "Set of coordinate operations";
                 newPj->ctx = ctx;
+                newPj->copyStateFrom(*obj);
+                ctx->forceOver = obj->over != 0;
                 const int old_debug_level = ctx->debug_level;
                 ctx->debug_level = PJ_LOG_NONE;
                 for (const auto &altOp : obj->alternativeCoordinateOperations) {
                     newPj->alternativeCoordinateOperations.emplace_back(
                         PJCoordOperation(ctx, altOp));
                 }
+                ctx->forceOver = false;
                 ctx->debug_level = old_debug_level;
             }
             return newPj;
@@ -555,7 +582,13 @@ PJ *proj_clone(PJ_CONTEXT *ctx, const PJ *obj) {
         return nullptr;
     }
     try {
-        return pj_obj_create(ctx, NN_NO_CHECK(obj->iso_obj));
+        ctx->forceOver = obj->over != 0;
+        PJ *newPj = pj_obj_create(ctx, NN_NO_CHECK(obj->iso_obj));
+        ctx->forceOver = false;
+        if (newPj) {
+            newPj->copyStateFrom(*obj);
+        }
+        return newPj;
     } catch (const std::exception &e) {
         proj_log_error(ctx, __FUNCTION__, e.what());
     }
@@ -603,6 +636,14 @@ PJ *proj_create(PJ_CONTEXT *ctx, const char *text) {
             proj_context_errno_set(ctx, PROJ_ERR_INVALID_OP_WRONG_SYNTAX);
         }
         proj_log_error(ctx, __FUNCTION__, e.what());
+    } catch (const NoSuchAuthorityCodeException &e) {
+        proj_log_error(ctx, __FUNCTION__,
+                       std::string(e.what())
+                           .append(": ")
+                           .append(e.getAuthority())
+                           .append(":")
+                           .append(e.getAuthorityCode())
+                           .c_str());
     } catch (const std::exception &e) {
         proj_log_error(ctx, __FUNCTION__, e.what());
     }
@@ -618,6 +659,12 @@ PJ *proj_create(PJ_CONTEXT *ctx, const char *text) {
  * The returned object must be unreferenced with proj_destroy() after use.
  * It should be used by at most one thread at a time.
  *
+ * The distinction between warnings and grammar errors is somewhat artificial
+ * and does not tell much about the real criticity of the non-compliance.
+ * Some warnings may be more concerning than some grammar errors. Human
+ * expertise (or, by the time this comment will be read, specialized AI) is
+ * generally needed to perform that assessment.
+ *
  * @param ctx PROJ context, or NULL for default context
  * @param wkt WKT string (must not be NULL)
  * @param options null-terminated list of options, or NULL. Currently
@@ -632,8 +679,8 @@ PJ *proj_create(PJ_CONTEXT *ctx, const char *text) {
  * </ul>
  * @param out_warnings Pointer to a PROJ_STRING_LIST object, or NULL.
  * If provided, *out_warnings will contain a list of warnings, typically for
- * non recognized projection method or parameters. It must be freed with
- * proj_string_list_destroy().
+ * non recognized projection method or parameters, or other issues found during
+ * WKT analys. It must be freed with proj_string_list_destroy().
  * @param out_grammar_errors Pointer to a PROJ_STRING_LIST object, or NULL.
  * If provided, *out_grammar_errors will contain a list of errors regarding the
  * WKT grammar. It must be freed with proj_string_list_destroy().
@@ -682,41 +729,32 @@ PJ *proj_create_from_wkt(PJ_CONTEXT *ctx, const char *wkt,
         }
         auto obj = parser.createFromWKT(wkt);
 
-        std::vector<std::string> warningsFromParsing;
         if (out_grammar_errors) {
-            auto rawWarnings = parser.warningList();
-            std::vector<std::string> grammarWarnings;
-            for (const auto &msg : rawWarnings) {
-                if (msg.find("Default it to") != std::string::npos) {
-                    warningsFromParsing.push_back(msg);
-                } else {
-                    grammarWarnings.push_back(msg);
-                }
-            }
-            if (!grammarWarnings.empty()) {
-                *out_grammar_errors = to_string_list(grammarWarnings);
+            auto grammarErrors = parser.grammarErrorList();
+            if (!grammarErrors.empty()) {
+                *out_grammar_errors = to_string_list(grammarErrors);
             }
         }
 
         if (out_warnings) {
+            auto warnings = parser.warningList();
             auto derivedCRS = dynamic_cast<const crs::DerivedCRS *>(obj.get());
             if (derivedCRS) {
-                auto warnings =
+                auto extraWarnings =
                     derivedCRS->derivingConversionRef()->validateParameters();
-                warnings.insert(warnings.end(), warningsFromParsing.begin(),
-                                warningsFromParsing.end());
-                if (!warnings.empty()) {
-                    *out_warnings = to_string_list(warnings);
-                }
+                warnings.insert(warnings.end(), extraWarnings.begin(),
+                                extraWarnings.end());
             } else {
                 auto singleOp =
                     dynamic_cast<const operation::SingleOperation *>(obj.get());
                 if (singleOp) {
-                    auto warnings = singleOp->validateParameters();
-                    if (!warnings.empty()) {
-                        *out_warnings = to_string_list(warnings);
-                    }
+                    auto extraWarnings = singleOp->validateParameters();
+                    warnings.insert(warnings.end(), extraWarnings.begin(),
+                                    extraWarnings.end());
                 }
+            }
+            if (!warnings.empty()) {
+                *out_warnings = to_string_list(warnings);
             }
         }
 
@@ -794,6 +832,14 @@ PJ *proj_create_from_database(PJ_CONTEXT *ctx, const char *auth_name,
             break;
         }
         return pj_obj_create(ctx, NN_NO_CHECK(obj));
+    } catch (const NoSuchAuthorityCodeException &e) {
+        proj_log_error(ctx, __FUNCTION__,
+                       std::string(e.what())
+                           .append(": ")
+                           .append(e.getAuthority())
+                           .append(":")
+                           .append(e.getAuthorityCode())
+                           .c_str());
     } catch (const std::exception &e) {
         proj_log_error(ctx, __FUNCTION__, e.what());
     }
@@ -1036,7 +1082,7 @@ convertPJObjectTypeToObjectType(PJ_TYPE type, bool &valid) {
         break;
 
     case PJ_TYPE_ENGINEERING_DATUM:
-        valid = false;
+        cppType = AuthorityFactory::ObjectType::ENGINEERING_DATUM;
         break;
 
     case PJ_TYPE_PARAMETRIC_DATUM:
@@ -1084,7 +1130,7 @@ convertPJObjectTypeToObjectType(PJ_TYPE type, bool &valid) {
         break;
 
     case PJ_TYPE_ENGINEERING_CRS:
-        valid = false;
+        cppType = AuthorityFactory::ObjectType::ENGINEERING_CRS;
         break;
 
     case PJ_TYPE_TEMPORAL_CRS:
@@ -1629,7 +1675,7 @@ const char *proj_as_wkt(PJ_CONTEXT *ctx, const PJ *obj, PJ_WKT_TYPE type,
 
     try {
         auto dbContext = getDBcontextNoException(ctx, __FUNCTION__);
-        auto formatter = WKTFormatter::create(convention, dbContext);
+        auto formatter = WKTFormatter::create(convention, std::move(dbContext));
         for (auto iter = options; iter && iter[0]; ++iter) {
             const char *value;
             if ((value = getOptionValue(*iter, "MULTILINE="))) {
@@ -1735,7 +1781,8 @@ const char *proj_as_proj_string(PJ_CONTEXT *ctx, const PJ *obj,
         static_cast<PROJStringFormatter::Convention>(type);
     auto dbContext = getDBcontextNoException(ctx, __FUNCTION__);
     try {
-        auto formatter = PROJStringFormatter::create(convention, dbContext);
+        auto formatter =
+            PROJStringFormatter::create(convention, std::move(dbContext));
         for (auto iter = options; iter && iter[0]; ++iter) {
             const char *value;
             if ((value = getOptionValue(*iter, "MULTILINE="))) {
@@ -1807,7 +1854,7 @@ const char *proj_as_projjson(PJ_CONTEXT *ctx, const PJ *obj,
 
     auto dbContext = getDBcontextNoException(ctx, __FUNCTION__);
     try {
-        auto formatter = JSONFormatter::create(dbContext);
+        auto formatter = JSONFormatter::create(std::move(dbContext));
         for (auto iter = options; iter && iter[0]; ++iter) {
             const char *value;
             if ((value = getOptionValue(*iter, "MULTILINE="))) {
@@ -1938,8 +1985,6 @@ int proj_get_area_of_use(PJ_CONTEXT *ctx, const PJ *obj,
 // ---------------------------------------------------------------------------
 
 /** \brief Return the area of use of an object.
- *
- * In case of multiple usages, this will be the one of first usage.
  *
  * @param ctx PROJ context, or NULL for default context
  * @param obj Object (must not be NULL)
@@ -2089,6 +2134,30 @@ int proj_crs_is_derived(PJ_CONTEXT *ctx, const PJ *crs) {
         return false;
     }
     return dynamic_cast<const DerivedCRS *>(l_crs) != nullptr;
+}
+
+// ---------------------------------------------------------------------------
+
+/** \brief Returns whether (at least one component of a) CRS has a dynamic
+ * reference frame
+ *
+ * @param ctx PROJ context, or NULL for default context
+ * @param crs Object of type CRS (must not be NULL)
+ * @return TRUE if the CRS is a dynamic CRS.
+ * @since 9.9
+ */
+int proj_crs_is_dynamic(PJ_CONTEXT *ctx, const PJ *crs) {
+    if (!crs) {
+        proj_context_errno_set(ctx, PROJ_ERR_OTHER_API_MISUSE);
+        proj_log_error(ctx, __FUNCTION__, "missing required input");
+        return false;
+    }
+    auto l_crs = dynamic_cast<const CRS *>(crs->iso_obj.get());
+    if (!l_crs) {
+        proj_log_error(ctx, __FUNCTION__, "Object is not a CRS");
+        return false;
+    }
+    return l_crs->isDynamic(/* considerWGS84AsDynamic = */ false);
 }
 
 // ---------------------------------------------------------------------------
@@ -2725,7 +2794,7 @@ PJ_OBJ_LIST *proj_identify(PJ_CONTEXT *ctx, const PJ *obj,
                     ++i;
                 }
             }
-            auto ret = internal::make_unique<PJ_OBJ_LIST>(std::move(objects));
+            auto ret = std::make_unique<PJ_OBJ_LIST>(std::move(objects));
             if (out_confidence) {
                 *out_confidence = confidenceTemp;
                 confidenceTemp = nullptr;
@@ -2954,11 +3023,11 @@ proj_get_crs_info_list_from_database(PJ_CONTEXT *ctx, const char *auth_name,
     int i = 0;
     try {
         auto dbContext = getDBcontext(ctx);
-        const std::string authName = auth_name ? auth_name : "";
+        std::string authName = auth_name ? auth_name : "";
         auto actualAuthNames =
             dbContext->getVersionedAuthoritiesFromName(authName);
         if (actualAuthNames.empty())
-            actualAuthNames.push_back(authName);
+            actualAuthNames.push_back(std::move(authName));
         std::list<AuthorityFactory::CRSInfo> concatList;
         for (const auto &actualAuthName : actualAuthNames) {
             auto factory = AuthorityFactory::create(dbContext, actualAuthName);
@@ -3458,7 +3527,7 @@ PJ *proj_create_geographic_crs(PJ_CONTEXT *ctx, const char *crs_name,
                                double prime_meridian_offset,
                                const char *pm_angular_units,
                                double pm_angular_units_conv,
-                               PJ *ellipsoidal_cs) {
+                               const PJ *ellipsoidal_cs) {
 
     SANITIZE_CTX(ctx);
     auto cs = std::dynamic_pointer_cast<EllipsoidalCS>(ellipsoidal_cs->iso_obj);
@@ -3497,8 +3566,8 @@ PJ *proj_create_geographic_crs(PJ_CONTEXT *ctx, const char *crs_name,
  * proj_destroy(), or NULL in case of error.
  */
 PJ *proj_create_geographic_crs_from_datum(PJ_CONTEXT *ctx, const char *crs_name,
-                                          PJ *datum_or_datum_ensemble,
-                                          PJ *ellipsoidal_cs) {
+                                          const PJ *datum_or_datum_ensemble,
+                                          const PJ *ellipsoidal_cs) {
 
     SANITIZE_CTX(ctx);
     if (datum_or_datum_ensemble == nullptr) {
@@ -3812,7 +3881,7 @@ PJ *proj_create_vertical_crs_ex(
  * proj_destroy(), or NULL in case of error.
  */
 PJ *proj_create_compound_crs(PJ_CONTEXT *ctx, const char *crs_name,
-                             PJ *horiz_crs, PJ *vert_crs) {
+                             const PJ *horiz_crs, const PJ *vert_crs) {
 
     SANITIZE_CTX(ctx);
     if (!horiz_crs || !vert_crs) {
@@ -4518,14 +4587,12 @@ PJ *proj_create_conversion(PJ_CONTEXT *ctx, const char *name,
  * proj_destroy(), or NULL in case of error.
  */
 
-PJ *proj_create_transformation(PJ_CONTEXT *ctx, const char *name,
-                               const char *auth_name, const char *code,
-                               PJ *source_crs, PJ *target_crs,
-                               PJ *interpolation_crs, const char *method_name,
-                               const char *method_auth_name,
-                               const char *method_code, int param_count,
-                               const PJ_PARAM_DESCRIPTION *params,
-                               double accuracy) {
+PJ *proj_create_transformation(
+    PJ_CONTEXT *ctx, const char *name, const char *auth_name, const char *code,
+    const PJ *source_crs, const PJ *target_crs, const PJ *interpolation_crs,
+    const char *method_name, const char *method_auth_name,
+    const char *method_code, int param_count,
+    const PJ_PARAM_DESCRIPTION *params, double accuracy) {
     SANITIZE_CTX(ctx);
     if (!source_crs || !target_crs) {
         proj_context_errno_set(ctx, PROJ_ERR_OTHER_API_MISUSE);
@@ -4681,12 +4748,13 @@ static CoordinateSystemAxisNNPtr createAxis(const PJ_AXIS_DESCRIPTION &axis) {
         unit_type = UnitOfMeasure::Type::PARAMETRIC;
         break;
     }
-    auto unit = axis.unit_type == PJ_UT_ANGULAR
-                    ? createAngularUnit(axis.unit_name, axis.unit_conv_factor)
-                : axis.unit_type == PJ_UT_LINEAR
-                    ? createLinearUnit(axis.unit_name, axis.unit_conv_factor)
-                    : UnitOfMeasure(axis.unit_name ? axis.unit_name : "unnamed",
-                                    axis.unit_conv_factor, unit_type);
+    const common::UnitOfMeasure unit(
+        axis.unit_type == PJ_UT_ANGULAR
+            ? createAngularUnit(axis.unit_name, axis.unit_conv_factor)
+        : axis.unit_type == PJ_UT_LINEAR
+            ? createLinearUnit(axis.unit_name, axis.unit_conv_factor)
+            : UnitOfMeasure(axis.unit_name ? axis.unit_name : "unnamed",
+                            axis.unit_conv_factor, unit_type));
 
     return CoordinateSystemAxis::create(
         createPropertyMapName(axis.name),
@@ -5208,7 +5276,7 @@ PJ *proj_create_conversion_two_point_equidistant(
  * linear_unit_conv_factor).
  * Angular parameters are expressed in (ang_unit_name, ang_unit_conv_factor).
  *
- * @deprecated. Replaced by proj_create_conversion_tunisia_mining_grid
+ * @since 9.2
  */
 PJ *proj_create_conversion_tunisia_mining_grid(
     PJ_CONTEXT *ctx, double center_lat, double center_long,
@@ -5242,7 +5310,7 @@ PJ *proj_create_conversion_tunisia_mining_grid(
  * linear_unit_conv_factor).
  * Angular parameters are expressed in (ang_unit_name, ang_unit_conv_factor).
  *
- * @since 9.2
+ * @deprecated Replaced by proj_create_conversion_tunisia_mining_grid
  */
 PJ *proj_create_conversion_tunisia_mapping_grid(
     PJ_CONTEXT *ctx, double center_lat, double center_long,
@@ -6752,6 +6820,39 @@ PJ *proj_create_conversion_orthographic(
 }
 // ---------------------------------------------------------------------------
 
+/** \brief Instantiate a ProjectedCRS with a conversion based on the Local
+ * Orthographic projection method.
+ *
+ * See osgeo::proj::operation::Conversion::createLocalOrthographic().
+ *
+ * Linear parameters are expressed in (linear_unit_name,
+ * linear_unit_conv_factor).
+ * Angular parameters are expressed in (ang_unit_name, ang_unit_conv_factor).
+ */
+PJ *proj_create_conversion_local_orthographic(
+    PJ_CONTEXT *ctx, double center_lat, double center_long, double azimuth,
+    double scale, double false_easting, double false_northing,
+    const char *ang_unit_name, double ang_unit_conv_factor,
+    const char *linear_unit_name, double linear_unit_conv_factor) {
+    SANITIZE_CTX(ctx);
+    try {
+        UnitOfMeasure linearUnit(
+            createLinearUnit(linear_unit_name, linear_unit_conv_factor));
+        UnitOfMeasure angUnit(
+            createAngularUnit(ang_unit_name, ang_unit_conv_factor));
+        auto conv = Conversion::createLocalOrthographic(
+            PropertyMap(), Angle(center_lat, angUnit),
+            Angle(center_long, angUnit), Angle(azimuth, angUnit), Scale(scale),
+            Length(false_easting, linearUnit),
+            Length(false_northing, linearUnit));
+        return proj_create_conversion(ctx, conv);
+    } catch (const std::exception &e) {
+        proj_log_error(ctx, __FUNCTION__, e.what());
+    }
+    return nullptr;
+}
+// ---------------------------------------------------------------------------
+
 /** \brief Instantiate a ProjectedCRS with a conversion based on the American
  * Polyconic projection method.
  *
@@ -7494,6 +7595,42 @@ int proj_coordoperation_has_ballpark_transformation(PJ_CONTEXT *ctx,
 
 // ---------------------------------------------------------------------------
 
+/** \brief Return whether a coordinate operation requires coordinate tuples
+ * to have a valid input time for the coordinate transformation to succeed.
+ * (this applies for the forward direction)
+ *
+ * Note: in the case of a time-dependent Helmert transformation, this function
+ * will return true, but when executing proj_trans(), execution will still
+ * succeed if the time information is missing, due to the transformation central
+ * epoch being used as a fallback.
+ *
+ * @param ctx PROJ context, or NULL for default context
+ * @param coordoperation Object of type CoordinateOperation or derived classes
+ * (must not be NULL)
+ * @return TRUE or FALSE.
+ * @since 9.5
+ */
+
+int proj_coordoperation_requires_per_coordinate_input_time(
+    PJ_CONTEXT *ctx, const PJ *coordoperation) {
+    SANITIZE_CTX(ctx);
+    if (!coordoperation) {
+        proj_context_errno_set(ctx, PROJ_ERR_OTHER_API_MISUSE);
+        proj_log_error(ctx, __FUNCTION__, "missing required input");
+        return false;
+    }
+    auto op = dynamic_cast<const CoordinateOperation *>(
+        coordoperation->iso_obj.get());
+    if (!op) {
+        proj_log_error(ctx, __FUNCTION__,
+                       "Object is not a CoordinateOperation");
+        return false;
+    }
+    return op->requiresPerCoordinateInputTime();
+}
+
+// ---------------------------------------------------------------------------
+
 /** \brief Return the number of parameters of a SingleOperation
  *
  * @param ctx PROJ context, or NULL for default context
@@ -7738,16 +7875,19 @@ int proj_coordoperation_get_towgs84_values(PJ_CONTEXT *ctx,
         }
         return FALSE;
     }
-    try {
-        auto values = transf->getTOWGS84Parameters();
+
+    const auto values = transf->getTOWGS84Parameters(false);
+    if (!values.empty()) {
         for (int i = 0;
              i < value_count && static_cast<size_t>(i) < values.size(); i++) {
             out_values[i] = values[i];
         }
         return TRUE;
-    } catch (const std::exception &e) {
+    } else {
         if (emit_error_if_incompatible) {
-            proj_log_error(ctx, __FUNCTION__, e.what());
+            proj_log_error(ctx, __FUNCTION__,
+                           "Transformation cannot be formatted as WKT1 TOWGS84 "
+                           "parameters");
         }
         return FALSE;
     }
@@ -8421,8 +8561,8 @@ PJ_OPERATION_LIST::getPreparedOperations(PJ_CONTEXT *ctx) {
  * component. You may need to use proj_crs_promote_to_3D().
  *
  * @param ctx PROJ context, or NULL for default context
- * @param source_crs source CRS. Must not be NULL.
- * @param target_crs source CRS. Must not be NULL.
+ * @param source_crs source CRS or CoordinateMetadata. Must not be NULL.
+ * @param target_crs target CRS or CoordinateMetadata. Must not be NULL.
  * @param operationContext Search context. Must not be NULL.
  * @return a result set that must be unreferenced with
  * proj_list_destroy(), or NULL in case of error.
@@ -9093,7 +9233,7 @@ PJ *proj_normalize_for_visualization(PJ_CONTEXT *ctx, const PJ *obj) {
             pjNew->descr = "Set of coordinate operations";
             pjNew->left = obj->left;
             pjNew->right = obj->right;
-            pjNew->over = obj->over;
+            pjNew->copyStateFrom(*obj);
 
             for (const auto &alt : obj->alternativeCoordinateOperations) {
                 auto co = dynamic_cast<const CoordinateOperation *>(
@@ -9129,13 +9269,15 @@ PJ *proj_normalize_for_visualization(PJ_CONTEXT *ctx, const PJ *obj) {
                     ctx->forceOver = alt.pj->over != 0;
                     auto pjNormalized =
                         pj_obj_create(ctx, co->normalizeForVisualization());
-                    pjNormalized->over = alt.pj->over;
                     ctx->forceOver = false;
+
+                    pjNormalized->copyStateFrom(*(alt.pj));
+
                     pjNew->alternativeCoordinateOperations.emplace_back(
                         alt.idxInOriginalList, minxSrc, minySrc, maxxSrc,
                         maxySrc, minxDst, minyDst, maxxDst, maxyDst,
                         pjNormalized, co->nameStr(), alt.accuracy,
-                        alt.pseudoArea, alt.isOffshore,
+                        alt.pseudoArea, alt.areaName.c_str(),
                         alt.pjSrcGeocentricToLonLat,
                         alt.pjDstGeocentricToLonLat);
                 }
@@ -9467,11 +9609,13 @@ PROJ_STRING_LIST proj_get_insert_statements(
     (void)options;
 
     struct TempSessionHolder {
+      private:
         PJ_CONTEXT *m_ctx;
-        PJ_INSERT_SESSION *m_tempSession = nullptr;
+        PJ_INSERT_SESSION *m_tempSession;
         TempSessionHolder(const TempSessionHolder &) = delete;
         TempSessionHolder &operator=(const TempSessionHolder &) = delete;
 
+      public:
         TempSessionHolder(PJ_CONTEXT *ctx, PJ_INSERT_SESSION *session)
             : m_ctx(ctx),
               m_tempSession(session ? nullptr
@@ -9482,12 +9626,16 @@ PROJ_STRING_LIST proj_get_insert_statements(
                 proj_insert_object_session_destroy(m_ctx, m_tempSession);
             }
         }
+
+        inline PJ_INSERT_SESSION *GetTempSession() const {
+            return m_tempSession;
+        }
     };
 
     try {
         TempSessionHolder oHolder(ctx, session);
         if (!session) {
-            session = oHolder.m_tempSession;
+            session = oHolder.GetTempSession();
             if (!session) {
                 return nullptr;
             }
@@ -9566,7 +9714,7 @@ proj_get_geoid_models_from_database(PJ_CONTEXT *ctx, const char *auth_name,
 
 // ---------------------------------------------------------------------------
 
-/** \brief Instanciate a CoordinateMetadata object
+/** \brief Instantiate a CoordinateMetadata object
  *
  * @since 9.4
  */
@@ -9653,4 +9801,357 @@ int proj_crs_has_point_motion_operation(PJ_CONTEXT *ctx, const PJ *crs) {
         proj_log_error(ctx, __FUNCTION__, e.what());
     }
     return false;
+}
+
+// ---------------------------------------------------------------------------
+
+static UnitOfMeasure createScaleUnit(const char *name, double convFactor,
+                                     const char *unit_auth_name = nullptr,
+                                     const char *unit_code = nullptr) {
+    return name == nullptr
+               ? UnitOfMeasure::SCALE_UNITY
+               : UnitOfMeasure(name, convFactor, UnitOfMeasure::Type::SCALE,
+                               unit_auth_name ? unit_auth_name : "",
+                               unit_code ? unit_code : "");
+}
+
+// ---------------------------------------------------------------------------
+
+/** \brief Instantiate a conversion with method Affine Parametric, assuming
+ * it works in linear coordinate space
+ *
+ * This method is defined as
+ * <a href="https://epsg.org/coord-operation-method_9624/index.html">
+ * EPSG:9624</a>.
+ *
+ * Use this method for a CRS whose coordinate system has 2 axis.
+ *
+ * The returned object must be unreferenced with proj_destroy() after
+ * use.
+ * It should be used by at most one thread at a time.
+ *
+ * @param ctx PROJ context, or NULL for default context
+ * @param name Conversion name, or nullptr
+ * @param A0 translation term for output first axis
+ * @param A0_unit_name Name of the linear unit for A0. Or NULL for metre.
+ * @param A0_unit_conv_factor Conversion factor to metre for A0. Note: this is
+ * indicative only, and not taken into account in coordinate conversion
+ * @param A1 coefficient term for output first axis taking that is multiplied
+ * with the value along the source first axis
+ * @param A1_unit_name Name of the scale unit for A1. Or NULL for unity.
+ * @param A1_unit_conv_factor Conversion factor to unity for A1. Note: this is
+ * indicative only, and not taken into account in coordinate conversion
+ * @param A2 coefficient term for output first axis taking that is multiplied
+ * with the value along the source second axis
+ * @param A2_unit_name Name of the scale unit for A2. Or NULL for unity.
+ * @param A2_unit_conv_factor Conversion factor to unity for A2. Note: this is
+ * indicative only, and not taken into account in coordinate conversion
+ * @param B0 translation term for output second axis
+ * @param B0_unit_name Name of the linear unit for B0. Or NULL for metre.
+ * @param B0_unit_conv_factor Conversion factor to metre for B0. Note: this is
+ * indicative only, and not taken into account in coordinate conversion
+ * @param B1 coefficient term for output second axis taking that is multiplied
+ * with the value along the source first axis
+ * @param B1_unit_name Name of the scale unit for B1. Or NULL for unity.
+ * @param B1_unit_conv_factor Conversion factor to unity for B1. Note: this is
+ * indicative only, and not taken into account in coordinate conversion
+ * @param B2 coefficient term for output second axis taking that is multiplied
+ * with the value along the source second axis
+ * @param B2_unit_name Name of the scale unit for B2. Or NULL for unity.
+ * @param B2_unit_conv_factor Conversion factor to unity for B2. Note: this is
+ * indicative only, and not taken into account in coordinate conversion
+ * @return Object that must be unreferenced with proj_destroy(), or NULL
+ * in case of error.
+ *
+ * @since 9.8
+ */
+/* clang-format off */
+PJ PROJ_DLL *proj_create_linear_affine_parametric_conversion(
+    PJ_CONTEXT *ctx, const char* name,
+    double A0, const char *A0_unit_name, double A0_unit_conv_factor,
+    double A1, const char *A1_unit_name, double A1_unit_conv_factor,
+    double A2, const char *A2_unit_name, double A2_unit_conv_factor,
+    double B0, const char *B0_unit_name, double B0_unit_conv_factor,
+    double B1, const char *B1_unit_name, double B1_unit_conv_factor,
+    double B2, const char *B2_unit_name, double B2_unit_conv_factor)
+/* clang-format on */
+{
+    SANITIZE_CTX(ctx);
+    try {
+        auto conv = Conversion::createAffineParametric(
+            createPropertyMapName(name),
+            Length(A0, createLinearUnit(A0_unit_name, A0_unit_conv_factor)),
+            Scale(A1, createScaleUnit(A1_unit_name, A1_unit_conv_factor)),
+            Scale(A2, createScaleUnit(A2_unit_name, A2_unit_conv_factor)),
+            Length(B0, createLinearUnit(B0_unit_name, B0_unit_conv_factor)),
+            Scale(B1, createScaleUnit(B1_unit_name, B1_unit_conv_factor)),
+            Scale(B2, createScaleUnit(B2_unit_name, B2_unit_conv_factor)));
+        return pj_obj_create(ctx, conv);
+    } catch (const std::exception &e) {
+        proj_log_error(ctx, __FUNCTION__, e.what());
+    }
+    return nullptr;
+}
+
+// ---------------------------------------------------------------------------
+
+/** \brief Instantiate a conversion with method 3D Affine Parametric, assuming
+ * it works in linear coordinate space
+ *
+ * Use this method for a CRS whose coordinate system has 3 axis.
+ *
+ * The returned object must be unreferenced with proj_destroy() after
+ * use.
+ * It should be used by at most one thread at a time.
+ *
+ * @param ctx PROJ context, or NULL for default context
+ * @param name Conversion name, or nullptr
+ * @param A0 translation term for output first axis
+ * @param A0_unit_name Name of the linear unit for A0. Or NULL for metre.
+ * @param A0_unit_conv_factor Conversion factor to metre for A0. Note: this is
+ * indicative only, and not taken into account in coordinate conversion
+ * @param A1 coefficient term for output first axis taking that is multiplied
+ * with the value along the source first axis
+ * @param A1_unit_name Name of the scale unit for A1. Or NULL for unity.
+ * @param A1_unit_conv_factor Conversion factor to unity for A1. Note: this is
+ * indicative only, and not taken into account in coordinate conversion
+ * @param A2 coefficient term for output first axis taking that is multiplied
+ * with the value along the source second axis
+ * @param A2_unit_name Name of the scale unit for A2. Or NULL for unity.
+ * @param A2_unit_conv_factor Conversion factor to unity for A2. Note: this is
+ * indicative only, and not taken into account in coordinate conversion
+ * @param A3 coefficient term for output first axis taking that is multiplied
+ * with the value along the source third axis
+ * @param A3_unit_name Name of the scale unit for A3. Or NULL for unity.
+ * @param A3_unit_conv_factor Conversion factor to unity for A3. Note: this is
+ * indicative only, and not taken into account in coordinate conversion
+ * @param B0 translation term for output second axis
+ * @param B0_unit_name Name of the linear unit for B0. Or NULL for metre.
+ * @param B0_unit_conv_factor Conversion factor to metre for B0. Note: this is
+ * indicative only, and not taken into account in coordinate conversion
+ * @param B1 coefficient term for output second axis taking that is multiplied
+ * with the value along the source first axis
+ * @param B1_unit_name Name of the scale unit for B1. Or NULL for unity.
+ * @param B1_unit_conv_factor Conversion factor to unity for B1. Note: this is
+ * indicative only, and not taken into account in coordinate conversion
+ * @param B2 coefficient term for output second axis taking that is multiplied
+ * with the value along the source second axis
+ * @param B2_unit_name Name of the scale unit for B2. Or NULL for unity.
+ * @param B2_unit_conv_factor Conversion factor to unity for B2. Note: this is
+ * indicative only, and not taken into account in coordinate conversion
+ * @param B3 coefficient term for output second axis taking that is multiplied
+ * with the value along the source third axis
+ * @param B3_unit_name Name of the scale unit for B3. Or NULL for unity.
+ * @param B3_unit_conv_factor Conversion factor to unity for B3. Note: this is
+ * indicative only, and not taken into account in coordinate conversion
+ * @param C0 translation term for output third axis
+ * @param C0_unit_name Name of the linear unit for C0. Or NULL for metre.
+ * @param C0_unit_conv_factor Conversion factor to metre for C0. Note: this is
+ * indicative only, and not taken into account in coordinate conversion
+ * @param C1 coefficient term for output third axis taking that is multiplied
+ * with the value along the source first axis
+ * @param C1_unit_name Name of the scale unit for C1. Or NULL for unity.
+ * @param C1_unit_conv_factor Conversion factor to unity for C1. Note: this is
+ * indicative only, and not taken into account in coordinate conversion
+ * @param C2 coefficient term for output third axis taking that is multiplied
+ * with the value along the source second axis
+ * @param C2_unit_name Name of the scale unit for C2. Or NULL for unity.
+ * @param C2_unit_conv_factor Conversion factor to unity for C2. Note: this is
+ * indicative only, and not taken into account in coordinate conversion
+ * @param C3 coefficient term for output third axis taking that is multiplied
+ * with the value along the source third axis
+ * @param C3_unit_name Name of the scale unit for C3. Or NULL for unity.
+ * @param C3_unit_conv_factor Conversion factor to unity for C3. Note: this is
+ * indicative only, and not taken into account in coordinate conversion
+ * @return Object that must be unreferenced with proj_destroy(), or NULL
+ * in case of error.
+ *
+ * @since 9.9
+ */
+/* clang-format off */
+PJ PROJ_DLL *proj_create_linear_3D_affine_parametric_conversion(
+    PJ_CONTEXT *ctx, const char* name,
+    double A0, const char *A0_unit_name, double A0_unit_conv_factor,
+    double A1, const char *A1_unit_name, double A1_unit_conv_factor,
+    double A2, const char *A2_unit_name, double A2_unit_conv_factor,
+    double A3, const char *A3_unit_name, double A3_unit_conv_factor,
+    double B0, const char *B0_unit_name, double B0_unit_conv_factor,
+    double B1, const char *B1_unit_name, double B1_unit_conv_factor,
+    double B2, const char *B2_unit_name, double B2_unit_conv_factor,
+    double B3, const char *B3_unit_name, double B3_unit_conv_factor,
+    double C0, const char *C0_unit_name, double C0_unit_conv_factor,
+    double C1, const char *C1_unit_name, double C1_unit_conv_factor,
+    double C2, const char *C2_unit_name, double C2_unit_conv_factor,
+    double C3, const char *C3_unit_name, double C3_unit_conv_factor)
+/* clang-format on */
+{
+    SANITIZE_CTX(ctx);
+    try {
+        auto conv = Conversion::createAffineParametric(
+            createPropertyMapName(name),
+            Length(A0, createLinearUnit(A0_unit_name, A0_unit_conv_factor)),
+            Scale(A1, createScaleUnit(A1_unit_name, A1_unit_conv_factor)),
+            Scale(A2, createScaleUnit(A2_unit_name, A2_unit_conv_factor)),
+            Scale(A3, createScaleUnit(A3_unit_name, A3_unit_conv_factor)),
+            Length(B0, createLinearUnit(B0_unit_name, B0_unit_conv_factor)),
+            Scale(B1, createScaleUnit(B1_unit_name, B1_unit_conv_factor)),
+            Scale(B2, createScaleUnit(B2_unit_name, B2_unit_conv_factor)),
+            Scale(B3, createScaleUnit(B3_unit_name, B3_unit_conv_factor)),
+            Length(C0, createLinearUnit(C0_unit_name, C0_unit_conv_factor)),
+            Scale(C1, createScaleUnit(C1_unit_name, C1_unit_conv_factor)),
+            Scale(C2, createScaleUnit(C2_unit_name, C2_unit_conv_factor)),
+            Scale(C3, createScaleUnit(C3_unit_name, C3_unit_conv_factor)));
+        return pj_obj_create(ctx, conv);
+    } catch (const std::exception &e) {
+        proj_log_error(ctx, __FUNCTION__, e.what());
+    }
+    return nullptr;
+}
+
+// ---------------------------------------------------------------------------
+
+/** \brief Instantiate a DerivedProjectedCRS
+ *
+ * The returned object must be unreferenced with proj_destroy() after
+ * use.
+ * It should be used by at most one thread at a time.
+ *
+ * @param ctx PROJ context, or NULL for default context
+ * @param crs_name CRS name. Or NULL
+ * @param base_proj_crs Base ProjectedCRS. Must not be NULL.
+ * @param deriving_conversion Conversion. Must not be NULL.
+ * @param coordinate_system Cartesian coordinate system. Must not be NULL.
+ *
+ * @return Object that must be unreferenced with
+ * proj_destroy(), or NULL in case of error.
+ *
+ * @since 9.8
+ */
+
+PJ *proj_create_derived_projected_crs(PJ_CONTEXT *ctx, const char *crs_name,
+                                      const PJ *base_proj_crs,
+                                      const PJ *deriving_conversion,
+                                      const PJ *coordinate_system) {
+    SANITIZE_CTX(ctx);
+    if (!base_proj_crs || !deriving_conversion || !coordinate_system) {
+        proj_context_errno_set(ctx, PROJ_ERR_OTHER_API_MISUSE);
+        proj_log_error(ctx, __FUNCTION__, "missing required input");
+        return nullptr;
+    }
+    auto baseProjCRS =
+        std::dynamic_pointer_cast<ProjectedCRS>(base_proj_crs->iso_obj);
+    if (!baseProjCRS) {
+        return nullptr;
+    }
+    auto conv =
+        std::dynamic_pointer_cast<Conversion>(deriving_conversion->iso_obj);
+    if (!conv) {
+        return nullptr;
+    }
+    auto cs =
+        std::dynamic_pointer_cast<CartesianCS>(coordinate_system->iso_obj);
+    if (!cs) {
+        return nullptr;
+    }
+    try {
+        return pj_obj_create(ctx, DerivedProjectedCRS::create(
+                                      createPropertyMapName(crs_name),
+                                      NN_NO_CHECK(baseProjCRS),
+                                      NN_NO_CHECK(conv), NN_NO_CHECK(cs)));
+    } catch (const std::exception &e) {
+        proj_log_error(ctx, __FUNCTION__, e.what());
+    }
+    return nullptr;
+}
+
+// ---------------------------------------------------------------------------
+
+/** \brief Add a deriving conversion to a horizontal CRS
+ *
+ * This is for now restricting when the horizontal CRS is a ProjectedCRS,
+ * a CompoundCRS with a ProjectedCRS, or a BoundCRS of a ProjectedCRS.
+ *
+ * The returned object must be unreferenced with proj_destroy() after
+ * use.
+ * It should be used by at most one thread at a time.
+ *
+ * @param ctx PROJ context, or NULL for default context
+ * @param crs_name Name of the derived projected CRS. Or NULL
+ * @param base_crs ProjectedCRS, CompoundCRS with a ProjectedCRS, or
+ * BoundCRS of a ProjectedCRS. Must not be NULL.
+ * @param deriving_conversion Conversion. Must not be NULL.
+ * @param coordinate_system Cartesian coordinate system. Must not be NULL.
+ *
+ * @return Object that must be unreferenced with
+ * proj_destroy(), or NULL in case of error.
+ *
+ * @since 9.8
+ */
+PJ *proj_crs_add_horizontal_derived_conversion(PJ_CONTEXT *ctx,
+                                               const char *crs_name,
+                                               const PJ *base_crs,
+                                               const PJ *deriving_conversion,
+                                               const PJ *coordinate_system) {
+    SANITIZE_CTX(ctx);
+    if (!base_crs || !deriving_conversion || !coordinate_system) {
+        proj_context_errno_set(ctx, PROJ_ERR_OTHER_API_MISUSE);
+        proj_log_error(ctx, __FUNCTION__, "missing required input");
+        return nullptr;
+    }
+
+    CRSPtr baseCRS = std::dynamic_pointer_cast<CRS>(base_crs->iso_obj);
+    if (!baseCRS)
+        return nullptr;
+    auto conv =
+        std::dynamic_pointer_cast<Conversion>(deriving_conversion->iso_obj);
+    if (!conv) {
+        return nullptr;
+    }
+    auto cs =
+        std::dynamic_pointer_cast<CartesianCS>(coordinate_system->iso_obj);
+    if (!cs) {
+        return nullptr;
+    }
+
+    auto compoundCRS = std::dynamic_pointer_cast<CompoundCRS>(baseCRS);
+    CRSPtr verticalCRS;
+    if (compoundCRS) {
+        const auto &components = compoundCRS->componentReferenceSystems();
+        if (components.size() == 2) {
+            baseCRS = components[0];
+            verticalCRS = components[1];
+        }
+    }
+
+    auto boundCRS = std::dynamic_pointer_cast<BoundCRS>(baseCRS);
+    if (boundCRS) {
+        baseCRS = boundCRS->baseCRS();
+    }
+
+    auto baseProjCRS = std::dynamic_pointer_cast<ProjectedCRS>(baseCRS);
+    if (!baseProjCRS) {
+        return nullptr;
+    }
+
+    try {
+        CRSNNPtr retCRS = DerivedProjectedCRS::create(
+            createPropertyMapName(crs_name), NN_NO_CHECK(baseProjCRS),
+            NN_NO_CHECK(conv), NN_NO_CHECK(cs));
+
+        if (boundCRS) {
+            retCRS = BoundCRS::create(retCRS, boundCRS->hubCRS(),
+                                      boundCRS->transformation());
+        }
+        if (verticalCRS) {
+            retCRS = CompoundCRS::create(
+                createPropertyMapName(
+                    (retCRS->nameStr() + " + " + verticalCRS->nameStr())
+                        .c_str()),
+                {retCRS, NN_NO_CHECK(verticalCRS)});
+        }
+        return pj_obj_create(ctx, retCRS);
+    } catch (const std::exception &e) {
+        proj_log_error(ctx, __FUNCTION__, e.what());
+    }
+    return nullptr;
 }

@@ -2,7 +2,7 @@
  * \file geodsigntest.c
  * \brief Test treatment of +/-0 and +/-180
  *
- * Copyright (c) Charles Karney (2022) <charles@karney.com> and licensed
+ * Copyright (c) Charles Karney (2022) <karney@alum.mit.edu> and licensed
  * under the MIT/X11 License.  For more information, see
  * https://geographiclib.sourceforge.io/
  **********************************************************************/
@@ -84,7 +84,7 @@ static int checkEquals(T x, T y, T d) {
     }                                         \
   } while (0)
 
-int main() {
+int main(void) {
   T inf = INFINITY,
     nan = NAN,
     eps = DBL_EPSILON,
@@ -291,7 +291,7 @@ int main() {
     }
     if (i) {
       printf("Line %d: inverse nearly antipodal points on equator fail\n",
-             __LINE__);;
+             __LINE__);
       ++n;
     }
   }

@@ -1,0 +1,20 @@
+name: proj
+channels:
+  - conda-forge
+dependencies:
+  - python=3.8
+  - conda
+  - mamba
+  - compilers
+  - compiler-rt
+  - ninja
+  - cmake
+  - pkg-config
+  - ccache
+  - autoconf
+  - automake
+  - m4
+  - jsonschema
+  - ruamel.yaml
+  - pytest
+

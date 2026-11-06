@@ -217,7 +217,16 @@ TEST_F(CApi, proj_create) {
                   std::numeric_limits<double>::infinity());
 
         // and those ones actually work just fine
-        EXPECT_NEAR(proj_geod(obj, coord1, coord2).xyzt.x, 111219.409, 1e-3);
+        PJ_XYZT geod = proj_geod(obj, coord1, coord2).xyzt;
+        EXPECT_NEAR(geod.x, 111219.409, 1e-3);
+        EXPECT_NEAR(geod.y, 0, 1e-3);
+
+        // also test that direct geodesic problem returns original results
+        PJ_XYZT coord3 = proj_geod_direct(obj, coord1, geod.y, geod.x).xyzt;
+        EXPECT_NEAR(coord3.x, coord2.xyzt.x, 1e-3);
+        EXPECT_NEAR(coord3.y, coord2.xyzt.y, 1e-3);
+
+        // Test distance
         EXPECT_NEAR(proj_lp_dist(obj, coord1, coord2), 111219.409, 1e-3);
 
         auto info = proj_pj_info(obj);
@@ -231,6 +240,20 @@ TEST_F(CApi, proj_create) {
         auto obj = proj_create(m_ctxt, "EPSG:4326");
         ObjectKeeper keeper(obj);
         EXPECT_NE(obj, nullptr);
+    }
+
+    {
+        PJ_CONTEXT *ctxt = proj_context_create();
+        std::string s;
+        proj_log_func(ctxt, &s, [](void *user_data, int, const char *msg) {
+            *static_cast<std::string *>(user_data) = msg;
+        });
+        auto crs = proj_create(ctxt, "EPSG:i_do_not_exist");
+        proj_destroy(crs);
+        proj_context_destroy(ctxt);
+        EXPECT_EQ(crs, nullptr);
+        EXPECT_STREQ(s.c_str(),
+                     "proj_create: crs not found: EPSG:i_do_not_exist");
     }
 }
 
@@ -341,6 +364,39 @@ TEST_F(CApi, proj_create_from_wkt) {
         ObjectKeeper keeper(obj);
         EXPECT_NE(obj, nullptr);
         EXPECT_EQ(warningList, nullptr);
+        proj_string_list_destroy(warningList);
+        EXPECT_EQ(errorList, nullptr);
+        proj_string_list_destroy(errorList);
+    }
+    {
+        PROJ_STRING_LIST warningList = nullptr;
+        PROJ_STRING_LIST errorList = nullptr;
+        const char *const options[] = {
+            "UNSET_IDENTIFIERS_IF_INCOMPATIBLE_DEF=YES", nullptr};
+        auto wkt = "PROJCS[\"Merchich / Nord Maroc\","
+                   "    GEOGCS[\"Merchich\","
+                   "        DATUM[\"Merchich\","
+                   "            SPHEROID[\"Clarke 1880 (IGN)\","
+                   "6378249.2,293.466021293627]],"
+                   "        PRIMEM[\"Greenwich\",0],"
+                   "        UNIT[\"grad\",0.015707963267949,"
+                   "            AUTHORITY[\"EPSG\",\"9105\"]],"
+                   "        AUTHORITY[\"EPSG\",\"4261\"]],"
+                   "    PROJECTION[\"Lambert_Conformal_Conic_1SP\"],"
+                   "    PARAMETER[\"latitude_of_origin\",37],"
+                   "    PARAMETER[\"central_meridian\",-6],"
+                   "    PARAMETER[\"scale_factor\",0.999625769],"
+                   "    PARAMETER[\"false_easting\",500000],"
+                   "    PARAMETER[\"false_northing\",300000],"
+                   "    UNIT[\"metre\",1,"
+                   "        AUTHORITY[\"EPSG\",\"9001\"]],"
+                   "    AXIS[\"Easting\",EAST],"
+                   "    AXIS[\"Northing\",NORTH]]";
+        auto obj = proj_create_from_wkt(m_ctxt, wkt, options, &warningList,
+                                        &errorList);
+        ObjectKeeper keeper(obj);
+        EXPECT_NE(obj, nullptr);
+        EXPECT_NE(warningList, nullptr);
         proj_string_list_destroy(warningList);
         EXPECT_EQ(errorList, nullptr);
         proj_string_list_destroy(errorList);
@@ -967,6 +1023,14 @@ TEST_F(CApi, proj_create_from_database) {
         EXPECT_EQ(proj_get_type(crs), PJ_TYPE_COMPOUND_CRS);
     }
     {
+        auto crs = proj_create_from_database(m_ctxt, "EPSG", "6715",
+                                             PJ_CATEGORY_CRS, false, nullptr);
+        ASSERT_NE(crs, nullptr);
+        ObjectKeeper keeper(crs);
+        EXPECT_TRUE(proj_is_crs(crs));
+        EXPECT_EQ(proj_get_type(crs), PJ_TYPE_ENGINEERING_CRS);
+    }
+    {
         auto ellipsoid = proj_create_from_database(
             m_ctxt, "EPSG", "7030", PJ_CATEGORY_ELLIPSOID, false, nullptr);
         ASSERT_NE(ellipsoid, nullptr);
@@ -1006,9 +1070,9 @@ TEST_F(CApi, proj_create_from_database) {
                   2005.0);
     }
     {
-        // Norway Normal Null 2000
+        // RH2000 height
         auto datum = proj_create_from_database(
-            m_ctxt, "EPSG", "1096", PJ_CATEGORY_DATUM, false, nullptr);
+            m_ctxt, "EPSG", "5208", PJ_CATEGORY_DATUM, false, nullptr);
         ASSERT_NE(datum, nullptr);
         ObjectKeeper keeper(datum);
         EXPECT_EQ(proj_get_type(datum),
@@ -1060,6 +1124,22 @@ TEST_F(CApi, proj_create_from_database) {
                         "step proj=unitconvert xy_in=rad xy_out=deg "
                         "step proj=axisswap order=2,1"));
         EXPECT_EQ(info.accuracy, 1);
+    }
+
+    {
+        PJ_CONTEXT *ctxt = proj_context_create();
+        std::string s;
+        proj_log_func(ctxt, &s, [](void *user_data, int, const char *msg) {
+            *static_cast<std::string *>(user_data) = msg;
+        });
+        auto crs = proj_create_from_database(ctxt, "EPSG", "i_do_not_exist",
+                                             PJ_CATEGORY_CRS, false, nullptr);
+        proj_destroy(crs);
+        proj_context_destroy(ctxt);
+        EXPECT_EQ(crs, nullptr);
+        EXPECT_STREQ(
+            s.c_str(),
+            "proj_create_from_database: crs not found: EPSG:i_do_not_exist");
     }
 }
 
@@ -1457,45 +1537,44 @@ TEST_F(CApi, proj_get_authorities_from_database) {
 
 TEST_F(CApi, proj_get_codes_from_database) {
 
-    auto listTypes =
-        std::vector<PJ_TYPE>{PJ_TYPE_ELLIPSOID,
+    const PJ_TYPE listTypes[] = {PJ_TYPE_ELLIPSOID,
 
-                             PJ_TYPE_PRIME_MERIDIAN,
+                                 PJ_TYPE_PRIME_MERIDIAN,
 
-                             PJ_TYPE_GEODETIC_REFERENCE_FRAME,
-                             PJ_TYPE_DYNAMIC_GEODETIC_REFERENCE_FRAME,
-                             PJ_TYPE_VERTICAL_REFERENCE_FRAME,
-                             PJ_TYPE_DYNAMIC_VERTICAL_REFERENCE_FRAME,
-                             PJ_TYPE_DATUM_ENSEMBLE,
-                             PJ_TYPE_TEMPORAL_DATUM,
-                             PJ_TYPE_ENGINEERING_DATUM,
-                             PJ_TYPE_PARAMETRIC_DATUM,
+                                 PJ_TYPE_GEODETIC_REFERENCE_FRAME,
+                                 PJ_TYPE_DYNAMIC_GEODETIC_REFERENCE_FRAME,
+                                 PJ_TYPE_VERTICAL_REFERENCE_FRAME,
+                                 PJ_TYPE_DYNAMIC_VERTICAL_REFERENCE_FRAME,
+                                 PJ_TYPE_DATUM_ENSEMBLE,
+                                 PJ_TYPE_TEMPORAL_DATUM,
+                                 PJ_TYPE_ENGINEERING_DATUM,
+                                 PJ_TYPE_PARAMETRIC_DATUM,
 
-                             PJ_TYPE_CRS,
-                             PJ_TYPE_GEODETIC_CRS,
-                             PJ_TYPE_GEOCENTRIC_CRS,
-                             PJ_TYPE_GEOGRAPHIC_CRS,
-                             PJ_TYPE_GEOGRAPHIC_2D_CRS,
-                             PJ_TYPE_GEOGRAPHIC_3D_CRS,
-                             PJ_TYPE_VERTICAL_CRS,
-                             PJ_TYPE_PROJECTED_CRS,
-                             PJ_TYPE_COMPOUND_CRS,
-                             PJ_TYPE_TEMPORAL_CRS,
-                             PJ_TYPE_BOUND_CRS,
-                             PJ_TYPE_OTHER_CRS,
+                                 PJ_TYPE_CRS,
+                                 PJ_TYPE_GEODETIC_CRS,
+                                 PJ_TYPE_GEOCENTRIC_CRS,
+                                 PJ_TYPE_GEOGRAPHIC_CRS,
+                                 PJ_TYPE_GEOGRAPHIC_2D_CRS,
+                                 PJ_TYPE_GEOGRAPHIC_3D_CRS,
+                                 PJ_TYPE_VERTICAL_CRS,
+                                 PJ_TYPE_PROJECTED_CRS,
+                                 PJ_TYPE_COMPOUND_CRS,
+                                 PJ_TYPE_ENGINEERING_CRS,
+                                 PJ_TYPE_TEMPORAL_CRS,
+                                 PJ_TYPE_BOUND_CRS,
+                                 PJ_TYPE_OTHER_CRS,
 
-                             PJ_TYPE_CONVERSION,
-                             PJ_TYPE_TRANSFORMATION,
-                             PJ_TYPE_CONCATENATED_OPERATION,
-                             PJ_TYPE_OTHER_COORDINATE_OPERATION,
+                                 PJ_TYPE_CONVERSION,
+                                 PJ_TYPE_TRANSFORMATION,
+                                 PJ_TYPE_CONCATENATED_OPERATION,
+                                 PJ_TYPE_OTHER_COORDINATE_OPERATION,
 
-                             PJ_TYPE_UNKNOWN};
+                                 PJ_TYPE_UNKNOWN};
     for (const auto &type : listTypes) {
         auto list = proj_get_codes_from_database(m_ctxt, "EPSG", type, true);
         ListFreer feer(list);
         if (type == PJ_TYPE_TEMPORAL_CRS || type == PJ_TYPE_BOUND_CRS ||
             type == PJ_TYPE_UNKNOWN || type == PJ_TYPE_TEMPORAL_DATUM ||
-            type == PJ_TYPE_ENGINEERING_DATUM ||
             type == PJ_TYPE_PARAMETRIC_DATUM) {
             EXPECT_EQ(list, nullptr) << type;
         } else {
@@ -1611,6 +1690,37 @@ TEST_F(CApi, transformation_from_boundCRS) {
     auto transf = proj_crs_get_coordoperation(m_ctxt, crs);
     ASSERT_NE(transf, nullptr);
     ObjectKeeper keeper_transf(transf);
+}
+
+// ---------------------------------------------------------------------------
+
+TEST_F(CApi,
+       proj_create_from_database_grid_alternative_null_old_proj_grid_name) {
+    // EPSG:9484 uses grid "href2008a.bin" whose grid_alternatives entry has
+    // proj_grid_name = "no_kv_href2008a.tif" but old_proj_grid_name IS NULL.
+    // Without the database context in pj_obj_create(),
+    // substitutePROJAlternativeGridNames() cannot resolve the grid name,
+    // leaving the original "href2008a.bin" in the PROJ string. With the fix,
+    // the CDN name "no_kv_href2008a.tif" is used instead.
+    //
+    // Enable network so that pj_obj_create() sets defer_grid_opening=true,
+    // allowing the pipeline to be created even without the grid file on disk.
+    proj_context_set_enable_network(m_ctxt, 1);
+
+    auto op = proj_create_from_database(m_ctxt, "EPSG", "9484",
+                                        PJ_CATEGORY_COORDINATE_OPERATION, false,
+                                        nullptr);
+    ASSERT_NE(op, nullptr);
+    ObjectKeeper keeper(op);
+
+    auto info = proj_pj_info(op);
+    ASSERT_NE(info.definition, nullptr);
+    EXPECT_TRUE(std::string(info.definition).find("no_kv_href2008a.tif") !=
+                std::string::npos)
+        << "Expected CDN grid name 'no_kv_href2008a.tif' in definition, got: "
+        << info.definition;
+
+    proj_context_set_enable_network(m_ctxt, 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -1960,8 +2070,9 @@ TEST_F(CApi, proj_create_operations_with_pivot) {
     ASSERT_NE(source_crs, nullptr);
     ObjectKeeper keeper_source_crs(source_crs);
 
+    // ETRS89-FRA [RGF93 v1]
     auto target_crs = proj_create_from_database(
-        m_ctxt, "EPSG", "4171", PJ_CATEGORY_CRS, false, nullptr); // RGF93 v1
+        m_ctxt, "EPSG", "4171", PJ_CATEGORY_CRS, false, nullptr);
     ASSERT_NE(target_crs, nullptr);
     ObjectKeeper keeper_target_crs(target_crs);
 
@@ -1981,10 +2092,9 @@ TEST_F(CApi, proj_create_operations_with_pivot) {
         ASSERT_NE(op, nullptr);
         ObjectKeeper keeper_op(op);
 
-        EXPECT_EQ(
-            proj_get_name(op),
-            std::string(
-                "ED50 to ETRS89 (10) + Inverse of RGF93 v1 to ETRS89 (1)"));
+        EXPECT_EQ(proj_get_name(op),
+                  std::string("ED50 to ETRS89 (10) + ETRS89 to ETRS89-FRA "
+                              "[RGF93 v1]"));
     }
 
     // Disallow pivots
@@ -2003,14 +2113,14 @@ TEST_F(CApi, proj_create_operations_with_pivot) {
         ASSERT_NE(op, nullptr);
         ObjectKeeper keeper_op(op);
 
-        EXPECT_EQ(
-            proj_get_name(op),
-            std::string("Ballpark geographic offset from ED50 to RGF93 v1"));
+        EXPECT_EQ(proj_get_name(op),
+                  std::string("Ballpark geographic offset from ED50 to "
+                              "ETRS89-FRA [RGF93 v1]"));
     }
 
     // Restrict pivot to ETRS89
     {
-        auto ctxt = proj_create_operation_factory_context(m_ctxt, "EPSG");
+        auto ctxt = proj_create_operation_factory_context(m_ctxt, nullptr);
         ASSERT_NE(ctxt, nullptr);
         ContextKeeper keeper_ctxt(ctxt);
 
@@ -2026,10 +2136,9 @@ TEST_F(CApi, proj_create_operations_with_pivot) {
         ASSERT_NE(op, nullptr);
         ObjectKeeper keeper_op(op);
 
-        EXPECT_EQ(
-            proj_get_name(op),
-            std::string(
-                "ED50 to ETRS89 (10) + Inverse of RGF93 v1 to ETRS89 (1)"));
+        EXPECT_EQ(proj_get_name(op),
+                  std::string("ED50 to ETRS89 (10) + ETRS89 to ETRS89-FRA "
+                              "[RGF93 v1]"));
     }
 
     // Restrict pivot to something unrelated
@@ -2052,9 +2161,9 @@ TEST_F(CApi, proj_create_operations_with_pivot) {
         ASSERT_NE(op, nullptr);
         ObjectKeeper keeper_op(op);
 
-        EXPECT_EQ(
-            proj_get_name(op),
-            std::string("Ballpark geographic offset from ED50 to RGF93 v1"));
+        EXPECT_EQ(proj_get_name(op),
+                  std::string("Ballpark geographic offset from ED50 to "
+                              "ETRS89-FRA [RGF93 v1]"));
     }
 }
 
@@ -4222,8 +4331,8 @@ TEST_F(CApi, proj_get_celestial_body_list_from_database) {
     { proj_celestial_body_list_destroy(nullptr); }
 
     {
-        auto list =
-            proj_get_celestial_body_list_from_database(nullptr, nullptr, 0);
+        auto list = proj_get_celestial_body_list_from_database(nullptr, nullptr,
+                                                               nullptr);
         ASSERT_NE(list, nullptr);
         ASSERT_NE(list[0], nullptr);
         ASSERT_NE(list[0]->auth_name, nullptr);
@@ -4614,6 +4723,7 @@ TEST_F(CApi, proj_as_projjson) {
 
 // ---------------------------------------------------------------------------
 
+#if !defined(EMBED_RESOURCE_FILES) && !defined(USE_ONLY_EMBEDDED_RESOURCE_FILES)
 TEST_F(CApi, proj_context_copy_from_default) {
     auto c_path = proj_context_get_database_path(m_ctxt);
     ASSERT_TRUE(c_path != nullptr);
@@ -4663,12 +4773,13 @@ TEST_F(CApi, proj_context_copy_from_default) {
     std::string new_db_path(c_new_path);
     ASSERT_EQ(new_db_path, tmp_filename);
 }
+#endif
 
 // ---------------------------------------------------------------------------
 
 TEST_F(CApi, proj_context_clone) {
     int new_init_rules =
-        proj_context_get_use_proj4_init_rules(NULL, 0) > 0 ? 0 : 1;
+        proj_context_get_use_proj4_init_rules(nullptr, 0) > 0 ? 0 : 1;
     PJ_CONTEXT *new_ctx = proj_context_create();
     EXPECT_NE(new_ctx, nullptr);
     PjContextKeeper keeper_ctxt(new_ctx);
@@ -5544,11 +5655,13 @@ TEST_F(CApi, proj_create_derived_geographic_crs) {
         "            MEMBER[\"World Geodetic System 1984 (G1674)\"],\n"
         "            MEMBER[\"World Geodetic System 1984 (G1762)\"],\n"
         "            MEMBER[\"World Geodetic System 1984 (G2139)\"],\n"
+        "            MEMBER[\"World Geodetic System 1984 (G2296)\"],\n"
         "            ELLIPSOID[\"WGS 84\",6378137,298.257223563,\n"
         "                LENGTHUNIT[\"metre\",1]],\n"
         "            ENSEMBLEACCURACY[2.0]],\n"
         "        PRIMEM[\"Greenwich\",0,\n"
-        "            ANGLEUNIT[\"degree\",0.0174532925199433]]],\n"
+        "            ANGLEUNIT[\"degree\",0.0174532925199433]],\n"
+        "        ID[\"EPSG\",4326]],\n"
         "    DERIVINGCONVERSION[\"Pole rotation (GRIB convention)\",\n"
         "        METHOD[\"Pole rotation (GRIB convention)\"],\n"
         "        PARAMETER[\"Latitude of the southern pole (GRIB "
@@ -5612,7 +5725,8 @@ TEST_F(CApi, proj_create_derived_geographic_crs_netcdf_cf) {
         "            ELLIPSOID[\"GRS 1980\",6378137,298.257222101,\n"
         "                LENGTHUNIT[\"metre\",1]]],\n"
         "        PRIMEM[\"Greenwich\",0,\n"
-        "            ANGLEUNIT[\"degree\",0.0174532925199433]]],\n"
+        "            ANGLEUNIT[\"degree\",0.0174532925199433]],\n"
+        "        ID[\"EPSG\",4019]],\n"
         "    DERIVINGCONVERSION[\"Pole rotation (netCDF CF convention)\",\n"
         "        METHOD[\"Pole rotation (netCDF CF convention)\"],\n"
         "        PARAMETER[\"Grid north pole latitude (netCDF CF "
@@ -5971,7 +6085,7 @@ TEST_F(CApi, proj_get_insert_statements) {
             EXPECT_EQ(std::string(list[0]),
                       "INSERT INTO geodetic_datum VALUES('HOBU',"
                       "'GEODETIC_DATUM_XXXX','GDA2020','','EPSG','7019',"
-                      "'EPSG','8901',NULL,NULL,NULL,NULL,0);");
+                      "'EPSG','8901',NULL,NULL,NULL,NULL,NULL,0);");
             EXPECT_EQ(sizeOfStringList(list), 4);
             proj_string_list_destroy(list);
         }
@@ -6019,7 +6133,7 @@ TEST_F(CApi, proj_get_insert_statements) {
             EXPECT_EQ(std::string(list[0]),
                       "INSERT INTO geodetic_datum VALUES('HOBU',"
                       "'GEODETIC_DATUM_XXXX','GDA2020','','EPSG','7019',"
-                      "'EPSG','8901',NULL,NULL,NULL,NULL,0);");
+                      "'EPSG','8901',NULL,NULL,NULL,NULL,NULL,0);");
             proj_string_list_destroy(list);
         }
 
@@ -6151,7 +6265,7 @@ TEST_F(CApi, proj_trans_bounds_antimeridian_xy) {
     EXPECT_TRUE(success == 1);
     EXPECT_NEAR(out_left, 1722483.900174921, 1);
     EXPECT_NEAR(out_bottom, 5228058.6143420935, 1);
-    EXPECT_NEAR(out_right, 4624385.494808555, 1);
+    EXPECT_NEAR(out_right, 4624385.4948085546, 1);
     EXPECT_NEAR(out_top, 8692574.544944234, 1);
     double out_left_inv;
     double out_bottom_inv;
@@ -6185,7 +6299,7 @@ TEST_F(CApi, proj_trans_bounds_antimeridian) {
     EXPECT_NEAR(out_left, 5228058.6143420935, 1);
     EXPECT_NEAR(out_bottom, 1722483.900174921, 1);
     EXPECT_NEAR(out_right, 8692574.544944234, 1);
-    EXPECT_NEAR(out_top, 4624385.494808555, 1);
+    EXPECT_NEAR(out_top, 4624385.4948085546, 1);
     double out_left_inv;
     double out_bottom_inv;
     double out_right_inv;
@@ -6254,10 +6368,10 @@ TEST_F(CApi, proj_trans_bounds_ignore_inf) {
         proj_trans_bounds(m_ctxt, P, PJ_FWD, -180.0, -90.0, 180.0, 1.3,
                           &out_left, &out_bottom, &out_right, &out_top, 21);
     EXPECT_TRUE(success == 1);
-    EXPECT_NEAR(out_left, 0, 1);
+    EXPECT_NEAR(out_left, -49621755.4, 1);
     EXPECT_NEAR(out_bottom, -116576598.5, 1);
-    EXPECT_NEAR(out_right, 0, 1);
-    EXPECT_NEAR(out_top, 0, 1);
+    EXPECT_NEAR(out_right, 49621755.4, 1);
+    EXPECT_NEAR(out_top, 50132027.2, 1);
 }
 
 // ---------------------------------------------------------------------------
@@ -6449,6 +6563,400 @@ TEST_F(CApi, proj_trans_bounds__south_pole) {
 
 // ---------------------------------------------------------------------------
 
+TEST_F(CApi, proj_trans_bounds_to_compound_crs) {
+    // EPSG:9707 = "WGS 84 + EGM96 height"
+    auto P = proj_create_crs_to_crs(m_ctxt, "EPSG:4326", "EPSG:9707", nullptr);
+    ObjectKeeper keeper_P(P);
+    ASSERT_NE(P, nullptr);
+    double out_left;
+    double out_bottom;
+    double out_right;
+    double out_top;
+    int success =
+        proj_trans_bounds(m_ctxt, P, PJ_FWD, 40, -120, 64, -80, &out_left,
+                          &out_bottom, &out_right, &out_top, 0);
+    EXPECT_TRUE(success == 1);
+    EXPECT_NEAR(out_left, 40, 1e-8);
+    EXPECT_NEAR(out_bottom, -120, 1e-8);
+    EXPECT_NEAR(out_right, 64, 1e-8);
+    EXPECT_NEAR(out_top, -80, 1e-8);
+}
+
+// ---------------------------------------------------------------------------
+
+TEST_F(CApi, proj_trans_bounds_from_pipeline_lon_lat_to_x_y) {
+    // EPSG:4326 to EPSG:3844 in GIS friendly order
+    auto P = proj_create(
+        m_ctxt,
+        "+proj=pipeline +step +proj=unitconvert +xy_in=deg +xy_out=rad +step "
+        "+proj=push +v_3 +step +proj=cart +ellps=WGS84 +step +inv "
+        "+proj=helmert +x=2.329 +y=-147.042 +z=-92.08 +rx=0.309 +ry=-0.325 "
+        "+rz=-0.497 +s=5.69 +convention=coordinate_frame +step +inv +proj=cart "
+        "+ellps=krass +step +proj=pop +v_3 +step +proj=sterea +lat_0=46 "
+        "+lon_0=25 +k=0.99975 +x_0=500000 +y_0=500000 +ellps=krass");
+    ObjectKeeper keeper_P(P);
+    ASSERT_NE(P, nullptr);
+    {
+        double out_left;
+        double out_bottom;
+        double out_right;
+        double out_top;
+        int success =
+            proj_trans_bounds(m_ctxt, P, PJ_INV, 4e5, 4e5, 4.5e5, 4.5e5,
+                              &out_left, &out_bottom, &out_right, &out_top, 21);
+        EXPECT_TRUE(success == 1);
+        EXPECT_NEAR(out_left, 23.717708, 1e-6);
+        EXPECT_NEAR(out_bottom, 45.092624, 1e-6);
+        EXPECT_NEAR(out_right, 24.363125, 1e-6);
+        EXPECT_NEAR(out_top, 45.547942, 1e-6);
+    }
+    {
+        double out_left;
+        double out_bottom;
+        double out_right;
+        double out_top;
+        int success = proj_trans_bounds(m_ctxt, P, PJ_FWD, 23.717708, 45.092624,
+                                        24.363125, 45.547942, &out_left,
+                                        &out_bottom, &out_right, &out_top, 21);
+        EXPECT_TRUE(success == 1);
+        EXPECT_NEAR(out_left, 4e5, 1e3);
+        EXPECT_NEAR(out_bottom, 4e5, 1e3);
+        EXPECT_NEAR(out_right, 4.5e5, 1e3);
+        EXPECT_NEAR(out_top, 4.5e5, 1e3);
+    }
+}
+
+// ---------------------------------------------------------------------------
+
+TEST_F(CApi, proj_trans_bounds_from_pipeline_lat_lon_to_x_y) {
+    // EPSG:4326 to EPSG:3844 in authority compliant axis order
+    auto P = proj_create(
+        m_ctxt,
+        "+proj=pipeline +step +proj=axisswap +order=2,1 +step "
+        "+proj=unitconvert +xy_in=deg +xy_out=rad +step +proj=push +v_3 +step "
+        "+proj=cart +ellps=WGS84 +step +inv +proj=helmert +x=2.329 +y=-147.042 "
+        "+z=-92.08 +rx=0.309 +ry=-0.325 +rz=-0.497 +s=5.69 "
+        "+convention=coordinate_frame +step +inv +proj=cart +ellps=krass +step "
+        "+proj=pop +v_3 +step +proj=sterea +lat_0=46 +lon_0=25 +k=0.99975 "
+        "+x_0=500000 +y_0=500000 +ellps=krass +step +proj=axisswap +order=2,1");
+    ObjectKeeper keeper_P(P);
+    ASSERT_NE(P, nullptr);
+    {
+        double out_left;
+        double out_bottom;
+        double out_right;
+        double out_top;
+        int success =
+            proj_trans_bounds(m_ctxt, P, PJ_INV, 4e5, 4e5, 4.5e5, 4.5e5,
+                              &out_left, &out_bottom, &out_right, &out_top, 21);
+        EXPECT_TRUE(success == 1);
+        EXPECT_NEAR(out_left, 45.092624, 1e-6);
+        EXPECT_NEAR(out_bottom, 23.717708, 1e-6);
+        EXPECT_NEAR(out_right, 45.547942, 1e-6);
+        EXPECT_NEAR(out_top, 24.363125, 1e-6);
+    }
+    {
+        double out_left;
+        double out_bottom;
+        double out_right;
+        double out_top;
+        int success = proj_trans_bounds(m_ctxt, P, PJ_FWD, 45.092624, 23.717708,
+                                        45.547942, 24.363125, &out_left,
+                                        &out_bottom, &out_right, &out_top, 21);
+        EXPECT_TRUE(success == 1);
+        EXPECT_NEAR(out_left, 4e5, 1e3);
+        EXPECT_NEAR(out_bottom, 4e5, 1e3);
+        EXPECT_NEAR(out_right, 4.5e5, 1e3);
+        EXPECT_NEAR(out_top, 4.5e5, 1e3);
+    }
+}
+
+// ---------------------------------------------------------------------------
+
+TEST_F(CApi, proj_trans_bounds_from_pipeline_x_y_to_lon_lat) {
+    // EPSG:3844 to EPSG:4326 in GIS friendly order
+    auto P = proj_create(
+        m_ctxt,
+        "+proj=pipeline +step +inv +proj=sterea +lat_0=46 +lon_0=25 +k=0.99975 "
+        "+x_0=500000 +y_0=500000 +ellps=krass +step +proj=push +v_3 +step "
+        "+proj=cart +ellps=krass +step +proj=helmert +x=2.329 +y=-147.042 "
+        "+z=-92.08 +rx=0.309 +ry=-0.325 +rz=-0.497 +s=5.69 "
+        "+convention=coordinate_frame +step +inv +proj=cart +ellps=WGS84 +step "
+        "+proj=pop +v_3 +step +proj=unitconvert +xy_in=rad +xy_out=deg");
+    ObjectKeeper keeper_P(P);
+    ASSERT_NE(P, nullptr);
+    {
+        double out_left;
+        double out_bottom;
+        double out_right;
+        double out_top;
+        int success =
+            proj_trans_bounds(m_ctxt, P, PJ_FWD, 4e5, 4e5, 4.5e5, 4.5e5,
+                              &out_left, &out_bottom, &out_right, &out_top, 21);
+        EXPECT_TRUE(success == 1);
+        EXPECT_NEAR(out_left, 23.717708, 1e-6);
+        EXPECT_NEAR(out_bottom, 45.092624, 1e-6);
+        EXPECT_NEAR(out_right, 24.363125, 1e-6);
+        EXPECT_NEAR(out_top, 45.547942, 1e-6);
+    }
+    {
+        double out_left;
+        double out_bottom;
+        double out_right;
+        double out_top;
+        int success = proj_trans_bounds(m_ctxt, P, PJ_INV, 23.717708, 45.092624,
+                                        24.363125, 45.547942, &out_left,
+                                        &out_bottom, &out_right, &out_top, 21);
+        EXPECT_TRUE(success == 1);
+        EXPECT_NEAR(out_left, 4e5, 1e3);
+        EXPECT_NEAR(out_bottom, 4e5, 1e3);
+        EXPECT_NEAR(out_right, 4.5e5, 1e3);
+        EXPECT_NEAR(out_top, 4.5e5, 1e3);
+    }
+}
+
+// ---------------------------------------------------------------------------
+
+TEST_F(CApi, proj_trans_bounds_from_pipeline_x_y_to_lat_lon) {
+    // EPSG:3844 to EPSG:4326 in authority compliant axis order
+    auto P = proj_create(
+        m_ctxt,
+        "+proj=pipeline +step +proj=axisswap +order=2,1 +step +inv "
+        "+proj=sterea +lat_0=46 +lon_0=25 +k=0.99975 +x_0=500000 +y_0=500000 "
+        "+ellps=krass +step +proj=push +v_3 +step +proj=cart +ellps=krass "
+        "+step +proj=helmert +x=2.329 +y=-147.042 +z=-92.08 +rx=0.309 "
+        "+ry=-0.325 +rz=-0.497 +s=5.69 +convention=coordinate_frame +step +inv "
+        "+proj=cart +ellps=WGS84 +step +proj=pop +v_3 +step +proj=unitconvert "
+        "+xy_in=rad +xy_out=deg +step +proj=axisswap +order=2,1");
+    ObjectKeeper keeper_P(P);
+    ASSERT_NE(P, nullptr);
+    {
+        double out_left;
+        double out_bottom;
+        double out_right;
+        double out_top;
+        int success =
+            proj_trans_bounds(m_ctxt, P, PJ_FWD, 4e5, 4e5, 4.5e5, 4.5e5,
+                              &out_left, &out_bottom, &out_right, &out_top, 21);
+        EXPECT_TRUE(success == 1);
+        EXPECT_NEAR(out_left, 45.092624, 1e-6);
+        EXPECT_NEAR(out_bottom, 23.717708, 1e-6);
+        EXPECT_NEAR(out_right, 45.547942, 1e-6);
+        EXPECT_NEAR(out_top, 24.363125, 1e-6);
+    }
+    {
+        double out_left;
+        double out_bottom;
+        double out_right;
+        double out_top;
+        int success = proj_trans_bounds(m_ctxt, P, PJ_INV, 45.092624, 23.717708,
+                                        45.547942, 24.363125, &out_left,
+                                        &out_bottom, &out_right, &out_top, 21);
+        EXPECT_TRUE(success == 1);
+        EXPECT_NEAR(out_left, 4e5, 1e3);
+        EXPECT_NEAR(out_bottom, 4e5, 1e3);
+        EXPECT_NEAR(out_right, 4.5e5, 1e3);
+        EXPECT_NEAR(out_top, 4.5e5, 1e3);
+    }
+}
+
+// ---------------------------------------------------------------------------
+
+TEST_F(CApi, proj_trans_bounds_world_geodetic_to_spilhaus) {
+    auto P = proj_create_crs_to_crs(m_ctxt, "OGC:CRS84", "ESRI:54099", nullptr);
+    ObjectKeeper keeper_P(P);
+    ASSERT_NE(P, nullptr);
+    double out_left;
+    double out_bottom;
+    double out_right;
+    double out_top;
+    int success =
+        proj_trans_bounds(m_ctxt, P, PJ_FWD, -180.0, -90.0, 180.0, 90.0,
+                          &out_left, &out_bottom, &out_right, &out_top, 21);
+    EXPECT_TRUE(success == 1);
+    EXPECT_NEAR(out_left, -16336432.4, 1);
+    EXPECT_NEAR(out_bottom, -16605405.9, 1);
+    EXPECT_NEAR(out_right, 16574104.3, 1);
+    EXPECT_NEAR(out_top, 16640152.9, 1);
+}
+
+// ---------------------------------------------------------------------------
+
+TEST_F(CApi, proj_trans_bounds_3d_densify_0_geog3D_to_proj2D) {
+    auto P =
+        proj_create_crs_to_crs(m_ctxt, "EPSG:4979",
+                               "+proj=laea +lat_0=45 +lon_0=-100 +x_0=0 +y_0=0 "
+                               "+a=6370997 +b=6370997 +units=m +no_defs",
+                               nullptr);
+    ObjectKeeper keeper_P(P);
+    ASSERT_NE(P, nullptr);
+    double out_left;
+    double out_bottom;
+    double out_right;
+    double out_top;
+    double zmin;
+    double zmax;
+    int success = proj_trans_bounds_3D(m_ctxt, P, PJ_FWD, 40, -120, 0, 64, -80,
+                                       100, &out_left, &out_bottom, &zmin,
+                                       &out_right, &out_top, &zmax, 0);
+    EXPECT_TRUE(success == 1);
+    EXPECT_NEAR(out_left, -1684649.41338, 1);
+    EXPECT_NEAR(out_bottom, -350356.81377, 1);
+    EXPECT_NEAR(out_right, 1684649.41338, 1);
+    EXPECT_NEAR(out_top, 2234551.18559, 1);
+    EXPECT_EQ(zmin, 0);
+    EXPECT_EQ(zmax, 100);
+}
+
+// ---------------------------------------------------------------------------
+
+TEST_F(CApi, proj_trans_bounds_3d_noop) {
+    auto P = proj_create_crs_to_crs(m_ctxt, "EPSG:4979", "EPSG:4979", nullptr);
+    ObjectKeeper keeper_P(P);
+    ASSERT_NE(P, nullptr);
+    double out_left;
+    double out_bottom;
+    double out_right;
+    double out_top;
+    double zmin;
+    double zmax;
+    int success = proj_trans_bounds_3D(m_ctxt, P, PJ_FWD, 40, -120, 0, 64, -80,
+                                       100, &out_left, &out_bottom, &zmin,
+                                       &out_right, &out_top, &zmax, 0);
+    EXPECT_TRUE(success == 1);
+    EXPECT_EQ(out_left, 40);
+    EXPECT_EQ(out_bottom, -120);
+    EXPECT_EQ(out_right, 64);
+    EXPECT_EQ(out_top, -80);
+    EXPECT_EQ(zmin, 0);
+    EXPECT_EQ(zmax, 100);
+}
+
+// ---------------------------------------------------------------------------
+
+TEST_F(CApi, proj_trans_bounds_3d_geog3D_to_geocentric) {
+    auto P = proj_create_crs_to_crs(m_ctxt, "EPSG:4979", "EPSG:4978", nullptr);
+    ObjectKeeper keeper_P(P);
+    ASSERT_NE(P, nullptr);
+    double xmin;
+    double ymin;
+    double xmax;
+    double ymax;
+    double zmin;
+    double zmax;
+    int success =
+        proj_trans_bounds_3D(m_ctxt, P, PJ_FWD, 49, 2, 0, 50, 3, 100, &xmin,
+                             &ymin, &zmin, &xmax, &ymax, &zmax, 0);
+    EXPECT_TRUE(success == 1);
+    EXPECT_NEAR(xmin, 4102234.41, 1);
+    EXPECT_NEAR(ymin, 143362.39, 1);
+    EXPECT_NEAR(xmax, 4189946.59, 1);
+    EXPECT_NEAR(ymax, 219418.53, 1);
+    EXPECT_NEAR(zmin, 4790558.75, 1);
+    EXPECT_NEAR(zmax, 4862865.64, 1);
+}
+
+// ---------------------------------------------------------------------------
+
+TEST_F(CApi, proj_trans_bounds_3d_inverse_of_geog3D_to_geocentric) {
+    auto P = proj_create_crs_to_crs(m_ctxt, "EPSG:4978", "EPSG:4979", nullptr);
+    ObjectKeeper keeper_P(P);
+    ASSERT_NE(P, nullptr);
+    double xmin;
+    double ymin;
+    double xmax;
+    double ymax;
+    double zmin;
+    double zmax;
+    int success =
+        proj_trans_bounds_3D(m_ctxt, P, PJ_INV, 49, 2, 0, 50, 3, 100, &xmin,
+                             &ymin, &zmin, &xmax, &ymax, &zmax, 0);
+    EXPECT_TRUE(success == 1);
+    EXPECT_NEAR(xmin, 4102234.41, 1);
+    EXPECT_NEAR(xmax, 4189946.59, 1);
+    EXPECT_NEAR(ymin, 143362.39, 1);
+    EXPECT_NEAR(ymax, 219418.53, 1);
+    EXPECT_NEAR(zmin, 4790558.75, 1);
+    EXPECT_NEAR(zmax, 4862865.64, 1);
+}
+
+// ---------------------------------------------------------------------------
+
+TEST_F(CApi, proj_trans_bounds_3d_geocentric_to_geog3D) {
+    auto P = proj_create_crs_to_crs(m_ctxt, "EPSG:4978", "EPSG:4979", nullptr);
+    ObjectKeeper keeper_P(P);
+    ASSERT_NE(P, nullptr);
+    double xmin;
+    double ymin;
+    double xmax;
+    double ymax;
+    double zmin;
+    double zmax;
+    int success = proj_trans_bounds_3D(
+        m_ctxt, P, PJ_FWD, 4102234.41, 143362.39, 4790558.75, 4189946.59,
+        219418.53, 4862865.64, &xmin, &ymin, &zmin, &xmax, &ymax, &zmax, 2);
+    EXPECT_TRUE(success == 1);
+    EXPECT_NEAR(xmin, 49., .15);
+    EXPECT_NEAR(ymin, 2, .15);
+    EXPECT_NEAR(xmax, 50, .15);
+    EXPECT_NEAR(ymax, 3., .15);
+    EXPECT_NEAR(zmin, -57187, 1);
+    EXPECT_NEAR(zmax, 56862.2, 1);
+}
+
+// ---------------------------------------------------------------------------
+
+TEST_F(CApi, proj_trans_bounds_3d_geocentric_to_geog2D_lon_lat_ordered) {
+    auto P = proj_create_crs_to_crs(
+        m_ctxt, "EPSG:4978", "+proj=longlat +datum=WGS84 +type=crs", nullptr);
+    ObjectKeeper keeper_P(P);
+    ASSERT_NE(P, nullptr);
+    double xmin;
+    double ymin;
+    double xmax;
+    double ymax;
+    double zmin;
+    double zmax;
+    int success = proj_trans_bounds_3D(
+        m_ctxt, P, PJ_FWD, 4102234.41, 143362.39, 4790558.75, 4189946.59,
+        219418.53, 4862865.64, &xmin, &ymin, &zmin, &xmax, &ymax, &zmax, 2);
+    EXPECT_TRUE(success == 1);
+    EXPECT_NEAR(xmin, 2, .15);
+    EXPECT_NEAR(ymin, 49., .15);
+    EXPECT_NEAR(xmax, 3., .15);
+    EXPECT_NEAR(ymax, 50, .15);
+    EXPECT_NEAR(zmin, -57187, 1);
+    EXPECT_NEAR(zmax, 56862.2, 1);
+}
+
+// ---------------------------------------------------------------------------
+
+TEST_F(CApi, proj_trans_bounds_3D_ignore_inf) {
+    // cf proj_trans_bounds_ignore_inf
+    auto P =
+        proj_create_crs_to_crs(m_ctxt, "OGC:CRS84", "ESRI:102036", nullptr);
+    ObjectKeeper keeper_P(P);
+    ASSERT_NE(P, nullptr);
+    double out_left;
+    double out_bottom;
+    double out_right;
+    double out_top;
+    double z_min;
+    double z_max;
+    int success = proj_trans_bounds_3D(
+        m_ctxt, P, PJ_FWD, -180.0, -90.0, 0, 180.0, 1.3, 0, &out_left,
+        &out_bottom, &z_min, &out_right, &out_top, &z_max, 21);
+    EXPECT_TRUE(success == 1);
+    EXPECT_NEAR(out_left, -49621755.4, 1);
+    EXPECT_NEAR(out_bottom, -116576598.5, 1);
+    EXPECT_NEAR(out_right, 49621755.4, 1);
+    EXPECT_NEAR(out_top, 50132027.2, 1);
+    EXPECT_NEAR(z_min, 0, 1);
+    EXPECT_NEAR(z_max, 0, 1);
+}
+
+// ---------------------------------------------------------------------------
+
 TEST_F(CApi, proj_crs_has_point_motion_operation) {
     auto ctxt = proj_create_operation_factory_context(m_ctxt, nullptr);
     ASSERT_NE(ctxt, nullptr);
@@ -6469,6 +6977,74 @@ TEST_F(CApi, proj_crs_has_point_motion_operation) {
         ASSERT_NE(crs, nullptr);
         ObjectKeeper keeper_crs(crs);
         EXPECT_TRUE(proj_crs_has_point_motion_operation(m_ctxt, crs));
+    }
+}
+
+// ---------------------------------------------------------------------------
+
+TEST_F(CApi, proj_coordoperation_requires_per_coordinate_input_time) {
+    {
+        PJ *P = proj_create(m_ctxt, "+proj=helmert +t_epoch=2010");
+        ObjectKeeper keeper(P);
+        EXPECT_EQ(
+            proj_coordoperation_requires_per_coordinate_input_time(m_ctxt, P),
+            true);
+    }
+    {
+        PJ *P = proj_create(m_ctxt, "+proj=helmert");
+        ObjectKeeper keeper(P);
+        EXPECT_EQ(
+            proj_coordoperation_requires_per_coordinate_input_time(m_ctxt, P),
+            false);
+    }
+#ifdef TIFF_ENABLED
+    {
+        PJ *P = proj_create(m_ctxt,
+                            "+proj=deformation +t_epoch=2010 "
+                            "+grids=tests/nkgrf03vel_realigned_extract.tif");
+        ObjectKeeper keeper(P);
+        EXPECT_EQ(
+            proj_coordoperation_requires_per_coordinate_input_time(m_ctxt, P),
+            true);
+    }
+    {
+        PJ *P = proj_create(m_ctxt,
+                            "+proj=deformation +dt=1 "
+                            "+grids=tests/nkgrf03vel_realigned_extract.tif");
+        ObjectKeeper keeper(P);
+        EXPECT_EQ(
+            proj_coordoperation_requires_per_coordinate_input_time(m_ctxt, P),
+            false);
+    }
+#endif
+    {
+        PJ *P = proj_create(
+            m_ctxt, "+proj=defmodel +model=tests/simple_model_degree_3d.json");
+        ObjectKeeper keeper(P);
+        EXPECT_EQ(
+            proj_coordoperation_requires_per_coordinate_input_time(m_ctxt, P),
+            true);
+    }
+    {
+        PJ *P = proj_create(m_ctxt, "+proj=pipeline +step +proj=set +v_4=2020 "
+                                    "+proj=helmert +t_epoch=2010");
+        ObjectKeeper keeper(P);
+        EXPECT_EQ(
+            proj_coordoperation_requires_per_coordinate_input_time(m_ctxt, P),
+            false);
+    }
+    // Error cases
+    {
+        EXPECT_EQ(proj_coordoperation_requires_per_coordinate_input_time(
+                      m_ctxt, nullptr),
+                  false);
+    }
+    {
+        PJ *P = proj_create(m_ctxt, "+proj=merc +type=crs");
+        ObjectKeeper keeper(P);
+        EXPECT_EQ(
+            proj_coordoperation_requires_per_coordinate_input_time(m_ctxt, P),
+            false);
     }
 }
 
@@ -6548,5 +7124,672 @@ TEST_F(CApi, concurrent_context) {
 }
 
 #endif // __MINGW32__
+
+// ---------------------------------------------------------------------------
+
+TEST_F(CApi, proj_create_linear_affine_parametric_conversion) {
+
+    {
+        PJ *pj = proj_create_linear_affine_parametric_conversion(
+            nullptr, nullptr, 1.1, nullptr, 0, 2.1, nullptr, 0, 3.1, nullptr, 0,
+            4.1, nullptr, 0, 5.1, nullptr, 0, 6.1, nullptr, 0);
+        ObjectKeeper keeper(pj);
+        auto wkt = proj_as_wkt(nullptr, pj, PJ_WKT2_2019, nullptr);
+        ASSERT_NE(wkt, nullptr);
+        EXPECT_STREQ(wkt, "CONVERSION[\"unnamed\",\n"
+                          "    METHOD[\"Affine parametric transformation\",\n"
+                          "        ID[\"EPSG\",9624]],\n"
+                          "    PARAMETER[\"A0\",1.1,\n"
+                          "        LENGTHUNIT[\"metre\",1],\n"
+                          "        ID[\"EPSG\",8623]],\n"
+                          "    PARAMETER[\"A1\",2.1,\n"
+                          "        SCALEUNIT[\"unity\",1],\n"
+                          "        ID[\"EPSG\",8624]],\n"
+                          "    PARAMETER[\"A2\",3.1,\n"
+                          "        SCALEUNIT[\"unity\",1],\n"
+                          "        ID[\"EPSG\",8625]],\n"
+                          "    PARAMETER[\"B0\",4.1,\n"
+                          "        LENGTHUNIT[\"metre\",1],\n"
+                          "        ID[\"EPSG\",8639]],\n"
+                          "    PARAMETER[\"B1\",5.1,\n"
+                          "        SCALEUNIT[\"unity\",1],\n"
+                          "        ID[\"EPSG\",8640]],\n"
+                          "    PARAMETER[\"B2\",6.1,\n"
+                          "        SCALEUNIT[\"unity\",1],\n"
+                          "        ID[\"EPSG\",8641]]]");
+    }
+
+    {
+        PJ *pj = proj_create_linear_affine_parametric_conversion(
+            m_ctxt, "conversion name", 1.1, "my unit1", 0.11, 2.1, "my unit2",
+            0.12, 3.1, "my unit3", 0.13, 4.1, "my unit4", 0.14, 5.1, "my unit5",
+            0.15, 6.1, "my unit6", 0.16);
+        ObjectKeeper keeper(pj);
+        auto wkt = proj_as_wkt(m_ctxt, pj, PJ_WKT2_2019, nullptr);
+        ASSERT_NE(wkt, nullptr);
+        EXPECT_STREQ(wkt, "CONVERSION[\"conversion name\",\n"
+                          "    METHOD[\"Affine parametric transformation\",\n"
+                          "        ID[\"EPSG\",9624]],\n"
+                          "    PARAMETER[\"A0\",1.1,\n"
+                          "        LENGTHUNIT[\"my unit1\",0.11],\n"
+                          "        ID[\"EPSG\",8623]],\n"
+                          "    PARAMETER[\"A1\",2.1,\n"
+                          "        SCALEUNIT[\"my unit2\",0.12],\n"
+                          "        ID[\"EPSG\",8624]],\n"
+                          "    PARAMETER[\"A2\",3.1,\n"
+                          "        SCALEUNIT[\"my unit3\",0.13],\n"
+                          "        ID[\"EPSG\",8625]],\n"
+                          "    PARAMETER[\"B0\",4.1,\n"
+                          "        LENGTHUNIT[\"my unit4\",0.14],\n"
+                          "        ID[\"EPSG\",8639]],\n"
+                          "    PARAMETER[\"B1\",5.1,\n"
+                          "        SCALEUNIT[\"my unit5\",0.15],\n"
+                          "        ID[\"EPSG\",8640]],\n"
+                          "    PARAMETER[\"B2\",6.1,\n"
+                          "        SCALEUNIT[\"my unit6\",0.16],\n"
+                          "        ID[\"EPSG\",8641]]]");
+    }
+}
+
+// ---------------------------------------------------------------------------
+
+TEST_F(CApi, proj_create_linear_3D_affine_parametric_conversion) {
+
+    {
+        PJ *pj = proj_create_linear_3D_affine_parametric_conversion(
+            m_ctxt, nullptr, 1.1, nullptr, 0, 2.1, nullptr, 0, 3.1, nullptr, 0,
+            4.1, nullptr, 0, 5.1, nullptr, 0, 6.1, nullptr, 0, 7.1, nullptr, 0,
+            8.1, nullptr, 0, 9.1, nullptr, 0, 10.1, nullptr, 0, 11.1, nullptr,
+            0, 12.1, nullptr, 0);
+        ObjectKeeper keeper(pj);
+        auto wkt = proj_as_wkt(m_ctxt, pj, PJ_WKT2_2019, nullptr);
+        ASSERT_NE(wkt, nullptr);
+        EXPECT_STREQ(wkt,
+                     "CONVERSION[\"unnamed\",\n"
+                     "    METHOD[\"3D Affine parametric transformation\"],\n"
+                     "    PARAMETER[\"A0\",1.1,\n"
+                     "        LENGTHUNIT[\"metre\",1],\n"
+                     "        ID[\"EPSG\",8623]],\n"
+                     "    PARAMETER[\"A1\",2.1,\n"
+                     "        SCALEUNIT[\"unity\",1],\n"
+                     "        ID[\"EPSG\",8624]],\n"
+                     "    PARAMETER[\"A2\",3.1,\n"
+                     "        SCALEUNIT[\"unity\",1],\n"
+                     "        ID[\"EPSG\",8625]],\n"
+                     "    PARAMETER[\"A3\",4.1,\n"
+                     "        SCALEUNIT[\"unity\",1,\n"
+                     "            ID[\"EPSG\",9201]]],\n"
+                     "    PARAMETER[\"B0\",5.1,\n"
+                     "        LENGTHUNIT[\"metre\",1],\n"
+                     "        ID[\"EPSG\",8639]],\n"
+                     "    PARAMETER[\"B1\",6.1,\n"
+                     "        SCALEUNIT[\"unity\",1],\n"
+                     "        ID[\"EPSG\",8640]],\n"
+                     "    PARAMETER[\"B2\",7.1,\n"
+                     "        SCALEUNIT[\"unity\",1],\n"
+                     "        ID[\"EPSG\",8641]],\n"
+                     "    PARAMETER[\"B3\",8.1,\n"
+                     "        SCALEUNIT[\"unity\",1,\n"
+                     "            ID[\"EPSG\",9201]]],\n"
+                     "    PARAMETER[\"C0\",9.1,\n"
+                     "        LENGTHUNIT[\"metre\",1,\n"
+                     "            ID[\"EPSG\",9001]]],\n"
+                     "    PARAMETER[\"C1\",10.1,\n"
+                     "        SCALEUNIT[\"unity\",1,\n"
+                     "            ID[\"EPSG\",9201]]],\n"
+                     "    PARAMETER[\"C2\",11.1,\n"
+                     "        SCALEUNIT[\"unity\",1,\n"
+                     "            ID[\"EPSG\",9201]]],\n"
+                     "    PARAMETER[\"C3\",12.1,\n"
+                     "        SCALEUNIT[\"unity\",1,\n"
+                     "            ID[\"EPSG\",9201]]]]");
+
+        auto proj_string = proj_as_proj_string(m_ctxt, pj, PJ_PROJ_5, nullptr);
+        ASSERT_NE(proj_string, nullptr);
+        EXPECT_STREQ(proj_string, "+proj=affine "
+                                  "+xoff=1.1 +s11=2.1 +s12=3.1 +s13=4.1 "
+                                  "+yoff=5.1 +s21=6.1 +s22=7.1 +s23=8.1 "
+                                  "+zoff=9.1 +s31=10.1 +s32=11.1 +s33=12.1");
+    }
+}
+
+// ---------------------------------------------------------------------------
+
+TEST_F(CApi, proj_create_derived_projected_crs) {
+
+    PJ *proj_crs = proj_create(m_ctxt, "EPSG:32631");
+    ASSERT_NE(proj_crs, nullptr);
+    ObjectKeeper keeper_proj_crs(proj_crs);
+    PJ *conv = proj_create_linear_affine_parametric_conversion(
+        m_ctxt, nullptr, 1.1, nullptr, 0, 2.1, nullptr, 0, 3.1, nullptr, 0, 4.1,
+        nullptr, 0, 5.1, nullptr, 0, 6.1, nullptr, 0);
+    ASSERT_NE(conv, nullptr);
+    ObjectKeeper keeper_conv(conv);
+
+    PJ *cs = proj_create_cartesian_2D_cs(m_ctxt, PJ_CART2D_EASTING_NORTHING,
+                                         nullptr, 0);
+    ASSERT_NE(cs, nullptr);
+    ObjectKeeper keeper_cs(cs);
+
+    {
+        PJ *pj = proj_create_derived_projected_crs(m_ctxt, "my derived crs",
+                                                   proj_crs, conv, cs);
+        ASSERT_NE(pj, nullptr);
+        ObjectKeeper keeper_pj(pj);
+
+        auto wkt = proj_as_wkt(m_ctxt, pj, PJ_WKT2_2019, nullptr);
+        ASSERT_NE(wkt, nullptr);
+        EXPECT_STREQ(
+            wkt,
+            "DERIVEDPROJCRS[\"my derived crs\",\n"
+            "    BASEPROJCRS[\"WGS 84 / UTM zone 31N\",\n"
+            "        BASEGEOGCRS[\"WGS 84\",\n"
+            "            ENSEMBLE[\"World Geodetic System 1984 ensemble\",\n"
+            "                MEMBER[\"World Geodetic System 1984 "
+            "(Transit)\"],\n"
+            "                MEMBER[\"World Geodetic System 1984 (G730)\"],\n"
+            "                MEMBER[\"World Geodetic System 1984 (G873)\"],\n"
+            "                MEMBER[\"World Geodetic System 1984 (G1150)\"],\n"
+            "                MEMBER[\"World Geodetic System 1984 (G1674)\"],\n"
+            "                MEMBER[\"World Geodetic System 1984 (G1762)\"],\n"
+            "                MEMBER[\"World Geodetic System 1984 (G2139)\"],\n"
+            "                MEMBER[\"World Geodetic System 1984 (G2296)\"],\n"
+            "                ELLIPSOID[\"WGS 84\",6378137,298.257223563,\n"
+            "                    LENGTHUNIT[\"metre\",1]],\n"
+            "                ENSEMBLEACCURACY[2.0]],\n"
+            "            PRIMEM[\"Greenwich\",0,\n"
+            "                ANGLEUNIT[\"degree\",0.0174532925199433]]],\n"
+            "        CONVERSION[\"UTM zone 31N\",\n"
+            "            METHOD[\"Transverse Mercator\",\n"
+            "                ID[\"EPSG\",9807]],\n"
+            "            PARAMETER[\"Latitude of natural origin\",0,\n"
+            "                ANGLEUNIT[\"degree\",0.0174532925199433],\n"
+            "                ID[\"EPSG\",8801]],\n"
+            "            PARAMETER[\"Longitude of natural origin\",3,\n"
+            "                ANGLEUNIT[\"degree\",0.0174532925199433],\n"
+            "                ID[\"EPSG\",8802]],\n"
+            "            PARAMETER[\"Scale factor at natural origin\",0.9996,\n"
+            "                SCALEUNIT[\"unity\",1],\n"
+            "                ID[\"EPSG\",8805]],\n"
+            "            PARAMETER[\"False easting\",500000,\n"
+            "                LENGTHUNIT[\"metre\",1],\n"
+            "                ID[\"EPSG\",8806]],\n"
+            "            PARAMETER[\"False northing\",0,\n"
+            "                LENGTHUNIT[\"metre\",1],\n"
+            "                ID[\"EPSG\",8807]]],\n"
+            "        ID[\"EPSG\",32631]],\n"
+            "    DERIVINGCONVERSION[\"unnamed\",\n"
+            "        METHOD[\"Affine parametric transformation\",\n"
+            "            ID[\"EPSG\",9624]],\n"
+            "        PARAMETER[\"A0\",1.1,\n"
+            "            LENGTHUNIT[\"metre\",1],\n"
+            "            ID[\"EPSG\",8623]],\n"
+            "        PARAMETER[\"A1\",2.1,\n"
+            "            SCALEUNIT[\"unity\",1],\n"
+            "            ID[\"EPSG\",8624]],\n"
+            "        PARAMETER[\"A2\",3.1,\n"
+            "            SCALEUNIT[\"unity\",1],\n"
+            "            ID[\"EPSG\",8625]],\n"
+            "        PARAMETER[\"B0\",4.1,\n"
+            "            LENGTHUNIT[\"metre\",1],\n"
+            "            ID[\"EPSG\",8639]],\n"
+            "        PARAMETER[\"B1\",5.1,\n"
+            "            SCALEUNIT[\"unity\",1],\n"
+            "            ID[\"EPSG\",8640]],\n"
+            "        PARAMETER[\"B2\",6.1,\n"
+            "            SCALEUNIT[\"unity\",1],\n"
+            "            ID[\"EPSG\",8641]]],\n"
+            "    CS[Cartesian,2],\n"
+            "        AXIS[\"(E)\",east,\n"
+            "            ORDER[1],\n"
+            "            LENGTHUNIT[\"metre\",1,\n"
+            "                ID[\"EPSG\",9001]]],\n"
+            "        AXIS[\"(N)\",north,\n"
+            "            ORDER[2],\n"
+            "            LENGTHUNIT[\"metre\",1,\n"
+            "                ID[\"EPSG\",9001]]]]");
+    }
+    {
+
+        PJ *pj = proj_create_derived_projected_crs(m_ctxt, nullptr, proj_crs,
+                                                   conv, cs);
+        ASSERT_NE(pj, nullptr);
+        ObjectKeeper keeper_pj(pj);
+    }
+
+    // Error cases
+    {
+        EXPECT_EQ(proj_create_derived_projected_crs(m_ctxt, nullptr, nullptr,
+                                                    conv, cs),
+                  nullptr);
+        EXPECT_EQ(proj_create_derived_projected_crs(m_ctxt, nullptr, proj_crs,
+                                                    nullptr, cs),
+                  nullptr);
+        EXPECT_EQ(proj_create_derived_projected_crs(m_ctxt, nullptr, proj_crs,
+                                                    conv, nullptr),
+                  nullptr);
+
+        EXPECT_EQ(
+            proj_create_derived_projected_crs(m_ctxt, nullptr, conv, conv, cs),
+            nullptr);
+        EXPECT_EQ(proj_create_derived_projected_crs(m_ctxt, nullptr, proj_crs,
+                                                    cs, cs),
+                  nullptr);
+        EXPECT_EQ(proj_create_derived_projected_crs(m_ctxt, nullptr, proj_crs,
+                                                    conv, proj_crs),
+                  nullptr);
+    }
+}
+
+// ---------------------------------------------------------------------------
+
+TEST_F(CApi, proj_crs_add_horizontal_derived_conversion) {
+
+    PJ *conv = proj_create_linear_affine_parametric_conversion(
+        m_ctxt, nullptr, 1.1, nullptr, 0, 2.1, nullptr, 0, 3.1, nullptr, 0, 4.1,
+        nullptr, 0, 5.1, nullptr, 0, 6.1, nullptr, 0);
+    ASSERT_NE(conv, nullptr);
+    ObjectKeeper keeper_conv(conv);
+
+    PJ *cs = proj_create_cartesian_2D_cs(m_ctxt, PJ_CART2D_EASTING_NORTHING,
+                                         nullptr, 0);
+    ASSERT_NE(cs, nullptr);
+    ObjectKeeper keeper_cs(cs);
+
+    {
+        PJ *proj_crs = proj_create(m_ctxt, "EPSG:32631");
+        ASSERT_NE(proj_crs, nullptr);
+        ObjectKeeper keeper_proj_crs(proj_crs);
+
+        PJ *pj = proj_crs_add_horizontal_derived_conversion(
+            m_ctxt, "my derived crs", proj_crs, conv, cs);
+        ASSERT_NE(pj, nullptr);
+        ObjectKeeper keeper_pj(pj);
+
+        auto wkt = proj_as_wkt(m_ctxt, pj, PJ_WKT2_2019, nullptr);
+        ASSERT_NE(wkt, nullptr);
+        EXPECT_STREQ(
+            wkt,
+            "DERIVEDPROJCRS[\"my derived crs\",\n"
+            "    BASEPROJCRS[\"WGS 84 / UTM zone 31N\",\n"
+            "        BASEGEOGCRS[\"WGS 84\",\n"
+            "            ENSEMBLE[\"World Geodetic System 1984 ensemble\",\n"
+            "                MEMBER[\"World Geodetic System 1984 "
+            "(Transit)\"],\n"
+            "                MEMBER[\"World Geodetic System 1984 (G730)\"],\n"
+            "                MEMBER[\"World Geodetic System 1984 (G873)\"],\n"
+            "                MEMBER[\"World Geodetic System 1984 (G1150)\"],\n"
+            "                MEMBER[\"World Geodetic System 1984 (G1674)\"],\n"
+            "                MEMBER[\"World Geodetic System 1984 (G1762)\"],\n"
+            "                MEMBER[\"World Geodetic System 1984 (G2139)\"],\n"
+            "                MEMBER[\"World Geodetic System 1984 (G2296)\"],\n"
+            "                ELLIPSOID[\"WGS 84\",6378137,298.257223563,\n"
+            "                    LENGTHUNIT[\"metre\",1]],\n"
+            "                ENSEMBLEACCURACY[2.0]],\n"
+            "            PRIMEM[\"Greenwich\",0,\n"
+            "                ANGLEUNIT[\"degree\",0.0174532925199433]]],\n"
+            "        CONVERSION[\"UTM zone 31N\",\n"
+            "            METHOD[\"Transverse Mercator\",\n"
+            "                ID[\"EPSG\",9807]],\n"
+            "            PARAMETER[\"Latitude of natural origin\",0,\n"
+            "                ANGLEUNIT[\"degree\",0.0174532925199433],\n"
+            "                ID[\"EPSG\",8801]],\n"
+            "            PARAMETER[\"Longitude of natural origin\",3,\n"
+            "                ANGLEUNIT[\"degree\",0.0174532925199433],\n"
+            "                ID[\"EPSG\",8802]],\n"
+            "            PARAMETER[\"Scale factor at natural origin\",0.9996,\n"
+            "                SCALEUNIT[\"unity\",1],\n"
+            "                ID[\"EPSG\",8805]],\n"
+            "            PARAMETER[\"False easting\",500000,\n"
+            "                LENGTHUNIT[\"metre\",1],\n"
+            "                ID[\"EPSG\",8806]],\n"
+            "            PARAMETER[\"False northing\",0,\n"
+            "                LENGTHUNIT[\"metre\",1],\n"
+            "                ID[\"EPSG\",8807]]],\n"
+            "        ID[\"EPSG\",32631]],\n"
+            "    DERIVINGCONVERSION[\"unnamed\",\n"
+            "        METHOD[\"Affine parametric transformation\",\n"
+            "            ID[\"EPSG\",9624]],\n"
+            "        PARAMETER[\"A0\",1.1,\n"
+            "            LENGTHUNIT[\"metre\",1],\n"
+            "            ID[\"EPSG\",8623]],\n"
+            "        PARAMETER[\"A1\",2.1,\n"
+            "            SCALEUNIT[\"unity\",1],\n"
+            "            ID[\"EPSG\",8624]],\n"
+            "        PARAMETER[\"A2\",3.1,\n"
+            "            SCALEUNIT[\"unity\",1],\n"
+            "            ID[\"EPSG\",8625]],\n"
+            "        PARAMETER[\"B0\",4.1,\n"
+            "            LENGTHUNIT[\"metre\",1],\n"
+            "            ID[\"EPSG\",8639]],\n"
+            "        PARAMETER[\"B1\",5.1,\n"
+            "            SCALEUNIT[\"unity\",1],\n"
+            "            ID[\"EPSG\",8640]],\n"
+            "        PARAMETER[\"B2\",6.1,\n"
+            "            SCALEUNIT[\"unity\",1],\n"
+            "            ID[\"EPSG\",8641]]],\n"
+            "    CS[Cartesian,2],\n"
+            "        AXIS[\"(E)\",east,\n"
+            "            ORDER[1],\n"
+            "            LENGTHUNIT[\"metre\",1,\n"
+            "                ID[\"EPSG\",9001]]],\n"
+            "        AXIS[\"(N)\",north,\n"
+            "            ORDER[2],\n"
+            "            LENGTHUNIT[\"metre\",1,\n"
+            "                ID[\"EPSG\",9001]]]]");
+    }
+
+    {
+        PJ *compound_crs = proj_create(m_ctxt, "EPSG:32631+3855");
+        ASSERT_NE(compound_crs, nullptr);
+        ObjectKeeper keeper_compound_crs(compound_crs);
+
+        PJ *pj = proj_crs_add_horizontal_derived_conversion(
+            m_ctxt, "my derived crs", compound_crs, conv, cs);
+        ASSERT_NE(pj, nullptr);
+        ObjectKeeper keeper_pj(pj);
+
+        auto wkt = proj_as_wkt(m_ctxt, pj, PJ_WKT2_2019, nullptr);
+        ASSERT_NE(wkt, nullptr);
+        EXPECT_STREQ(
+            wkt,
+            "COMPOUNDCRS[\"my derived crs + EGM2008 height\",\n"
+            "    DERIVEDPROJCRS[\"my derived crs\",\n"
+            "        BASEPROJCRS[\"WGS 84 / UTM zone 31N\",\n"
+            "            BASEGEOGCRS[\"WGS 84\",\n"
+            "                ENSEMBLE[\"World Geodetic System 1984 "
+            "ensemble\",\n"
+            "                    MEMBER[\"World Geodetic System 1984 "
+            "(Transit)\"],\n"
+            "                    MEMBER[\"World Geodetic System 1984 "
+            "(G730)\"],\n"
+            "                    MEMBER[\"World Geodetic System 1984 "
+            "(G873)\"],\n"
+            "                    MEMBER[\"World Geodetic System 1984 "
+            "(G1150)\"],\n"
+            "                    MEMBER[\"World Geodetic System 1984 "
+            "(G1674)\"],\n"
+            "                    MEMBER[\"World Geodetic System 1984 "
+            "(G1762)\"],\n"
+            "                    MEMBER[\"World Geodetic System 1984 "
+            "(G2139)\"],\n"
+            "                    MEMBER[\"World Geodetic System 1984 "
+            "(G2296)\"],\n"
+            "                    ELLIPSOID[\"WGS 84\",6378137,298.257223563,\n"
+            "                        LENGTHUNIT[\"metre\",1]],\n"
+            "                    ENSEMBLEACCURACY[2.0]],\n"
+            "                PRIMEM[\"Greenwich\",0,\n"
+            "                    ANGLEUNIT[\"degree\",0.0174532925199433]]],\n"
+            "            CONVERSION[\"UTM zone 31N\",\n"
+            "                METHOD[\"Transverse Mercator\",\n"
+            "                    ID[\"EPSG\",9807]],\n"
+            "                PARAMETER[\"Latitude of natural origin\",0,\n"
+            "                    ANGLEUNIT[\"degree\",0.0174532925199433],\n"
+            "                    ID[\"EPSG\",8801]],\n"
+            "                PARAMETER[\"Longitude of natural origin\",3,\n"
+            "                    ANGLEUNIT[\"degree\",0.0174532925199433],\n"
+            "                    ID[\"EPSG\",8802]],\n"
+            "                PARAMETER[\"Scale factor at natural "
+            "origin\",0.9996,\n"
+            "                    SCALEUNIT[\"unity\",1],\n"
+            "                    ID[\"EPSG\",8805]],\n"
+            "                PARAMETER[\"False easting\",500000,\n"
+            "                    LENGTHUNIT[\"metre\",1],\n"
+            "                    ID[\"EPSG\",8806]],\n"
+            "                PARAMETER[\"False northing\",0,\n"
+            "                    LENGTHUNIT[\"metre\",1],\n"
+            "                    ID[\"EPSG\",8807]]],\n"
+            "            ID[\"EPSG\",32631]],\n"
+            "        DERIVINGCONVERSION[\"unnamed\",\n"
+            "            METHOD[\"Affine parametric transformation\",\n"
+            "                ID[\"EPSG\",9624]],\n"
+            "            PARAMETER[\"A0\",1.1,\n"
+            "                LENGTHUNIT[\"metre\",1],\n"
+            "                ID[\"EPSG\",8623]],\n"
+            "            PARAMETER[\"A1\",2.1,\n"
+            "                SCALEUNIT[\"unity\",1],\n"
+            "                ID[\"EPSG\",8624]],\n"
+            "            PARAMETER[\"A2\",3.1,\n"
+            "                SCALEUNIT[\"unity\",1],\n"
+            "                ID[\"EPSG\",8625]],\n"
+            "            PARAMETER[\"B0\",4.1,\n"
+            "                LENGTHUNIT[\"metre\",1],\n"
+            "                ID[\"EPSG\",8639]],\n"
+            "            PARAMETER[\"B1\",5.1,\n"
+            "                SCALEUNIT[\"unity\",1],\n"
+            "                ID[\"EPSG\",8640]],\n"
+            "            PARAMETER[\"B2\",6.1,\n"
+            "                SCALEUNIT[\"unity\",1],\n"
+            "                ID[\"EPSG\",8641]]],\n"
+            "        CS[Cartesian,2],\n"
+            "            AXIS[\"(E)\",east,\n"
+            "                ORDER[1],\n"
+            "                LENGTHUNIT[\"metre\",1,\n"
+            "                    ID[\"EPSG\",9001]]],\n"
+            "            AXIS[\"(N)\",north,\n"
+            "                ORDER[2],\n"
+            "                LENGTHUNIT[\"metre\",1,\n"
+            "                    ID[\"EPSG\",9001]]]],\n"
+            "    VERTCRS[\"EGM2008 height\",\n"
+            "        VDATUM[\"EGM2008 geoid\"],\n"
+            "        CS[vertical,1],\n"
+            "            AXIS[\"gravity-related height (H)\",up,\n"
+            "                LENGTHUNIT[\"metre\",1]],\n"
+            "        USAGE[\n"
+            "            SCOPE[\"Geodesy.\"],\n"
+            "            AREA[\"World.\"],\n"
+            "            BBOX[-90,-180,90,180]],\n"
+            "        ID[\"EPSG\",3855]]]");
+    }
+
+    {
+        PJ *bound_crs = proj_create(
+            m_ctxt, "+proj=utm +zone=31 +ellps=GRS80 +towgs84=0,0,0 +type=crs");
+        ASSERT_NE(bound_crs, nullptr);
+        ObjectKeeper keeper_bound_crs(bound_crs);
+
+        PJ *pj = proj_crs_add_horizontal_derived_conversion(
+            m_ctxt, "my derived crs", bound_crs, conv, cs);
+        ASSERT_NE(pj, nullptr);
+        ObjectKeeper keeper_pj(pj);
+
+        auto wkt = proj_as_wkt(m_ctxt, pj, PJ_WKT2_2019, nullptr);
+        ASSERT_NE(wkt, nullptr);
+        EXPECT_STREQ(
+            wkt,
+            "BOUNDCRS[\n"
+            "    SOURCECRS[\n"
+            "        DERIVEDPROJCRS[\"my derived crs\",\n"
+            "            BASEPROJCRS[\"unknown\",\n"
+            "                BASEGEOGCRS[\"unknown\",\n"
+            "                    DATUM[\"Unknown based on GRS 1980 ellipsoid "
+            "using towgs84=0,0,0\",\n"
+            "                        ELLIPSOID[\"GRS "
+            "1980\",6378137,298.257222101,\n"
+            "                            LENGTHUNIT[\"metre\",1],\n"
+            "                            ID[\"EPSG\",7019]]],\n"
+            "                    PRIMEM[\"Greenwich\",0,\n"
+            "                        "
+            "ANGLEUNIT[\"degree\",0.0174532925199433],\n"
+            "                        ID[\"EPSG\",8901]]],\n"
+            "                CONVERSION[\"UTM zone 31N\",\n"
+            "                    METHOD[\"Transverse Mercator\",\n"
+            "                        ID[\"EPSG\",9807]],\n"
+            "                    PARAMETER[\"Latitude of natural origin\",0,\n"
+            "                        "
+            "ANGLEUNIT[\"degree\",0.0174532925199433],\n"
+            "                        ID[\"EPSG\",8801]],\n"
+            "                    PARAMETER[\"Longitude of natural origin\",3,\n"
+            "                        "
+            "ANGLEUNIT[\"degree\",0.0174532925199433],\n"
+            "                        ID[\"EPSG\",8802]],\n"
+            "                    PARAMETER[\"Scale factor at natural "
+            "origin\",0.9996,\n"
+            "                        SCALEUNIT[\"unity\",1],\n"
+            "                        ID[\"EPSG\",8805]],\n"
+            "                    PARAMETER[\"False easting\",500000,\n"
+            "                        LENGTHUNIT[\"metre\",1],\n"
+            "                        ID[\"EPSG\",8806]],\n"
+            "                    PARAMETER[\"False northing\",0,\n"
+            "                        LENGTHUNIT[\"metre\",1],\n"
+            "                        ID[\"EPSG\",8807]],\n"
+            "                    ID[\"EPSG\",16031]]],\n"
+            "            DERIVINGCONVERSION[\"unnamed\",\n"
+            "                METHOD[\"Affine parametric transformation\",\n"
+            "                    ID[\"EPSG\",9624]],\n"
+            "                PARAMETER[\"A0\",1.1,\n"
+            "                    LENGTHUNIT[\"metre\",1],\n"
+            "                    ID[\"EPSG\",8623]],\n"
+            "                PARAMETER[\"A1\",2.1,\n"
+            "                    SCALEUNIT[\"unity\",1],\n"
+            "                    ID[\"EPSG\",8624]],\n"
+            "                PARAMETER[\"A2\",3.1,\n"
+            "                    SCALEUNIT[\"unity\",1],\n"
+            "                    ID[\"EPSG\",8625]],\n"
+            "                PARAMETER[\"B0\",4.1,\n"
+            "                    LENGTHUNIT[\"metre\",1],\n"
+            "                    ID[\"EPSG\",8639]],\n"
+            "                PARAMETER[\"B1\",5.1,\n"
+            "                    SCALEUNIT[\"unity\",1],\n"
+            "                    ID[\"EPSG\",8640]],\n"
+            "                PARAMETER[\"B2\",6.1,\n"
+            "                    SCALEUNIT[\"unity\",1],\n"
+            "                    ID[\"EPSG\",8641]]],\n"
+            "            CS[Cartesian,2],\n"
+            "                AXIS[\"(E)\",east,\n"
+            "                    ORDER[1],\n"
+            "                    LENGTHUNIT[\"metre\",1,\n"
+            "                        ID[\"EPSG\",9001]]],\n"
+            "                AXIS[\"(N)\",north,\n"
+            "                    ORDER[2],\n"
+            "                    LENGTHUNIT[\"metre\",1,\n"
+            "                        ID[\"EPSG\",9001]]]]],\n"
+            "    TARGETCRS[\n"
+            "        GEOGCRS[\"WGS 84\",\n"
+            "            DATUM[\"World Geodetic System 1984\",\n"
+            "                ELLIPSOID[\"WGS 84\",6378137,298.257223563,\n"
+            "                    LENGTHUNIT[\"metre\",1]]],\n"
+            "            PRIMEM[\"Greenwich\",0,\n"
+            "                ANGLEUNIT[\"degree\",0.0174532925199433]],\n"
+            "            CS[ellipsoidal,2],\n"
+            "                AXIS[\"latitude\",north,\n"
+            "                    ORDER[1],\n"
+            "                    ANGLEUNIT[\"degree\",0.0174532925199433]],\n"
+            "                AXIS[\"longitude\",east,\n"
+            "                    ORDER[2],\n"
+            "                    ANGLEUNIT[\"degree\",0.0174532925199433]],\n"
+            "            ID[\"EPSG\",4326]]],\n"
+            "    ABRIDGEDTRANSFORMATION[\"Transformation from unknown to "
+            "WGS84\",\n"
+            "        METHOD[\"Geocentric translations (geog2D domain)\",\n"
+            "            ID[\"EPSG\",9603]],\n"
+            "        PARAMETER[\"X-axis translation\",0,\n"
+            "            ID[\"EPSG\",8605]],\n"
+            "        PARAMETER[\"Y-axis translation\",0,\n"
+            "            ID[\"EPSG\",8606]],\n"
+            "        PARAMETER[\"Z-axis translation\",0,\n"
+            "            ID[\"EPSG\",8607]]]]");
+    }
+
+    // Error cases
+    {
+        PJ *proj_crs = proj_create(m_ctxt, "EPSG:32631");
+        ASSERT_NE(proj_crs, nullptr);
+        ObjectKeeper keeper_proj_crs(proj_crs);
+
+        EXPECT_EQ(proj_crs_add_horizontal_derived_conversion(m_ctxt, nullptr,
+                                                             nullptr, conv, cs),
+                  nullptr);
+        EXPECT_EQ(proj_crs_add_horizontal_derived_conversion(
+                      m_ctxt, nullptr, proj_crs, nullptr, cs),
+                  nullptr);
+        EXPECT_EQ(proj_crs_add_horizontal_derived_conversion(
+                      m_ctxt, nullptr, proj_crs, conv, nullptr),
+                  nullptr);
+
+        EXPECT_EQ(proj_crs_add_horizontal_derived_conversion(m_ctxt, nullptr,
+                                                             conv, conv, cs),
+                  nullptr);
+        EXPECT_EQ(proj_crs_add_horizontal_derived_conversion(m_ctxt, nullptr,
+                                                             proj_crs, cs, cs),
+                  nullptr);
+        EXPECT_EQ(proj_crs_add_horizontal_derived_conversion(
+                      m_ctxt, nullptr, proj_crs, conv, proj_crs),
+                  nullptr);
+
+        PJ *geog_crs = proj_create(m_ctxt, "EPSG:4326");
+        ASSERT_NE(geog_crs, nullptr);
+        ObjectKeeper keeper_geog_crs(geog_crs);
+
+        EXPECT_EQ(proj_crs_add_horizontal_derived_conversion(
+                      m_ctxt, "my derived crs", geog_crs, conv, cs),
+                  nullptr);
+    }
+}
+
+// ---------------------------------------------------------------------------
+
+TEST_F(CApi, proj_crs_is_dynamic) {
+
+    {
+        // ITRF2020
+        auto crs = proj_create_from_database(m_ctxt, "EPSG", "9990",
+                                             PJ_CATEGORY_CRS, false, nullptr);
+        ASSERT_NE(crs, nullptr);
+        ObjectKeeper keeper(crs);
+
+        EXPECT_TRUE(proj_crs_is_dynamic(m_ctxt, crs));
+    }
+
+    {
+        // ETRS89
+        auto crs = proj_create_from_database(m_ctxt, "EPSG", "4258",
+                                             PJ_CATEGORY_CRS, false, nullptr);
+        ASSERT_NE(crs, nullptr);
+        ObjectKeeper keeper(crs);
+
+        EXPECT_FALSE(proj_crs_is_dynamic(m_ctxt, crs));
+    }
+
+    {
+        // RH2000 height
+        auto crs = proj_create_from_database(m_ctxt, "EPSG", "5613",
+                                             PJ_CATEGORY_CRS, false, nullptr);
+        ASSERT_NE(crs, nullptr);
+        ObjectKeeper keeper(crs);
+
+        EXPECT_TRUE(proj_crs_is_dynamic(m_ctxt, crs));
+    }
+
+    {
+        // EGM2008 height
+        auto crs = proj_create_from_database(m_ctxt, "EPSG", "3855",
+                                             PJ_CATEGORY_CRS, false, nullptr);
+        ASSERT_NE(crs, nullptr);
+        ObjectKeeper keeper(crs);
+
+        EXPECT_FALSE(proj_crs_is_dynamic(m_ctxt, crs));
+    }
+
+    {
+        // WGS 84 / Pseudo-Mercator +  EGM2008 geoid height
+        auto crs = proj_create_from_database(m_ctxt, "EPSG", "6871",
+                                             PJ_CATEGORY_CRS, false, nullptr);
+        ASSERT_NE(crs, nullptr);
+        ObjectKeeper keeper(crs);
+
+        EXPECT_FALSE(proj_crs_is_dynamic(m_ctxt, crs));
+    }
+
+    {
+        // ETRS89-SWE [SWEREF 99] + RH2000 height
+        auto crs = proj_create_from_database(m_ctxt, "EPSG", "5628",
+                                             PJ_CATEGORY_CRS, false, nullptr);
+        ASSERT_NE(crs, nullptr);
+        ObjectKeeper keeper(crs);
+
+        EXPECT_TRUE(proj_crs_is_dynamic(m_ctxt, crs));
+    }
+}
 
 } // namespace

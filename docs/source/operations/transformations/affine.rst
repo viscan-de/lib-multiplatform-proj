@@ -26,7 +26,7 @@ This can be used to implement:
 
 - EPSG "Affine parametric transformation" of code 9624 by setting `A0`, `A1`, `A2`,
   `B0`, `B1`, `B2` EPSG parameters to respectively `xoff`, `s11`, `s12`, `yoff`,
-  `s21`, `s21` PROJ parameters.
+  `s21`, `s22` PROJ parameters.
 
 - EPSG "Similarity transformation" of code 9621 by setting:
 
@@ -48,6 +48,67 @@ This can be used to implement:
     * :math:`\theta` is the angle about which the axes of the source CRS need to
       be rotated to coincide with the axes of the target CRS, counter-clockwise
       being positive
+
+- EPSG "P6 I=J+90 seismic bin grid coordinate operation" of code 9666 and
+  "P6 I=J-90 seismic bin grid coordinate operation" of code 1049, which convert
+  from the easting/northing of a map grid to the I/J bin numbers of a seismic
+  bin grid, by setting:
+
+    * s11 to :math:`\pm s_I \cos \theta`
+    * s12 to :math:`\mp s_I \sin \theta`
+    * s21 to :math:`s_J \sin \theta`
+    * s22 to :math:`s_J \cos \theta`
+    * xoff to :math:`I_0 - (s11 \times E_0 + s12 \times N_0)`
+    * yoff to :math:`J_0 - (s21 \times E_0 + s22 \times N_0)`
+
+  where, naming each quantity after the EPSG parameter that carries it:
+
+    * :math:`I_0` and :math:`J_0` are "Bin grid origin I" (EPSG:8733) and
+      "Bin grid origin J" (EPSG:8734), the bin grid coordinates of the origin
+      point of the bin grid.
+    * :math:`E_0` and :math:`N_0` are "Bin grid origin Easting" (EPSG:8735) and
+      "Bin grid origin Northing" (EPSG:8736), the map grid coordinates of that
+      same origin point.
+    * :math:`SF` is "Scale factor of bin grid" (EPSG:8737), that is the point
+      scale factor of the map grid at a chosen reference point.
+    * :math:`M_I` and :math:`M_J` are "Bin width on I-axis" (EPSG:8738) and
+      "Bin width on J-axis" (EPSG:8739).
+    * :math:`Inc_I` and :math:`Inc_J` are "Bin node increment on I-axis"
+      (EPSG:8741) and "Bin node increment on J-axis" (EPSG:8742).
+    * :math:`\theta` is "Map grid bearing of bin grid J-axis" (EPSG:8740),
+      clockwise being positive.
+    * :math:`s_I = Inc_I / (SF \times M_I)` and
+      :math:`s_J = Inc_J / (SF \times M_J)` are the resulting number of bin
+      grid units per map grid unit, along the I and J axes respectively.
+    * the upper sign of :math:`\pm` and :math:`\mp` applies to the
+      right-handed method 9666 (I = J+90°) and the lower one to the
+      left-handed method 1049 (I = J-90°).
+
+  :math:`E_0`, :math:`N_0`, :math:`M_I` and :math:`M_J` must all be expressed
+  in the same linear unit as the easting and northing fed to the affine
+  operation.
+
+  The resulting bin numbers are not rounded, so that the operation remains
+  exactly invertible. EPSG defines bin grid coordinate systems that accept real
+  values as well as ones restricted to integer values, so whether bin numbers
+  are whole values is a property of the bin grid coordinate system, not of
+  these methods.
+
+Examples
++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+The `+proj=affine` operation applies an affine transformation on coordinate values.
+Note that it does not perform any unit conversion and will accept
+coordinates whether  they are angular or linear. Users must ensure that the
+values provided to the affine operation are expressed in the appropriate units
+for their intended purpose.
+
+The affine operation can be used with the `cct` utility or as a step inside a
+PROJ pipeline.
+
+Offsetting a the x-component of a coordinate by 1:
+
+    echo "1 2" | cct +proj=affine +xoff=1
 
 Parameters
 ################################################################################
@@ -119,7 +180,7 @@ Mathematical description
 .. math::
     :label: formula
 
-    \begin{align}
+    \begin{aligned}
         \begin{bmatrix}
             X \\
             Y \\
@@ -144,6 +205,6 @@ Mathematical description
             Z \\
             T \\
         \end{bmatrix}^{source}
-    \end{align}
+    \end{aligned}
 
 

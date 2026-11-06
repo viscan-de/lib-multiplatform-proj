@@ -1,0 +1,133 @@
+.. _dsea:
+
+********************************************************************************
+Dodecahedral Snyder Equal Area
+********************************************************************************
+
+.. versionadded:: 9.9
+
+Snyder's equal-area mapping :cite:`Snyder1992` applied to the twelve pentagonal
+faces of a regular dodecahedron and unfolded into a planar net.
+
+The dodecahedron is subdivided into 12 × 10 = 120 right sub-triangles,
+and each sub-triangle is mapped independently using the area-preserving
+Snyder construction.
+
+See :ref:`polyhedral` for the shared theory.
+
++---------------------+----------------------------------------------------------+
+| **Classification**  | Polyhedral, equal area                                   |
++---------------------+----------------------------------------------------------+
+| **Available forms** | Forward and inverse, spherical and ellipsoidal           |
++---------------------+----------------------------------------------------------+
+| **Defined area**    | Global                                                   |
++---------------------+----------------------------------------------------------+
+| **Alias**           | dsea                                                     |
++---------------------+----------------------------------------------------------+
+| **Domain**          | 2D                                                       |
++---------------------+----------------------------------------------------------+
+| **Input type**      | Geodetic coordinates                                     |
++---------------------+----------------------------------------------------------+
+| **Output type**     | Projected coordinates                                    |
++---------------------+----------------------------------------------------------+
+
+
+.. figure:: ./images/dsea.png
+   :width: 500 px
+   :align: center
+   :alt:   Dodecahedral Snyder Equal Area
+
+   proj-string: ``+proj=dsea``
+
+
+Nets
+################################################################################
+
+The default net (shown above) follows Snyder's Figure 11. Three alternative
+nets are available via ``+net=``, and ``+dual`` unfolds the same mapping onto
+the dual, icosahedral, net (equivalent to :ref:`ivea`):
+
+a5
+--------------------------------------------------------------------------------
+
+Layout used by the `A5 index <https://a5geo.org>`_. The first 8 faces contain
+the majority of the populated land mass.
+
+.. figure:: ./images/dsea_a5.png
+   :width: 500 px
+   :align: center
+   :alt:   DSEA A5 net
+
+   proj-string: ``+proj=dsea +net=a5``
+
+crescent
+--------------------------------------------------------------------------------
+
+.. figure:: ./images/dsea_crescent.png
+   :width: 500 px
+   :align: center
+   :alt:   DSEA crescent net
+
+   proj-string: ``+proj=dsea +net=crescent``
+
+flower
+--------------------------------------------------------------------------------
+
+.. figure:: ./images/dsea_flower.png
+   :width: 500 px
+   :align: center
+   :alt:   DSEA flower net
+
+   proj-string: ``+proj=dsea +net=flower``
+
+dual
+--------------------------------------------------------------------------------
+.. figure:: ./images/ivea.png
+   :width: 500 px
+   :align: center
+   :alt:   DSEA dual net
+
+   proj-string: ``+proj=dsea +dual``
+
+Parameters
+################################################################################
+
+.. note::
+    All parameters are optional.
+
+.. option:: +net=<name>
+
+    Selects the planar unfolding. Accepted values: ``dsea``, ``a5``,
+    ``crescent``, ``flower``.
+
+    *Defaults to* ``dsea``.
+
+.. option:: +dual
+
+    Unfolds onto dual icosahedron net. All options will be interpreted
+    as if ``+proj=isea`` were specified. See also :ref:`ivea`
+
+
+.. include:: ../options/orient_lat.rst
+
+*Defaults to* :math:`\arctan \frac{1 + 2\cos 36^\circ}{2} \approx 52.6226^\circ`.
+
+.. include:: ../options/orient_lon.rst
+
+*Defaults to −36.0 (or −129.0 when* ``+net=a5`` *).*
+
+.. include:: ../options/azi_polyhedral.rst
+
+*Defaults to 240.0.*
+
+.. include:: ../options/lat_0_polyhedral.rst
+
+.. include:: ../options/lon_0_polyhedral.rst
+
+.. include:: ../options/x_0.rst
+
+.. include:: ../options/y_0.rst
+
+.. include:: ../options/ellps.rst
+
+.. include:: ../options/R.rst

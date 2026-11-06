@@ -1,4 +1,4 @@
-#define PJ_LIB_
+
 
 #include <errno.h>
 #include <math.h>
@@ -47,7 +47,7 @@ static PJ *setup(PJ *P) {
     return P;
 }
 
-PJ *PROJECTION(eck3) {
+PJ *PJ_PROJECTION(eck3) {
     struct pj_opaque *Q =
         static_cast<struct pj_opaque *>(calloc(1, sizeof(struct pj_opaque)));
     if (nullptr == Q)
@@ -62,7 +62,7 @@ PJ *PROJECTION(eck3) {
     return setup(P);
 }
 
-PJ *PROJECTION(kav7) {
+PJ *PJ_PROJECTION(kav7) {
     struct pj_opaque *Q =
         static_cast<struct pj_opaque *>(calloc(1, sizeof(struct pj_opaque)));
     if (nullptr == Q)
@@ -80,22 +80,22 @@ PJ *PROJECTION(kav7) {
     return setup(P);
 }
 
-PJ *PROJECTION(wag6) {
+PJ *PJ_PROJECTION(wag6) {
     struct pj_opaque *Q =
         static_cast<struct pj_opaque *>(calloc(1, sizeof(struct pj_opaque)));
     if (nullptr == Q)
         return pj_default_destructor(P, PROJ_ERR_OTHER /*ENOMEM*/);
     P->opaque = Q;
 
-    Q->C_x = 0.94745;
-    Q->C_y = 0.94745;
+    Q->C_x = 1.0;
+    Q->C_y = 1.0;
     Q->A = 0.0;
     Q->B = 0.30396355092701331433;
 
     return setup(P);
 }
 
-PJ *PROJECTION(putp1) {
+PJ *PJ_PROJECTION(putp1) {
     struct pj_opaque *Q =
         static_cast<struct pj_opaque *>(calloc(1, sizeof(struct pj_opaque)));
     if (nullptr == Q)

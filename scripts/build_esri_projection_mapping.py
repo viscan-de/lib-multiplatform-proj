@@ -34,6 +34,15 @@ import yaml
 # Map methods from pe_list_projection.csv to WKT2 naming
 
 config_str = """
+
+- Equidistant_Cylindrical:
+    WKT2_name: EPSG_NAME_METHOD_EQUIDISTANT_CYLINDRICAL
+    Params:
+        - False_Easting: EPSG_NAME_PARAMETER_FALSE_EASTING
+        - False_Northing: EPSG_NAME_PARAMETER_FALSE_NORTHING
+        - Central_Meridian: EPSG_NAME_PARAMETER_LONGITUDE_OF_NATURAL_ORIGIN
+        - Standard_Parallel_1: EPSG_NAME_PARAMETER_LATITUDE_1ST_STD_PARALLEL
+
 - Plate_Carree:
     WKT2_name:
         - EPSG_NAME_METHOD_EQUIDISTANT_CYLINDRICAL
@@ -44,14 +53,6 @@ config_str = """
         - Central_Meridian: EPSG_NAME_PARAMETER_LONGITUDE_OF_NATURAL_ORIGIN
     Cond:
         - EPSG_NAME_PARAMETER_LATITUDE_1ST_STD_PARALLEL = 0
-
-- Equidistant_Cylindrical:
-    WKT2_name: EPSG_NAME_METHOD_EQUIDISTANT_CYLINDRICAL
-    Params:
-        - False_Easting: EPSG_NAME_PARAMETER_FALSE_EASTING
-        - False_Northing: EPSG_NAME_PARAMETER_FALSE_NORTHING
-        - Central_Meridian: EPSG_NAME_PARAMETER_LONGITUDE_OF_NATURAL_ORIGIN
-        - Standard_Parallel_1: EPSG_NAME_PARAMETER_LATITUDE_1ST_STD_PARALLEL
 
 - Miller_Cylindrical:
     WKT2_name: PROJ_WKT2_NAME_METHOD_MILLER_CYLINDRICAL
@@ -168,18 +169,6 @@ config_str = """
         - False_Northing: EPSG_NAME_PARAMETER_FALSE_NORTHING
         - Central_Meridian: EPSG_NAME_PARAMETER_LONGITUDE_OF_NATURAL_ORIGIN
 
-- Behrmann:
-    WKT2_name: EPSG_NAME_METHOD_LAMBERT_CYLINDRICAL_EQUAL_AREA
-    Params:
-        - False_Easting: EPSG_NAME_PARAMETER_FALSE_EASTING
-        - False_Northing: EPSG_NAME_PARAMETER_FALSE_NORTHING
-        - Central_Meridian:
-            Name: EPSG_NAME_PARAMETER_LONGITUDE_OF_NATURAL_ORIGIN
-            Default: 0.0
-        - Standard_Parallel_1:
-            Name: EPSG_NAME_PARAMETER_LATITUDE_1ST_STD_PARALLEL
-            Default: 30.0
-
 - Winkel_I:
     WKT2_name: "Winkel I"
     Params:
@@ -215,7 +204,7 @@ config_str = """
             - Standard_Parallel_2: EPSG_NAME_PARAMETER_LATITUDE_2ND_STD_PARALLEL
             - Latitude_Of_Origin: EPSG_NAME_PARAMETER_LATITUDE_FALSE_ORIGIN
 
-    # From GDAL autotest 
+    # From GDAL autotest
     -   WKT2_name: EPSG_NAME_METHOD_LAMBERT_CONIC_CONFORMAL_2SP
         Params:
             - False_Easting: EPSG_NAME_PARAMETER_EASTING_FALSE_ORIGIN
@@ -275,7 +264,7 @@ config_str = """
         - False_Northing: EPSG_NAME_PARAMETER_NORTHING_PROJECTION_CENTRE
         - Latitude_Of_1st_Point: "Latitude of 1st point"
         - Latitude_Of_2nd_Point: "Latitude of 2nd point"
-        - Scale_Factor: EPSG_NAME_PARAMETER_SCALE_FACTOR_INITIAL_LINE
+        - Scale_Factor: EPSG_NAME_PARAMETER_SCALE_FACTOR_PROJECTION_CENTRE
         - Longitude_Of_1st_Point: "Longitude of 1st point"
         - Longitude_Of_2nd_Point: "Longitude of 2nd point"
         - Latitude_Of_Center: EPSG_NAME_PARAMETER_LATITUDE_PROJECTION_CENTRE
@@ -342,7 +331,7 @@ config_str = """
         - Longitude_Of_2nd_Point: "Longitude of 2nd point"
 
 - Azimuthal_Equidistant:
-    WKT2_name: EPSG_NAME_METHOD_MODIFIED_AZIMUTHAL_EQUIDISTANT
+    WKT2_name: EPSG_NAME_METHOD_AZIMUTHAL_EQUIDISTANT
     Params:
         - False_Easting: EPSG_NAME_PARAMETER_FALSE_EASTING
         - False_Northing: EPSG_NAME_PARAMETER_FALSE_NORTHING
@@ -365,6 +354,20 @@ config_str = """
         - Central_Meridian: EPSG_NAME_PARAMETER_LONGITUDE_OF_NATURAL_ORIGIN
         - Standard_Parallel_1: EPSG_NAME_PARAMETER_LATITUDE_1ST_STD_PARALLEL
 
+- Behrmann:
+    WKT2_name: EPSG_NAME_METHOD_LAMBERT_CYLINDRICAL_EQUAL_AREA
+    Params:
+        - False_Easting: EPSG_NAME_PARAMETER_FALSE_EASTING
+        - False_Northing: EPSG_NAME_PARAMETER_FALSE_NORTHING
+        - Central_Meridian:
+            Name: EPSG_NAME_PARAMETER_LONGITUDE_OF_NATURAL_ORIGIN
+            Default: 0.0
+        - Standard_Parallel_1:
+            Name: EPSG_NAME_PARAMETER_LATITUDE_1ST_STD_PARALLEL
+            Default: 30.0
+    Cond:
+        - EPSG_NAME_PARAMETER_LATITUDE_1ST_STD_PARALLEL = 30
+
 # No example in pe_list_projection.csv: temptative mapping !
 - Hotine_Oblique_Mercator_Two_Point_Center:
     WKT2_name: PROJ_WKT2_NAME_METHOD_HOTINE_OBLIQUE_MERCATOR_TWO_POINT_NATURAL_ORIGIN
@@ -373,7 +376,7 @@ config_str = """
         - False_Northing: EPSG_NAME_PARAMETER_NORTHING_PROJECTION_CENTRE
         - Latitude_Of_1st_Point: "Latitude of 1st point"
         - Latitude_Of_2nd_Point: "Latitude of 2nd point"
-        - Scale_Factor: EPSG_NAME_PARAMETER_SCALE_FACTOR_INITIAL_LINE
+        - Scale_Factor: EPSG_NAME_PARAMETER_SCALE_FACTOR_PROJECTION_CENTRE
         - Longitude_Of_1st_Point: "Longitude of 1st point"
         - Longitude_Of_2nd_Point: "Longitude of 2nd point"
         - Latitude_Of_Origin: EPSG_NAME_PARAMETER_LATITUDE_OF_NATURAL_ORIGIN
@@ -383,8 +386,8 @@ config_str = """
     Params:
         - False_Easting: EPSG_NAME_PARAMETER_FALSE_EASTING
         - False_Northing: EPSG_NAME_PARAMETER_FALSE_NORTHING
-        - Scale_Factor: EPSG_NAME_PARAMETER_SCALE_FACTOR_INITIAL_LINE
-        - Azimuth: EPSG_NAME_PARAMETER_AZIMUTH_INITIAL_LINE
+        - Scale_Factor: EPSG_NAME_PARAMETER_SCALE_FACTOR_PROJECTION_CENTRE
+        - Azimuth: EPSG_NAME_PARAMETER_AZIMUTH_PROJECTION_CENTRE
         # No EPSG_NAME_PARAMETER_ANGLE_RECTIFIED_TO_SKEW_GRID
         - Longitude_Of_Center: EPSG_NAME_PARAMETER_LONGITUDE_PROJECTION_CENTRE
         - Latitude_Of_Center: EPSG_NAME_PARAMETER_LATITUDE_PROJECTION_CENTRE
@@ -395,8 +398,8 @@ config_str = """
     Params:
         - False_Easting: EPSG_NAME_PARAMETER_EASTING_PROJECTION_CENTRE
         - False_Northing: EPSG_NAME_PARAMETER_NORTHING_PROJECTION_CENTRE
-        - Scale_Factor: EPSG_NAME_PARAMETER_SCALE_FACTOR_INITIAL_LINE
-        - Azimuth: EPSG_NAME_PARAMETER_AZIMUTH_INITIAL_LINE
+        - Scale_Factor: EPSG_NAME_PARAMETER_SCALE_FACTOR_PROJECTION_CENTRE
+        - Azimuth: EPSG_NAME_PARAMETER_AZIMUTH_PROJECTION_CENTRE
         # No EPSG_NAME_PARAMETER_ANGLE_RECTIFIED_TO_SKEW_GRID
         - Longitude_Of_Center: EPSG_NAME_PARAMETER_LONGITUDE_PROJECTION_CENTRE
         - Latitude_Of_Center: EPSG_NAME_PARAMETER_LATITUDE_PROJECTION_CENTRE
@@ -456,14 +459,14 @@ config_str = """
         - Latitude_Of_Center: EPSG_NAME_PARAMETER_LATITUDE_OF_NATURAL_ORIGIN
 
 - Local:
-    WKT2_name: EPSG_NAME_METHOD_ORTHOGRAPHIC
+    WKT2_name: EPSG_NAME_METHOD_LOCAL_ORTHOGRAPHIC
     Params:
-        - False_Easting: EPSG_NAME_PARAMETER_FALSE_EASTING
-        - False_Northing: EPSG_NAME_PARAMETER_FALSE_NORTHING
-        - Scale_Factor: 1.0
-        - Azimuth: 0.0
-        - Longitude_Of_Center: EPSG_NAME_PARAMETER_LONGITUDE_OF_NATURAL_ORIGIN
-        - Latitude_Of_Center: EPSG_NAME_PARAMETER_LATITUDE_OF_NATURAL_ORIGIN
+        - False_Easting: EPSG_NAME_PARAMETER_EASTING_PROJECTION_CENTRE
+        - False_Northing: EPSG_NAME_PARAMETER_NORTHING_PROJECTION_CENTRE
+        - Scale_Factor: EPSG_NAME_PARAMETER_SCALE_FACTOR_PROJECTION_CENTRE
+        - Azimuth: EPSG_NAME_PARAMETER_AZIMUTH_PROJECTION_CENTRE
+        - Longitude_Of_Center: EPSG_NAME_PARAMETER_LONGITUDE_PROJECTION_CENTRE
+        - Latitude_Of_Center: EPSG_NAME_PARAMETER_LATITUDE_PROJECTION_CENTRE
 
 - Winkel_Tripel:
     WKT2_name: "Winkel Tripel"
@@ -543,8 +546,8 @@ config_str = """
     Params:
         - False_Easting: EPSG_NAME_PARAMETER_FALSE_EASTING
         - False_Northing: EPSG_NAME_PARAMETER_FALSE_NORTHING
-        - Scale_Factor: EPSG_NAME_PARAMETER_SCALE_FACTOR_INITIAL_LINE
-        - Azimuth: EPSG_NAME_PARAMETER_AZIMUTH_INITIAL_LINE
+        - Scale_Factor: EPSG_NAME_PARAMETER_SCALE_FACTOR_PROJECTION_CENTRE
+        - Azimuth: EPSG_NAME_PARAMETER_AZIMUTH_PROJECTION_CENTRE
         - Longitude_Of_Center: EPSG_NAME_PARAMETER_LONGITUDE_PROJECTION_CENTRE
         - Latitude_Of_Center: EPSG_NAME_PARAMETER_LATITUDE_PROJECTION_CENTRE
         - XY_Plane_Rotation: EPSG_NAME_PARAMETER_ANGLE_RECTIFIED_TO_SKEW_GRID
@@ -555,8 +558,8 @@ config_str = """
     Params:
         - False_Easting: EPSG_NAME_PARAMETER_EASTING_PROJECTION_CENTRE
         - False_Northing: EPSG_NAME_PARAMETER_NORTHING_PROJECTION_CENTRE
-        - Scale_Factor: EPSG_NAME_PARAMETER_SCALE_FACTOR_INITIAL_LINE
-        - Azimuth: EPSG_NAME_PARAMETER_AZIMUTH_INITIAL_LINE
+        - Scale_Factor: EPSG_NAME_PARAMETER_SCALE_FACTOR_PROJECTION_CENTRE
+        - Azimuth: EPSG_NAME_PARAMETER_AZIMUTH_PROJECTION_CENTRE
         - Longitude_Of_Center: EPSG_NAME_PARAMETER_LONGITUDE_PROJECTION_CENTRE
         - Latitude_Of_Center: EPSG_NAME_PARAMETER_LATITUDE_PROJECTION_CENTRE
         - XY_Plane_Rotation: EPSG_NAME_PARAMETER_ANGLE_RECTIFIED_TO_SKEW_GRID
@@ -596,8 +599,8 @@ config_str = """
     Params:
         - False_Easting: EPSG_NAME_PARAMETER_FALSE_EASTING
         - False_Northing: EPSG_NAME_PARAMETER_FALSE_NORTHING
-        - Scale_Factor: EPSG_NAME_PARAMETER_SCALE_FACTOR_INITIAL_LINE
-        - Azimuth: EPSG_NAME_PARAMETER_AZIMUTH_INITIAL_LINE
+        - Scale_Factor: EPSG_NAME_PARAMETER_SCALE_FACTOR_PROJECTION_CENTRE
+        - Azimuth: EPSG_NAME_PARAMETER_AZIMUTH_PROJECTION_CENTRE
         - Longitude_Of_Center: EPSG_NAME_PARAMETER_LONGITUDE_PROJECTION_CENTRE
         - Latitude_Of_Center: EPSG_NAME_PARAMETER_LATITUDE_PROJECTION_CENTRE
 

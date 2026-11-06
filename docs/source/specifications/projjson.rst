@@ -40,7 +40,7 @@ Schema
 ------
 
 A JSON schema of PROJJSON grammar is available at
-https://proj.org/schemas/v0.6/projjson.schema.json
+https://proj.org/schemas/v0.7/projjson.schema.json
 
 This schema defines a minimum set of constraints that apply to well-formed PROJJSON.
 Number of specific CRS and coordinate operation domain constraints are not expressed
@@ -169,12 +169,15 @@ of a "object usage" class. An object usage has the following optional members:
 - ``area``: (optional) value of type string which describes a geographic area
   over which a CRS or coordinate operation is applicable. e.g. "World"
 - ``bbox``: (optional) value of type object, with 4 required members:
+
   * ``east_longitude``: (required) number expressing the longitude in degrees of the eastern most part of the extent, within [-180,180] range.
   * ``west_longitude``: (required) number expressing the longitude in degrees of the western most part of the extent, within [-180,180] range.. For an extent crossing the anti-meridian, west_longitude is lower than east_longitude.
   * ``south_latitude``: (required) number expressing the latitude in degrees of the southern most part of the extent, within [-90,90] range.
   * ``north_latitude``: (required) number expressing the latitude in degrees of the northern most part of the extent, within [-90,90] range.
+
   The coordinates are expressed in a unspecified datum, with the longitudes
   relative to the international reference meridian.
+
 - ``remarks``: (optional) value of type string with an informative text that does
   not modify the defining parameters of the object. e.g "Use NTv2 file for better accuracy"
 - ``id`` (mutually exclusive with ``ids``): (optional) Identifier of the object, as defined in :ref:`identifiers`
@@ -504,6 +507,7 @@ The EPSG:32631 / "WGS 84 / UTM zone 31N" projected CRS can be expressed as
         "type": "ProjectedCRS",
         "name": "WGS 84 / UTM zone 31N",
         "base_crs": {
+            "type": "GeographicCRS",
             "name": "WGS 84",
             "datum": {
                 "type": "GeodeticReferenceFrame",
@@ -622,6 +626,12 @@ The EPSG:32631 / "WGS 84 / UTM zone 31N" projected CRS can be expressed as
             "code": 32631
         }
     }
+
+
+.. note::
+
+    The ``type`` member of the ``base_crs`` member was omitted in PROJ export of PROJJSON
+    prior to PROJ 9.6.
 
 CompoundCRS
 +++++++++++
@@ -1105,3 +1115,15 @@ Reference implementation
 ------------------------
 
 PROJJSON is available as input and output of the `PROJ <https://proj.org>`_ software since PROJ 6.2.
+
+Online CRS definitions as PROJJSON
+----------------------------------
+
+The https://spatialreference.org/ website features CRS definitions for various authorities under a
+number of formats, including PROJJSON. For example: https://spatialreference.org/ref/epsg/4326/projjson.json
+
+Copyright and License information
+---------------------------------
+
+This document is copyright Even Rouault and PROJ contributors, 2019-2024, and
+subject to the MIT license.

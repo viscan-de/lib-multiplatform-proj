@@ -35,7 +35,8 @@ Synopsis
     |    --list-crs [list-crs-filter] |
     |    --dump-db-structure [{object_definition} | {object_reference}] |
     |    {object_definition} | {object_reference} |
-    |    [--s_epoch {epoch}] -t {srs_def} [--t_epoch {epoch}])
+    |    (-s {srs_def} [--s_epoch {epoch}] -t {srs_def} [--t_epoch {epoch}]) |
+    |    ({srs_def} {srs_def})
     |
 
     where {object_definition} or {srs_def} is one of the possibilities accepted
@@ -65,6 +66,8 @@ Synopsis
     {object_reference} is a filename preceded by the '@' character.  The
     file referenced by the {object_reference} must contain a valid
     {object_definition}.
+
+    The usage of "{srs_def} {srs_def}" is equivalent to "-s {srs_def} -t {srs_def}" (*added in 9.5*).
 
 Description
 ***********
@@ -301,7 +304,7 @@ The following control parameters can appear in any order:
     Affected by options :option:`--authority`, :option:`--area`, :option:`--bbox` and :option:`--spatial-test`
 
     A visual alternative is the webpage
-    `CRS Explorer <https://crs-explorer.proj.org/?all=true>`_ .
+    `CRS Explorer <https://crs-explorer.proj.org/?all=true>` (https://crs-explorer.proj.org/?all=true).
 
 .. option:: --3d
 
@@ -616,6 +619,19 @@ Output:
 
     WKT1:GDAL string:
     PROJCS["ETRS89 / UTM zone 32N",GEOGCS["ETRS89",DATUM["European_Terrestrial_Reference_System_1989",SPHEROID["GRS 1980",6378137,298.257222101,AUTHORITY["EPSG","7019"]],AUTHORITY["EPSG","6258"]],PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]],AUTHORITY["EPSG","4258"]],PROJECTION["Transverse_Mercator"],PARAMETER["latitude_of_origin",0],PARAMETER["central_meridian",9],PARAMETER["scale_factor",0.9996],PARAMETER["false_easting",500000],PARAMETER["false_northing",0],UNIT["metre",1,AUTHORITY["EPSG","9001"]],AXIS["Easting",EAST],AXIS["Northing",NORTH],AUTHORITY["EPSG","25832"]]
+
+6. List CRS in an area
+
+.. code-block:: console
+
+      projinfo --list-crs --area Taiwan
+
+Output:
+
+.. code-block:: console
+
+      EPSG:3825 "TWD97 / TM2 zone 119"
+      EPSG:3826 "TWD97 / TM2 zone 121"...
 
 .. only:: man
 

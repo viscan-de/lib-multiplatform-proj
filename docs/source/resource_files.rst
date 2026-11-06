@@ -39,10 +39,13 @@ The following paths are checked in order:
 
   The PROJ user writable directory, which is :
 
-    * on Windows, ``${LOCALAPPDATA}/proj``
+    * on Windows, ``%LOCALAPPDATA%\proj``
     * on macOS, ``${HOME}/Library/Application Support/proj``
     * on other platforms (Linux), ``${XDG_DATA_HOME}/proj`` if
       :envvar:`XDG_DATA_HOME` is defined. Else ``${HOME}/.local/share/proj``
+
+  Applications may also customize the user writable directory using
+  :cpp:func:`proj_context_set_user_writable_directory` (since 9.5)
 
 - Path(s) set with by the environment variable :envvar:`PROJ_DATA`.
   Prior to PROJ 9.1, this environment variable was called :envvar:`PROJ_LIB`.
@@ -253,16 +256,6 @@ Portugal
 ................................................................................
 
 `Portuguese grids <http://www.fc.up.pt/pessoas/jagoncal/coordenadas/index.htm>`__ for ED50, Lisbon 1890, Lisbon 1937 and Datum 73
-
-South Africa
-................................................................................
-
-`South African grid <http://eepublishers.co.za/article/datum-transformations-using-the-ntv2-grid.html>`__ (Cape to Hartebeesthoek94 or WGS84)
-
-Spain
-................................................................................
-
-`Spanish grids <http://www.ign.es/ign/layoutIn/herramientas.do#DATUM>`__ for ED50.
 
 
 HTDP

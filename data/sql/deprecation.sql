@@ -463,6 +463,11 @@ INSERT INTO "deprecation" VALUES('compound_crs','EPSG','5832','EPSG','9928','EPS
 INSERT INTO "deprecation" VALUES('compound_crs','EPSG','5833','EPSG','9929','EPSG');
 INSERT INTO "deprecation" VALUES('compound_crs','EPSG','5834','EPSG','9930','EPSG');
 INSERT INTO "deprecation" VALUES('compound_crs','EPSG','5835','EPSG','9931','EPSG');
-INSERT INTO "deprecation" VALUES('compound_crs','EPSG','9924','EPSG','10293','EPSG');
-INSERT INTO "deprecation" VALUES('projected_crs','EPSG','8395','EPSG','10285','EPSG');
 INSERT INTO "deprecation" VALUES('projected_crs','EPSG','10480','EPSG','10481','EPSG');
+INSERT INTO "deprecation" VALUES('projected_crs','EPSG','10788','EPSG','10820','EPSG');
+INSERT INTO "deprecation" VALUES('geodetic_crs','EPSG','10783','EPSG','10176','EPSG');
+INSERT INTO "deprecation" VALUES('geodetic_crs','EPSG','10784','EPSG','10177','EPSG');
+INSERT INTO "deprecation" VALUES('geodetic_crs','EPSG','10785','EPSG','10178','EPSG');
+INSERT INTO "deprecation" VALUES('geodetic_crs','EPSG','10781','EPSG','9990','EPSG');
+INSERT INTO "deprecation" VALUES('geodetic_crs','EPSG','10780','EPSG','9989','EPSG');
+INSERT INTO "deprecation" VALUES('geodetic_crs','EPSG','10779','EPSG','9988','EPSG');

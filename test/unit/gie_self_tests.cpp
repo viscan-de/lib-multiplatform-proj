@@ -144,7 +144,7 @@ TEST(gie, cart_selftest) {
     b = proj_trans(P, PJ_FWD, b);
 
     /* Move it back to the default context */
-    proj_context_set(P, 0);
+    proj_context_set(P, nullptr);
     ASSERT_EQ(pj_get_default_ctx(), P->ctx);
 
     proj_context_destroy(ctx);
@@ -168,8 +168,8 @@ TEST(gie, cart_selftest) {
     b = proj_trans(P, PJ_FWD, obs[1]);
 
     n = proj_trans_generic(P, PJ_FWD, &(obs[0].lpz.lam), sz, 2,
-                           &(obs[0].lpz.phi), sz, 2, &(obs[0].lpz.z), sz, 2, 0,
-                           sz, 0);
+                           &(obs[0].lpz.phi), sz, 2, &(obs[0].lpz.z), sz, 2,
+                           nullptr, sz, 0);
     ASSERT_EQ(n, 2U);
 
     ASSERT_EQ(a.lpz.lam, obs[0].lpz.lam);
@@ -264,7 +264,7 @@ class gieTest : public ::testing::Test {
 TEST_F(gieTest, proj_create_crs_to_crs) {
     /* test proj_create_crs_to_crs() */
     auto P = proj_create_crs_to_crs(PJ_DEFAULT_CTX, "epsg:25832", "epsg:25833",
-                                    NULL);
+                                    nullptr);
     ASSERT_TRUE(P != nullptr);
     PJ_COORD a, b;
 
@@ -288,7 +288,7 @@ TEST_F(gieTest, proj_create_crs_to_crs) {
 
     /* we can also allow PROJ strings as a usable PJ */
     P = proj_create_crs_to_crs(PJ_DEFAULT_CTX, "proj=utm +zone=32 +datum=WGS84",
-                               "proj=utm +zone=33 +datum=WGS84", NULL);
+                               "proj=utm +zone=33 +datum=WGS84", nullptr);
     ASSERT_TRUE(P != nullptr);
     proj_destroy(P);
 
@@ -302,8 +302,8 @@ TEST_F(gieTest, proj_create_crs_to_crs) {
 
 TEST_F(gieTest, proj_create_crs_to_crs_EPSG_4326) {
 
-    auto P =
-        proj_create_crs_to_crs(PJ_DEFAULT_CTX, "EPSG:4326", "EPSG:32631", NULL);
+    auto P = proj_create_crs_to_crs(PJ_DEFAULT_CTX, "EPSG:4326", "EPSG:32631",
+                                    nullptr);
     ASSERT_TRUE(P != nullptr);
     PJ_COORD a, b;
 
@@ -327,7 +327,7 @@ TEST_F(gieTest, proj_create_crs_to_crs_EPSG_4326) {
 TEST_F(gieTest, proj_create_crs_to_crs_proj_longlat) {
 
     auto P = proj_create_crs_to_crs(
-        PJ_DEFAULT_CTX, "+proj=longlat +datum=WGS84", "EPSG:32631", NULL);
+        PJ_DEFAULT_CTX, "+proj=longlat +datum=WGS84", "EPSG:32631", nullptr);
     ASSERT_TRUE(P != nullptr);
     PJ_COORD a, b;
 
@@ -354,16 +354,9 @@ TEST(gie, info_functions) {
     PJ_GRID_INFO grid_info;
     PJ_INIT_INFO init_info;
 
-    PJ_FACTORS factors;
-
-    const PJ_OPERATIONS *oper_list;
-    const PJ_ELLPS *ellps_list;
-    const PJ_PRIME_MERIDIANS *pm_list;
-
     std::vector<char> buf(40);
     PJ *P;
     char arg[50] = {"+proj=utm; +zone=32; +ellps=GRS80"};
-    PJ_COORD a;
 
     /* ********************************************************************** */
     /*                          Test info functions                           */
@@ -486,14 +479,18 @@ TEST(gie, info_functions) {
                             "46'27\"E",
                             NULL),
                 1e-7);
+}
 
-    /* test proj_derivatives_retrieve() and proj_factors_retrieve() */
-    P = proj_create(PJ_DEFAULT_CTX, "+proj=merc +ellps=WGS84");
-    a = proj_coord(0, 0, 0, 0);
+// ---------------------------------------------------------------------------
+
+TEST(gie, proj_factors) {
+
+    PJ *P = proj_create(PJ_DEFAULT_CTX, "+proj=merc +ellps=WGS84");
+    PJ_COORD a = proj_coord(0, 0, 0, 0);
     a.lp.lam = proj_torad(12);
     a.lp.phi = proj_torad(55);
 
-    factors = proj_factors(P, a);
+    PJ_FACTORS factors = proj_factors(P, a);
     ASSERT_FALSE(proj_errno(P)); /* factors not created correctly */
 
     /* check a few key characteristics of the Mercator projection */
@@ -574,6 +571,8 @@ TEST(gie, info_functions) {
             << factors.angular_distortion;
         EXPECT_NEAR(factors.meridian_parallel_angle, M_PI_2, 1e-7)
             << factors.meridian_parallel_angle;
+        EXPECT_NEAR(factors.areal_scale, 0.99920016, 1e-7)
+            << factors.areal_scale;
         proj_destroy(P);
 
         P = proj_create(PJ_DEFAULT_CTX, "EPSG:3044");
@@ -586,6 +585,45 @@ TEST(gie, info_functions) {
                     1e-10);
         EXPECT_NEAR(factors.meridian_parallel_angle,
                     factors2.meridian_parallel_angle, 1e-109);
+        EXPECT_NEAR(factors.areal_scale, factors2.areal_scale, 1e-109);
+
+        proj_destroy(P);
+    }
+
+    // Test with a projected CRS whose datum has a non-Greenwich prime meridian
+    {
+        P = proj_create(PJ_DEFAULT_CTX, "EPSG:27571");
+
+        PJ_COORD c;
+        c.lp.lam = proj_torad(0.0689738);
+        c.lp.phi = proj_torad(49.508567);
+        const auto factors2 = proj_factors(P, c);
+
+        EXPECT_NEAR(factors2.meridional_scale, 1 - 12.26478760 * 1e-5, 1e-8);
+
+        proj_destroy(P);
+    }
+
+    // Test with a compound CRS of a projected CRS
+    {
+        P = proj_create(PJ_DEFAULT_CTX, "EPSG:5972");
+
+        PJ_COORD c;
+        c.lp.lam = proj_torad(10.729030600);
+        c.lp.phi = proj_torad(59.916494500);
+
+        {
+            const auto factors2 = proj_factors(P, c);
+            EXPECT_NEAR(factors2.meridional_scale, 1 - 28.54587730 * 1e-5,
+                        1e-8);
+        }
+
+        // Try again to test caching of internal objects
+        {
+            const auto factors2 = proj_factors(P, c);
+            EXPECT_NEAR(factors2.meridional_scale, 1 - 28.54587730 * 1e-5,
+                        1e-8);
+        }
 
         proj_destroy(P);
     }
@@ -602,6 +640,254 @@ TEST(gie, info_functions) {
         proj_destroy(P);
     }
 
+    // Test with a dummy derived projected CRS, identical to above projected CRS
+    {
+        PJ_COORD c;
+        c.lp.lam = proj_torad(9);
+        c.lp.phi = proj_torad(0);
+
+        const char *wkt =
+            "DERIVEDPROJCRS[\"unknown\",\n"
+            "    BASEPROJCRS[\"unknown\",\n"
+            "        BASEGEOGCRS[\"unknown\",\n"
+            "            DATUM[\"Unknown based on GRS 1980 ellipsoid\",\n"
+            "                ELLIPSOID[\"GRS 1980\",6378137,298.257222101,\n"
+            "                    LENGTHUNIT[\"metre\",1],\n"
+            "                    ID[\"EPSG\",7019]]],\n"
+            "            PRIMEM[\"Greenwich\",0,\n"
+            "                ANGLEUNIT[\"degree\",0.0174532925199433],\n"
+            "                ID[\"EPSG\",8901]]],\n"
+            "        CONVERSION[\"UTM zone 32N\",\n"
+            "            METHOD[\"Transverse Mercator\",\n"
+            "                ID[\"EPSG\",9807]],\n"
+            "            PARAMETER[\"Latitude of natural origin\",0,\n"
+            "                ANGLEUNIT[\"degree\",0.0174532925199433],\n"
+            "                ID[\"EPSG\",8801]],\n"
+            "            PARAMETER[\"Longitude of natural origin\",9,\n"
+            "                ANGLEUNIT[\"degree\",0.0174532925199433],\n"
+            "                ID[\"EPSG\",8802]],\n"
+            "            PARAMETER[\"Scale factor at natural origin\",0.9996,\n"
+            "                SCALEUNIT[\"unity\",1],\n"
+            "                ID[\"EPSG\",8805]],\n"
+            "            PARAMETER[\"False easting\",500000,\n"
+            "                LENGTHUNIT[\"metre\",1],\n"
+            "                ID[\"EPSG\",8806]],\n"
+            "            PARAMETER[\"False northing\",0,\n"
+            "                LENGTHUNIT[\"metre\",1],\n"
+            "                ID[\"EPSG\",8807]],\n"
+            "            ID[\"EPSG\",16032]]],\n"
+            "    DERIVINGCONVERSION[\"Scale change\",\n"
+            "        METHOD[\"Affine parametric transformation\",\n"
+            "            ID[\"EPSG\",9624]],\n"
+            "        PARAMETER[\"A0\",0,\n"
+            "            LENGTHUNIT[\"metre\",1],\n"
+            "            ID[\"EPSG\",8623]],\n"
+            "        PARAMETER[\"A1\",1,\n"
+            "            SCALEUNIT[\"coefficient\",1],\n"
+            "            ID[\"EPSG\",8624]],\n"
+            "        PARAMETER[\"A2\",0,\n"
+            "            SCALEUNIT[\"coefficient\",1],\n"
+            "            ID[\"EPSG\",8625]],\n"
+            "        PARAMETER[\"B0\",0,\n"
+            "            LENGTHUNIT[\"metre\",1],\n"
+            "            ID[\"EPSG\",8639]],\n"
+            "        PARAMETER[\"B1\",0,\n"
+            "            SCALEUNIT[\"coefficient\",1],\n"
+            "            ID[\"EPSG\",8640]],\n"
+            "        PARAMETER[\"B2\",1,\n"
+            "            SCALEUNIT[\"coefficient\",1],\n"
+            "            ID[\"EPSG\",8641]]],\n"
+            "    CS[Cartesian,2],\n"
+            "        AXIS[\"easting (X)\",east,\n"
+            "            ORDER[1],\n"
+            "            LENGTHUNIT[\"metre\",1]],\n"
+            "        AXIS[\"northing (Y)\",north,\n"
+            "            ORDER[2],\n"
+            "            LENGTHUNIT[\"metre\",1]]]";
+        P = proj_create(PJ_DEFAULT_CTX, wkt);
+        factors = proj_factors(P, c);
+        EXPECT_NEAR(factors.meridional_scale, 0.9996, 1e-8)
+            << factors.meridional_scale;
+        EXPECT_NEAR(factors.parallel_scale, 0.9996, 1e-8)
+            << factors.parallel_scale;
+        EXPECT_NEAR(factors.angular_distortion, 0, 1e-7)
+            << factors.angular_distortion;
+        EXPECT_NEAR(factors.meridian_parallel_angle, M_PI_2, 1e-7)
+            << factors.meridian_parallel_angle;
+        EXPECT_NEAR(factors.areal_scale, 0.99920016, 1e-7)
+            << factors.areal_scale;
+        proj_destroy(P);
+    }
+
+    // Test with a derived projected CRS, with slight scale change
+    {
+        PJ_COORD c;
+        c.lp.lam = proj_torad(9);
+        c.lp.phi = proj_torad(0);
+
+        const char *wkt =
+            "DERIVEDPROJCRS[\"unknown\",\n"
+            "    BASEPROJCRS[\"unknown\",\n"
+            "        BASEGEOGCRS[\"unknown\",\n"
+            "            DATUM[\"Unknown based on GRS 1980 ellipsoid\",\n"
+            "                ELLIPSOID[\"GRS 1980\",6378137,298.257222101,\n"
+            "                    LENGTHUNIT[\"metre\",1],\n"
+            "                    ID[\"EPSG\",7019]]],\n"
+            "            PRIMEM[\"Greenwich\",0,\n"
+            "                ANGLEUNIT[\"degree\",0.0174532925199433],\n"
+            "                ID[\"EPSG\",8901]]],\n"
+            "        CONVERSION[\"UTM zone 32N\",\n"
+            "            METHOD[\"Transverse Mercator\",\n"
+            "                ID[\"EPSG\",9807]],\n"
+            "            PARAMETER[\"Latitude of natural origin\",0,\n"
+            "                ANGLEUNIT[\"degree\",0.0174532925199433],\n"
+            "                ID[\"EPSG\",8801]],\n"
+            "            PARAMETER[\"Longitude of natural origin\",9,\n"
+            "                ANGLEUNIT[\"degree\",0.0174532925199433],\n"
+            "                ID[\"EPSG\",8802]],\n"
+            "            PARAMETER[\"Scale factor at natural origin\",0.9996,\n"
+            "                SCALEUNIT[\"unity\",1],\n"
+            "                ID[\"EPSG\",8805]],\n"
+            "            PARAMETER[\"False easting\",500000,\n"
+            "                LENGTHUNIT[\"metre\",1],\n"
+            "                ID[\"EPSG\",8806]],\n"
+            "            PARAMETER[\"False northing\",0,\n"
+            "                LENGTHUNIT[\"metre\",1],\n"
+            "                ID[\"EPSG\",8807]],\n"
+            "            ID[\"EPSG\",16032]]],\n"
+            "    DERIVINGCONVERSION[\"Scale change\",\n"
+            "        METHOD[\"Affine parametric transformation\",\n"
+            "            ID[\"EPSG\",9624]],\n"
+            "        PARAMETER[\"A0\",0,\n"
+            "            LENGTHUNIT[\"metre\",1],\n"
+            "            ID[\"EPSG\",8623]],\n"
+            "        PARAMETER[\"A1\",1.0001,\n"
+            "            SCALEUNIT[\"coefficient\",1],\n"
+            "            ID[\"EPSG\",8624]],\n"
+            "        PARAMETER[\"A2\",0,\n"
+            "            SCALEUNIT[\"coefficient\",1],\n"
+            "            ID[\"EPSG\",8625]],\n"
+            "        PARAMETER[\"B0\",0,\n"
+            "            LENGTHUNIT[\"metre\",1],\n"
+            "            ID[\"EPSG\",8639]],\n"
+            "        PARAMETER[\"B1\",0,\n"
+            "            SCALEUNIT[\"coefficient\",1],\n"
+            "            ID[\"EPSG\",8640]],\n"
+            "        PARAMETER[\"B2\",1.0001,\n"
+            "            SCALEUNIT[\"coefficient\",1],\n"
+            "            ID[\"EPSG\",8641]]],\n"
+            "    CS[Cartesian,2],\n"
+            "        AXIS[\"easting (X)\",east,\n"
+            "            ORDER[1],\n"
+            "            LENGTHUNIT[\"metre\",1]],\n"
+            "        AXIS[\"northing (Y)\",north,\n"
+            "            ORDER[2],\n"
+            "            LENGTHUNIT[\"metre\",1]]]";
+        P = proj_create(PJ_DEFAULT_CTX, wkt);
+        factors = proj_factors(P, c);
+        EXPECT_NEAR(factors.meridional_scale, 0.99969996, 1e-8)
+            << factors.meridional_scale;
+        EXPECT_NEAR(factors.parallel_scale, 0.99969996, 1e-8)
+            << factors.parallel_scale;
+        EXPECT_NEAR(factors.angular_distortion, 0, 1e-7)
+            << factors.angular_distortion;
+        EXPECT_NEAR(factors.meridian_parallel_angle, M_PI_2, 1e-7)
+            << factors.meridian_parallel_angle;
+        EXPECT_NEAR(factors.areal_scale, 0.99940001, 1e-7)
+            << factors.areal_scale;
+        proj_destroy(P);
+    }
+
+    // Same as above but with foot unit
+    {
+        PJ_COORD c;
+        c.lp.lam = proj_torad(9);
+        c.lp.phi = proj_torad(0);
+
+        const char *wkt =
+            "DERIVEDPROJCRS[\"unknown\",\n"
+            "    BASEPROJCRS[\"unknown\",\n"
+            "        BASEGEOGCRS[\"unknown\",\n"
+            "            DATUM[\"Unknown based on GRS 1980 ellipsoid\",\n"
+            "                ELLIPSOID[\"GRS 1980\",6378137,298.257222101,\n"
+            "                    LENGTHUNIT[\"metre\",1],\n"
+            "                    ID[\"EPSG\",7019]]],\n"
+            "            PRIMEM[\"Greenwich\",0,\n"
+            "                ANGLEUNIT[\"degree\",0.0174532925199433],\n"
+            "                ID[\"EPSG\",8901]]],\n"
+            "        CONVERSION[\"UTM zone 32N\",\n"
+            "            METHOD[\"Transverse Mercator\",\n"
+            "                ID[\"EPSG\",9807]],\n"
+            "            PARAMETER[\"Latitude of natural origin\",0,\n"
+            "                ANGLEUNIT[\"degree\",0.0174532925199433],\n"
+            "                ID[\"EPSG\",8801]],\n"
+            "            PARAMETER[\"Longitude of natural origin\",9,\n"
+            "                ANGLEUNIT[\"degree\",0.0174532925199433],\n"
+            "                ID[\"EPSG\",8802]],\n"
+            "            PARAMETER[\"Scale factor at natural origin\",0.9996,\n"
+            "                SCALEUNIT[\"unity\",1],\n"
+            "                ID[\"EPSG\",8805]],\n"
+            "            PARAMETER[\"False easting\",500000,\n"
+            "                LENGTHUNIT[\"metre\",1],\n"
+            "                ID[\"EPSG\",8806]],\n"
+            "            PARAMETER[\"False northing\",0,\n"
+            "                LENGTHUNIT[\"metre\",1],\n"
+            "                ID[\"EPSG\",8807]],\n"
+            "            ID[\"EPSG\",16032]]],\n"
+            "    DERIVINGCONVERSION[\"Scale change\",\n"
+            "        METHOD[\"Affine parametric transformation\",\n"
+            "            ID[\"EPSG\",9624]],\n"
+            "        PARAMETER[\"A0\",0,\n"
+            "            LENGTHUNIT[\"metre\",1],\n"
+            "            ID[\"EPSG\",8623]],\n"
+            // 3.2811679790026242 = 1.0 / 0.3048 * 1.0001
+            "        PARAMETER[\"A1\",3.2811679790026242,\n"
+            "            SCALEUNIT[\"coefficient\",1],\n"
+            "            ID[\"EPSG\",8624]],\n"
+            "        PARAMETER[\"A2\",0,\n"
+            "            SCALEUNIT[\"coefficient\",1],\n"
+            "            ID[\"EPSG\",8625]],\n"
+            "        PARAMETER[\"B0\",0,\n"
+            "            LENGTHUNIT[\"metre\",1],\n"
+            "            ID[\"EPSG\",8639]],\n"
+            "        PARAMETER[\"B1\",0,\n"
+            "            SCALEUNIT[\"coefficient\",1],\n"
+            "            ID[\"EPSG\",8640]],\n"
+            // 3.2811679790026242 = 1.0 / 0.3048 * 1.0001
+            "        PARAMETER[\"B2\",3.2811679790026242,\n"
+            "            SCALEUNIT[\"coefficient\",1],\n"
+            "            ID[\"EPSG\",8641]]],\n"
+            "    CS[Cartesian,2],\n"
+            "        AXIS[\"easting (X)\",east,\n"
+            "            ORDER[1],\n"
+            "            LENGTHUNIT[\"foot\",0.3048]],\n"
+            "        AXIS[\"northing (Y)\",north,\n"
+            "            ORDER[2],\n"
+            "            LENGTHUNIT[\"foot\",0.3048]]]";
+        P = proj_create(PJ_DEFAULT_CTX, wkt);
+        factors = proj_factors(P, c);
+        EXPECT_NEAR(factors.meridional_scale, 0.99969996, 1e-8)
+            << factors.meridional_scale;
+        EXPECT_NEAR(factors.parallel_scale, 0.99969996, 1e-8)
+            << factors.parallel_scale;
+        EXPECT_NEAR(factors.angular_distortion, 0, 1e-7)
+            << factors.angular_distortion;
+        EXPECT_NEAR(factors.meridian_parallel_angle, M_PI_2, 1e-7)
+            << factors.meridian_parallel_angle;
+        EXPECT_NEAR(factors.areal_scale, 0.99940001, 1e-7)
+            << factors.areal_scale;
+        proj_destroy(P);
+    }
+}
+
+// ---------------------------------------------------------------------------
+
+TEST(gie, list_functions) {
+
+    const PJ_OPERATIONS *oper_list;
+    const PJ_ELLPS *ellps_list;
+    const PJ_PRIME_MERIDIANS *pm_list;
+
     /* Check that proj_list_* functions work by looping through them */
     size_t n = 0;
     for (oper_list = proj_list_operations(); oper_list->id; ++oper_list)
@@ -616,7 +902,8 @@ TEST(gie, info_functions) {
     n = 0;
     for (pm_list = proj_list_prime_meridians(); pm_list->id; ++pm_list)
         n++;
-    ASSERT_NE(n, 0U);
+    /* hard-coded prime meridians are not updated; expect a fixed size */
+    EXPECT_EQ(n, 14U);
 }
 
 // ---------------------------------------------------------------------------
@@ -700,7 +987,7 @@ static void test_time(const char *args, double tol, double t_in, double t_exp) {
     PJ_COORD in, out;
     PJ *P = proj_create(PJ_DEFAULT_CTX, args);
 
-    ASSERT_TRUE(P != 0);
+    ASSERT_TRUE(P != nullptr);
 
     in = proj_coord(0.0, 0.0, 0.0, t_in);
 
@@ -712,7 +999,7 @@ static void test_time(const char *args, double tol, double t_in, double t_exp) {
 
     proj_destroy(P);
 
-    proj_log_level(NULL, PJ_LOG_NONE);
+    proj_log_level(nullptr, PJ_LOG_NONE);
 }
 
 // ---------------------------------------------------------------------------
@@ -744,7 +1031,7 @@ static void test_date(const char *args, double tol, double t_in, double t_exp) {
     PJ_COORD in, out;
     PJ *P = proj_create(PJ_DEFAULT_CTX, args);
 
-    ASSERT_TRUE(P != 0);
+    ASSERT_TRUE(P != nullptr);
 
     in = proj_coord(0.0, 0.0, 0.0, t_in);
 
@@ -753,7 +1040,7 @@ static void test_date(const char *args, double tol, double t_in, double t_exp) {
 
     proj_destroy(P);
 
-    proj_log_level(NULL, PJ_LOG_NONE);
+    proj_log_level(nullptr, PJ_LOG_NONE);
 }
 
 TEST(gie, unitconvert_selftest_date) {
@@ -1270,6 +1557,10 @@ TEST(gie, proj_create_crs_to_crs_from_pj_force_over) {
         auto output = proj_trans(P, PJ_FWD, input);
         auto output_over = proj_trans(P, PJ_FWD, input_over);
 
+        auto P_clone = proj_clone(ctx, P);
+        auto output_clone_over = proj_trans(P_clone, PJ_FWD, input_over);
+        proj_destroy(P_clone);
+
         auto input_inv = proj_trans(P, PJ_INV, output);
         auto input_over_inv = proj_trans(P, PJ_INV, output_over);
 
@@ -1280,6 +1571,8 @@ TEST(gie, proj_create_crs_to_crs_from_pj_force_over) {
 
         EXPECT_NEAR(output.xyz.x, 15584728.711058298, 1e-8);
         EXPECT_NEAR(output_over.xyz.x, -24490287.974520184, 1e-8);
+
+        EXPECT_EQ(output_clone_over.xyz.x, output_over.xyz.x);
 
         // The distance from 140 to 180 and -220 to -180 should be pretty much
         // the same.

@@ -95,12 +95,6 @@ template <typename To, typename From> inline To down_cast(From *f) {
     return static_cast<To>(f);
 }
 
-/* Borrowed from C++14 */
-template <typename T, typename... Args>
-std::unique_ptr<T> make_unique(Args &&...args) {
-    return std::unique_ptr<T>(new T(std::forward<Args>(args)...));
-}
-
 PROJ_FOR_TEST std::string replaceAll(const std::string &str,
                                      const std::string &before,
                                      const std::string &after);
@@ -183,6 +177,9 @@ std::string concat(const std::string &, const std::string &,
                    const std::string &) = delete;
 
 double getRoundedEpochInDecimalYear(double year);
+
+std::string join(const std::vector<std::string> &strings,
+                 const char *delimiter);
 
 } // namespace internal
 

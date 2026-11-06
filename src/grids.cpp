@@ -44,6 +44,9 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
+#include <limits>
+#include <memory>
 
 NS_PROJ_START
 
@@ -56,7 +59,8 @@ using namespace internal;
 /************************************************************************/
 
 static const int byte_order_test = 1;
-#define IS_LSB (1 == ((const unsigned char *)(&byte_order_test))[0])
+#define IS_LSB                                                                 \
+    (1 == (reinterpret_cast<const unsigned char *>(&byte_order_test))[0])
 
 static void swap_words(void *dataIn, size_t word_size, size_t word_count)
 
@@ -200,7 +204,7 @@ class GTXVerticalShiftGrid : public VerticalShiftGrid {
     PJ_CONTEXT *m_ctx;
     std::unique_ptr<File> m_fp;
     std::unique_ptr<FloatLineCache> m_cache;
-    mutable std::vector<float> m_buffer;
+    mutable std::vector<float> m_buffer{};
 
     GTXVerticalShiftGrid(const GTXVerticalShiftGrid &) = delete;
     GTXVerticalShiftGrid &operator=(const GTXVerticalShiftGrid &) = delete;
@@ -305,7 +309,7 @@ GTXVerticalShiftGrid *GTXVerticalShiftGrid::open(PJ_CONTEXT *ctx,
 
     // Cache up to 1 megapixel per GTX file
     const int maxLinesInCache = 1024 * 1024 / columns;
-    auto cache = internal::make_unique<FloatLineCache>(maxLinesInCache);
+    auto cache = std::make_unique<FloatLineCache>(maxLinesInCache);
     return new GTXVerticalShiftGrid(ctx, std::move(fp), name, columns, rows,
                                     extent, std::move(cache));
 }
@@ -484,7 +488,8 @@ class GTiffGrid : public Grid {
     bool valueAt(uint16_t sample, int x, int y, float &out) const;
 
     bool valuesAt(int x_start, int y_start, int x_count, int y_count,
-                  int sample_count, const int *sample_idx, float *out) const;
+                  int sample_count, const int *sample_idx, float *out,
+                  bool &nodataFound) const;
 
     bool isNodata(float val) const;
 
@@ -769,11 +774,12 @@ bool GTiffGrid::valueAt(uint16_t sample, int x, int yFromBottom,
 // ---------------------------------------------------------------------------
 
 bool GTiffGrid::valuesAt(int x_start, int y_start, int x_count, int y_count,
-                         int sample_count, const int *sample_idx,
-                         float *out) const {
+                         int sample_count, const int *sample_idx, float *out,
+                         bool &nodataFound) const {
     const auto getTIFFRow = [this](int y) {
         return m_bottomUp ? y : m_height - 1 - y;
     };
+    nodataFound = false;
     if (m_blockIs256Pixel && m_planarConfig == PLANARCONFIG_CONTIG &&
         m_dt == TIFFDataType::Float32 &&
         (x_start / 256) == (x_start + x_count - 1) / 256 &&
@@ -915,6 +921,9 @@ bool GTiffGrid::valuesAt(int x_start, int y_start, int x_count, int y_count,
                 if (!valueAt(static_cast<uint16_t>(sample_idx[isample]), x, y,
                              *out))
                     return false;
+                if (isNodata(*out)) {
+                    nodataFound = true;
+                }
                 ++out;
             }
         }
@@ -1314,6 +1323,15 @@ std::unique_ptr<GTiffGrid> GTiffDataset::nextGrid() {
     m_ifdIdx++;
     m_hasNextGrid = TIFFReadDirectory(m_hTIFF) != 0;
     m_nextDirOffset = TIFFCurrentDirOffset(m_hTIFF);
+
+    // If the TIFF file contains multiple grids, append the index of the grid
+    // in the grid name to help debugging.
+    if (m_ifdIdx >= 2 || m_hasNextGrid) {
+        ret->m_name += " (index ";
+        ret->m_name += std::to_string(m_ifdIdx); // 1-based
+        ret->m_name += ')';
+    }
+
     return ret;
 }
 
@@ -1357,8 +1375,6 @@ class GTiffVGridShiftSet : public VerticalShiftGridSet {
         return !m_grids.empty();
     }
 };
-
-#endif // TIFF_ENABLED
 
 // ---------------------------------------------------------------------------
 
@@ -1424,7 +1440,6 @@ insertIntoHierarchy(PJ_CONTEXT *ctx, std::unique_ptr<GridType> &&grid,
     topGrids.emplace_back(std::move(grid));
 }
 
-#ifdef TIFF_ENABLED
 // ---------------------------------------------------------------------------
 
 class GTiffVGrid : public VerticalShiftGrid {
@@ -1585,8 +1600,7 @@ GTiffVGridShiftSet::open(PJ_CONTEXT *ctx, std::unique_ptr<File> fp,
         const std::string &gridName = grid->metadataItem("grid_name");
         const std::string &parentName = grid->metadataItem("parent_grid_name");
 
-        auto vgrid =
-            internal::make_unique<GTiffVGrid>(std::move(grid), idxSample);
+        auto vgrid = std::make_unique<GTiffVGrid>(std::move(grid), idxSample);
 
         insertIntoHierarchy(ctx, std::move(vgrid), gridName, parentName,
                             set->m_grids, mapGrids);
@@ -1613,7 +1627,7 @@ VerticalShiftGridSet::open(PJ_CONTEXT *ctx, const std::string &filename) {
     if (!fp) {
         return nullptr;
     }
-    const auto actualName(fp->name());
+    const auto &actualName(fp->name());
     if (ends_with(actualName, "gtx") || ends_with(actualName, "GTX")) {
         auto grid = GTXVerticalShiftGrid::open(ctx, std::move(fp), actualName);
         if (!grid) {
@@ -1852,7 +1866,9 @@ NTv1Grid *NTv1Grid::open(PJ_CONTEXT *ctx, std::unique_ptr<File> fp,
         swap_words(header + 104, sizeof(double), 1);
     }
 
-    if (*((int *)(header + 8)) != 12) {
+    int recordCount;
+    memcpy(&recordCount, header + 8, sizeof(recordCount));
+    if (recordCount != 12) {
         pj_log(ctx, PJ_LOG_ERROR,
                _("NTv1 grid shift file has wrong record count, corrupt?"));
         proj_context_errno_set(ctx,
@@ -2041,7 +2057,7 @@ bool CTable2Grid::valueAt(int x, int y, bool compensateNTConvention,
 
 class NTv2GridSet : public HorizontalShiftGridSet {
     std::unique_ptr<File> m_fp;
-    std::unique_ptr<FloatLineCache> m_cache;
+    std::unique_ptr<FloatLineCache> m_cache{};
 
     NTv2GridSet(const NTv2GridSet &) = delete;
     NTv2GridSet &operator=(const NTv2GridSet &) = delete;
@@ -2072,7 +2088,7 @@ class NTv2Grid : public HorizontalShiftGrid {
     uint32_t m_gridIdx;
     unsigned long long m_offset;
     bool m_mustSwap;
-    mutable std::vector<float> m_buffer;
+    mutable std::vector<float> m_buffer{};
 
     NTv2Grid(const NTv2Grid &) = delete;
     NTv2Grid &operator=(const NTv2Grid &) = delete;
@@ -2319,7 +2335,7 @@ std::unique_ptr<NTv2GridSet> NTv2GridSet::open(PJ_CONTEXT *ctx,
 
     // Cache up to 1 megapixel per NTv2 file
     const int maxLinesInCache = 1024 * 1024 / largestLine;
-    set->m_cache = internal::make_unique<FloatLineCache>(maxLinesInCache);
+    set->m_cache = std::make_unique<FloatLineCache>(maxLinesInCache);
     for (const auto &kv : mapGrids) {
         kv.second->setCache(set->m_cache.get());
     }
@@ -2628,7 +2644,7 @@ GTiffHGridShiftSet::open(PJ_CONTEXT *ctx, std::unique_ptr<File> fp,
         const std::string &gridName = grid->metadataItem("grid_name");
         const std::string &parentName = grid->metadataItem("parent_grid_name");
 
-        auto hgrid = internal::make_unique<GTiffHGrid>(
+        auto hgrid = std::make_unique<GTiffHGrid>(
             std::move(grid), idxLatShift, idxLongShift, convFactorToRadian,
             positiveEast);
 
@@ -2657,7 +2673,7 @@ HorizontalShiftGridSet::open(PJ_CONTEXT *ctx, const std::string &filename) {
     if (!fp) {
         return nullptr;
     }
-    const auto actualName(fp->name());
+    const auto &actualName(fp->name());
 
     char header[160];
     /* -------------------------------------------------------------------- */
@@ -2845,8 +2861,8 @@ class GTiffGenericGrid final : public GenericShiftGrid {
     bool valueAt(int x, int y, int sample, float &out) const override;
 
     bool valuesAt(int x_start, int y_start, int x_count, int y_count,
-                  int sample_count, const int *sample_idx,
-                  float *out) const override;
+                  int sample_count, const int *sample_idx, float *out,
+                  bool &nodataFound) const override;
 
     int samplesPerPixel() const override { return m_grid->samplesPerPixel(); }
 
@@ -2887,6 +2903,10 @@ class GTiffGenericGrid final : public GenericShiftGrid {
     }
 
     bool hasChanged() const override { return m_grid->hasChanged(); }
+
+  private:
+    GTiffGenericGrid(const GTiffGenericGrid &) = delete;
+    GTiffGenericGrid &operator=(const GTiffGenericGrid &) = delete;
 };
 
 // ---------------------------------------------------------------------------
@@ -2917,9 +2937,10 @@ bool GTiffGenericGrid::valueAt(int x, int y, int sample, float &out) const {
 
 bool GTiffGenericGrid::valuesAt(int x_start, int y_start, int x_count,
                                 int y_count, int sample_count,
-                                const int *sample_idx, float *out) const {
+                                const int *sample_idx, float *out,
+                                bool &nodataFound) const {
     return m_grid->valuesAt(x_start, y_start, x_count, y_count, sample_count,
-                            sample_idx, out);
+                            sample_idx, out, nodataFound);
 }
 
 // ---------------------------------------------------------------------------
@@ -3020,7 +3041,7 @@ GTiffGenericGridShiftSet::open(PJ_CONTEXT *ctx, std::unique_ptr<File> fp,
         const std::string &gridName = grid->metadataItem("grid_name");
         const std::string &parentName = grid->metadataItem("parent_grid_name");
 
-        auto ggrid = internal::make_unique<GTiffGenericGrid>(std::move(grid));
+        auto ggrid = std::make_unique<GTiffGenericGrid>(std::move(grid));
         if (!set->m_grids.empty() && ggrid->metadataItem("TYPE").empty() &&
             !set->m_grids[0]->metadataItem("TYPE").empty()) {
             ggrid->setFirstGrid(set->m_grids[0].get());
@@ -3047,7 +3068,9 @@ GenericShiftGrid::~GenericShiftGrid() = default;
 
 bool GenericShiftGrid::valuesAt(int x_start, int y_start, int x_count,
                                 int y_count, int sample_count,
-                                const int *sample_idx, float *out) const {
+                                const int *sample_idx, float *out,
+                                bool &nodataFound) const {
+    nodataFound = false;
     for (int y = y_start; y < y_start + y_count; ++y) {
         for (int x = x_start; x < x_start + x_count; ++x) {
             for (int isample = 0; isample < sample_count; ++isample) {
@@ -3086,7 +3109,6 @@ GenericShiftGridSet::open(PJ_CONTEXT *ctx, const std::string &filename) {
     if (!fp) {
         return nullptr;
     }
-    const auto actualName(fp->name());
 
     /* -------------------------------------------------------------------- */
     /*      Load a header, to determine the file type.                      */
@@ -3100,6 +3122,7 @@ GenericShiftGridSet::open(PJ_CONTEXT *ctx, const std::string &filename) {
 
     if (IsTIFF(header_size, header)) {
 #ifdef TIFF_ENABLED
+        const std::string actualName(fp->name());
         auto set = std::unique_ptr<GenericShiftGridSet>(
             GTiffGenericGridShiftSet::open(ctx, std::move(fp), actualName));
         if (!set)
@@ -3900,3 +3923,180 @@ bool pj_bilinear_interpolation_three_samples(
 }
 
 NS_PROJ_END
+
+/*****************************************************************************/
+PJ_GRID_INFO proj_grid_info(const char *gridname) {
+    /******************************************************************************
+        Information about a named datum grid.
+
+        Returns PJ_GRID_INFO struct.
+    ******************************************************************************/
+    PJ_GRID_INFO grinfo;
+
+    /*PJ_CONTEXT *ctx = proj_context_create(); */
+    PJ_CONTEXT *ctx = pj_get_default_ctx();
+    memset(&grinfo, 0, sizeof(PJ_GRID_INFO));
+
+    const auto fillGridInfo = [&grinfo, ctx,
+                               gridname](const NS_PROJ::Grid &grid,
+                                         const std::string &format) {
+        const auto &extent = grid.extentAndRes();
+
+        /* name of grid */
+        strncpy(grinfo.gridname, gridname, sizeof(grinfo.gridname) - 1);
+
+        /* full path of grid */
+        if (!pj_find_file(ctx, gridname, grinfo.filename,
+                          sizeof(grinfo.filename) - 1,
+                          /* disable_network = */ true)) {
+            // Can happen when using a remote grid
+            grinfo.filename[0] = 0;
+        }
+
+        /* grid format */
+        strncpy(grinfo.format, format.c_str(), sizeof(grinfo.format) - 1);
+
+        /* grid size */
+        grinfo.n_lon = grid.width();
+        grinfo.n_lat = grid.height();
+
+        /* cell size */
+        grinfo.cs_lon = extent.resX;
+        grinfo.cs_lat = extent.resY;
+
+        /* bounds of grid */
+        grinfo.lowerleft.lam = extent.west;
+        grinfo.lowerleft.phi = extent.south;
+        grinfo.upperright.lam = extent.east;
+        grinfo.upperright.phi = extent.north;
+    };
+
+    {
+        const auto gridSet = NS_PROJ::VerticalShiftGridSet::open(ctx, gridname);
+        if (gridSet) {
+            const auto &grids = gridSet->grids();
+            if (!grids.empty()) {
+                const auto &grid = grids.front();
+                fillGridInfo(*grid, gridSet->format());
+                return grinfo;
+            }
+        }
+    }
+
+    {
+        const auto gridSet =
+            NS_PROJ::HorizontalShiftGridSet::open(ctx, gridname);
+        if (gridSet) {
+            const auto &grids = gridSet->grids();
+            if (!grids.empty()) {
+                const auto &grid = grids.front();
+                fillGridInfo(*grid, gridSet->format());
+                return grinfo;
+            }
+        }
+    }
+    strcpy(grinfo.format, "missing");
+    return grinfo;
+}
+
+/*****************************************************************************/
+PJ_INIT_INFO proj_init_info(const char *initname) {
+    /******************************************************************************
+        Information about a named init file.
+
+        Maximum length of initname is 64.
+
+        Returns PJ_INIT_INFO struct.
+
+        If the init file is not found all members of the return struct are set
+        to the empty string.
+
+        If the init file is found, but the metadata is missing, the value is
+        set to "Unknown".
+    ******************************************************************************/
+    int file_found;
+    char param[80], key[74];
+    paralist *start, *next;
+    PJ_INIT_INFO ininfo;
+    PJ_CONTEXT *ctx = pj_get_default_ctx();
+
+    memset(&ininfo, 0, sizeof(PJ_INIT_INFO));
+
+    file_found =
+        pj_find_file(ctx, initname, ininfo.filename, sizeof(ininfo.filename),
+                     /* disable_network = */ true);
+    if (!file_found || strlen(initname) > 64) {
+        if (strcmp(initname, "epsg") == 0 || strcmp(initname, "EPSG") == 0) {
+            const char *val;
+
+            proj_context_errno_set(ctx, 0);
+
+            strncpy(ininfo.name, initname, sizeof(ininfo.name) - 1);
+            strcpy(ininfo.origin, "EPSG");
+            val = proj_context_get_database_metadata(ctx, "EPSG.VERSION");
+            if (val) {
+                strncpy(ininfo.version, val, sizeof(ininfo.version) - 1);
+            }
+            val = proj_context_get_database_metadata(ctx, "EPSG.DATE");
+            if (val) {
+                strncpy(ininfo.lastupdate, val, sizeof(ininfo.lastupdate) - 1);
+            }
+            return ininfo;
+        }
+
+        if (strcmp(initname, "IGNF") == 0) {
+            const char *val;
+
+            proj_context_errno_set(ctx, 0);
+
+            strncpy(ininfo.name, initname, sizeof(ininfo.name) - 1);
+            strcpy(ininfo.origin, "IGNF");
+            val = proj_context_get_database_metadata(ctx, "IGNF.VERSION");
+            if (val) {
+                strncpy(ininfo.version, val, sizeof(ininfo.version) - 1);
+            }
+            val = proj_context_get_database_metadata(ctx, "IGNF.DATE");
+            if (val) {
+                strncpy(ininfo.lastupdate, val, sizeof(ininfo.lastupdate) - 1);
+            }
+            return ininfo;
+        }
+
+        return ininfo;
+    }
+
+    /* The initial memset (0) makes strncpy safe here */
+    strncpy(ininfo.name, initname, sizeof(ininfo.name) - 1);
+    strcpy(ininfo.origin, "Unknown");
+    strcpy(ininfo.version, "Unknown");
+    strcpy(ininfo.lastupdate, "Unknown");
+
+    strncpy(key, initname, 64); /* make room for ":metadata\0" at the end */
+    key[64] = 0;
+    memcpy(key + strlen(key), ":metadata", 9 + 1);
+    strcpy(param, "+init=");
+    /* The +strlen(param) avoids a cppcheck false positive warning */
+    strncat(param + strlen(param), key, sizeof(param) - 1 - strlen(param));
+
+    start = pj_mkparam(param);
+    pj_expand_init(ctx, start);
+
+    if (pj_param(ctx, start, "tversion").i)
+        strncpy(ininfo.version, pj_param(ctx, start, "sversion").s,
+                sizeof(ininfo.version) - 1);
+
+    if (pj_param(ctx, start, "torigin").i)
+        strncpy(ininfo.origin, pj_param(ctx, start, "sorigin").s,
+                sizeof(ininfo.origin) - 1);
+
+    if (pj_param(ctx, start, "tlastupdate").i)
+        strncpy(ininfo.lastupdate, pj_param(ctx, start, "slastupdate").s,
+                sizeof(ininfo.lastupdate) - 1);
+
+    for (; start; start = next) {
+        next = start->next;
+        free(start);
+    }
+
+    return ininfo;
+}

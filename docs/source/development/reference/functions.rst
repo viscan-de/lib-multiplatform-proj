@@ -448,6 +448,9 @@ Coordinate transformation
 .. doxygenfunction:: proj_trans_bounds
    :project: doxygen_api
 
+.. doxygenfunction:: proj_trans_bounds_3D
+   :project: doxygen_api
+
 
 Error reporting
 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -667,7 +670,8 @@ Lists
 
 .. c:function:: const PJ_PRIME_MERIDIANS* proj_list_prime_meridians(void)
 
-    Get a pointer to an array of prime meridians defined in PROJ. The last
+    Get a pointer to an array of hard-coded prime meridians defined in PROJ.
+    Note that this list is no longer updated. The last
     entry of the returned array is a NULL-entry. The array is statically
     allocated and does not need to be freed after use.
 
@@ -747,7 +751,29 @@ Distances
               and the third value is the reverse azimuth. The fourth coordinate
               value is unused.
 
+.. c:function:: PJ_COORD proj_geod_direct(const PJ *P, PJ_COORD a, double azimuth, double distance)
 
+    .. versionadded:: 9.7.0
+
+    Solves the direct geodesic problem for given projection ellipsoid
+
+    The coordinates in :c:data:`a` needs to be given as longitude and latitude in 
+    radians. Note that the axis order of the :c:data:`P` object is not taken into 
+    account in this function, so even though a CRS object comes with axis ordering
+    latitude/longitude coordinates used in this function should be reordered as 
+    longitude/latitude. The azimuth  :c:data:`azimuth` should be provided in radians,
+    and :c:data:`distance` should be provided in meters
+
+    :param P: Transformation or CRS object
+    :type P: const :c:type:`PJ` *
+    :param PJ_COORD a: Coordinate of first point
+    :param double azimuth: Initial azimuth from first point to second point in radians,
+                           measured clockwise from true north
+    :param double distance: Geodesic distance from the first point to the second point
+                            in meters
+    :returns: `PJ_COORD` where the first value is the longitude in radians, second
+               value is latitude in radians and third value is forward azimuth at 
+               second point in radians. The fourth coordinate value is unused.
 
 Various
 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -825,6 +851,10 @@ Various
     instantiated from a EPSG CRS code. The factors computed will be those of the
     map projection implied by the transformation from the base geographic CRS of
     the projected CRS to the projected CRS.
+    Starting with PROJ 9.6, to improve performance on repeated calls on a
+    projected CRS object, the above steps will modify the internal state of the
+    provided P object, and thus calling this function concurrently from multiple
+    threads on the same P object will no longer be supported.
 
     The input geodetic coordinate lp should be such that lp.lam is the longitude
     in radian, and lp.phi the latitude in radian (thus independently of the
@@ -1043,7 +1073,18 @@ Conversely, objects returned by :c:func:`proj_create` and :c:func:`proj_create_a
 which are not of type CRS (can be tested with :c:func:`proj_is_crs`),
 will return an error when used with functions of this section.
 
+Base functions
+~~~~~~~~~~~~~~
+
 .. doxygengroup:: iso19111_functions
    :project: doxygen_api
    :content-only:
 
+Advanced functions
+~~~~~~~~~~~~~~~~~~
+
+Available in :file:`proj.h` since PROJ 9.4. Previously were available in :file:`proj_experimental.h`.
+
+.. doxygengroup:: iso19111_advanced_functions
+   :project: doxygen_api
+   :content-only:

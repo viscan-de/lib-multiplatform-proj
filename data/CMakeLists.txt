@@ -11,21 +11,8 @@ if(NOT IS_DIRECTORY ${PROJ_DB_CACHE_DIR})
   endif()
 endif()
 
-set(CONFIG_FILES
+set(PROJ_INI
   proj.ini
-)
-
-set(PROJ_DICTIONARY
-  world
-  other.extra
-  nad27
-  GL27
-  nad83
-  nad.lst
-  CH
-  ITRF2000
-  ITRF2008
-  ITRF2014
 )
 
 #
@@ -38,14 +25,21 @@ set(GRIDSHIFT_FILES ${GSB_FILES} ${GTX_FILES})
 
 file(GLOB SCHEMA_FILES *.json)
 
+file(GLOB GEOTIFF_FILES *.tif)
+
 set(ALL_SQL_IN "${CMAKE_CURRENT_BINARY_DIR}/all.sql.in")
 set(PROJ_DB "${CMAKE_CURRENT_BINARY_DIR}/proj.db")
 include(sql_filelist.cmake)
 
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+  "${CMAKE_CURRENT_LIST_DIR}/sql/proj.db.sql.expected.md5"
+)
+file(STRINGS "${CMAKE_CURRENT_LIST_DIR}/sql/proj.db.sql.expected.md5" PROJ_DB_SQL_EXPECTED_MD5 LIMIT_COUNT 1)
+
 add_custom_command(
   OUTPUT ${PROJ_DB}
   COMMAND ${CMAKE_COMMAND} -E remove -f ${PROJ_DB}
-  COMMAND ${CMAKE_COMMAND} "-DALL_SQL_IN=${ALL_SQL_IN}" "-DEXE_SQLITE3=${EXE_SQLITE3}" "-DPROJ_DB=${PROJ_DB}" "-DPROJ_VERSION=${PROJ_VERSION}" "-DPROJ_DB_CACHE_DIR=${PROJ_DB_CACHE_DIR}"
+  COMMAND ${CMAKE_COMMAND} "-DALL_SQL_IN=${ALL_SQL_IN}" "-DEXE_SQLITE3=${EXE_SQLITE3}" "-DPROJ_DB=${PROJ_DB}" "-DPROJ_VERSION=${PROJ_VERSION}" "-DPROJ_DB_CACHE_DIR=${PROJ_DB_CACHE_DIR}" "-DPROJ_DB_SQL_EXPECTED_MD5=${PROJ_DB_SQL_EXPECTED_MD5}" "-DDATA_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}"
     -P "${CMAKE_CURRENT_SOURCE_DIR}/generate_proj_db.cmake"
   COMMAND ${CMAKE_COMMAND} -E copy ${PROJ_DB} ${CMAKE_CURRENT_BINARY_DIR}/for_tests
   DEPENDS ${SQL_FILES} "${CMAKE_CURRENT_SOURCE_DIR}/generate_proj_db.cmake"
@@ -57,7 +51,7 @@ add_custom_command(
 add_custom_target(generate_proj_db ALL DEPENDS ${PROJ_DB})
 
 if(NOT "${CMAKE_CURRENT_SOURCE_DIR}" STREQUAL "${CMAKE_CURRENT_BINARY_DIR}")
-  foreach(FILE ${CONFIG_FILES} ${PROJ_DICTIONARY} ${GRIDSHIFT_FILES})
+  foreach(FILE ${PROJ_INI} ${PROJ_DICTIONARY} ${GRIDSHIFT_FILES})
     configure_file(${FILE} ${FILE} COPYONLY)
   endforeach()
 endif()
@@ -75,7 +69,7 @@ set(DATA_FOR_TESTS
 execute_process(COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/for_tests)
 execute_process(COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/for_tests/tests)
 
-foreach(FILE ${DATA_FOR_TESTS} ${CONFIG_FILES})
+foreach(FILE ${DATA_FOR_TESTS} ${PROJ_INI})
     configure_file(${CMAKE_CURRENT_SOURCE_DIR}/${FILE} ${CMAKE_CURRENT_BINARY_DIR}/for_tests/${FILE} COPYONLY)
 endforeach()
 
@@ -98,17 +92,24 @@ endforeach()
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/tests/egm96_15_downsampled.gtx ${CMAKE_CURRENT_BINARY_DIR}/for_tests/egm96_15.gtx COPYONLY)
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/tests/ntv2_0_downsampled.gsb ${CMAKE_CURRENT_BINARY_DIR}/for_tests/ntv2_0.gsb COPYONLY)
 
+# test_cs2cs_datumfile has a special case
+execute_process(COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/for_tests/dir with space")
+configure_file(${CMAKE_CURRENT_SOURCE_DIR}/tests/conus "${CMAKE_CURRENT_BINARY_DIR}/for_tests/dir with space/myconus" COPYONLY)
+
 #
 #install
 #
 set(ALL_DATA_FILE
-  ${CONFIG_FILES}
-  ${PROJ_DICTIONARY}
   ${GRIDSHIFT_FILES}
-  ${PROJ_DB}
   ${SCHEMA_FILES}
+  ${GEOTIFF_FILES}
 )
+
+if (NOT USE_ONLY_EMBEDDED_RESOURCE_FILES)
+    list(APPEND ALL_DATA_FILE ${PROJ_INI} ${PROJ_DB} ${PROJ_DICTIONARY})
+endif()
+
 install(
   FILES ${ALL_DATA_FILE}
-  DESTINATION ${PROJ_DATA_PATH}
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/proj
 )

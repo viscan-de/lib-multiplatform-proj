@@ -76,8 +76,6 @@ Engsager
  *
  *****************************************************************************/
 
-#define PJ_LIB_
-
 #include <cassert>
 #include <complex>
 #include <cstdint>
@@ -551,7 +549,7 @@ static int parse_coefs(PJ *P, double *coefs, const char *param, int ncoefs) {
 }
 
 /*********************************************************************/
-PJ *PROJECTION(horner) {
+PJ *PJ_PROJECTION(horner) {
     /*********************************************************************/
     int degree = 0;
     HORNER *Q;
@@ -559,7 +557,7 @@ PJ *PROJECTION(horner) {
     P->inv3d = nullptr;
     P->fwd = nullptr;
     P->inv = nullptr;
-    P->left = P->right = PJ_IO_UNITS_PROJECTED;
+    P->left = P->right = PJ_IO_UNITS_WHATEVER;
     P->destructor = horner_freeup;
 
     /* Polynomial degree specified? */
@@ -642,12 +640,11 @@ PJ *PROJECTION(horner) {
         }
     }
 
-    if (0 == parse_coefs(P, (double *)(Q->fwd_origin), "fwd_origin", 2)) {
+    if (0 == parse_coefs(P, &(Q->fwd_origin->u), "fwd_origin", 2)) {
         proj_log_error(P, _("missing fwd_origin"));
         return horner_freeup(P, PROJ_ERR_INVALID_OP_MISSING_ARG);
     }
-    if (has_inv &&
-        0 == parse_coefs(P, (double *)(Q->inv_origin), "inv_origin", 2)) {
+    if (has_inv && 0 == parse_coefs(P, &(Q->inv_origin->u), "inv_origin", 2)) {
         proj_log_error(P, _("missing inv_origin"));
         return horner_freeup(P, PROJ_ERR_INVALID_OP_MISSING_ARG);
     }

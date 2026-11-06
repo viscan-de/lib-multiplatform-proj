@@ -7,8 +7,6 @@
 # Add "include(Ccache)" to CMakeLists.txt and enable
 # using the option -D USE_CCACHE=ON
 
-cmake_minimum_required(VERSION 3.4)
-
 
 option(USE_CCACHE
   "Use ccache (or clcache for MSVC) to compile C/C++ objects" OFF)
@@ -42,11 +40,12 @@ exec \"${C_LAUNCHER}\" \"${CMAKE_C_COMPILER}\" \"$@\"
 shift
 exec \"${CXX_LAUNCHER}\" \"${CMAKE_CXX_COMPILER}\" \"$@\"
 ")
-    # Note: file(CHMOD) introduced in CMake 3.19
-    execute_process(
-      COMMAND chmod a+rx
-        "${CCACHE_LAUNCH_C}"
-        "${CCACHE_LAUNCH_CXX}"
+    # Do equivalent of chmod a+rx
+    file(CHMOD "${CCACHE_LAUNCH_C}" "${CCACHE_LAUNCH_CXX}"
+      FILE_PERMISSIONS
+        OWNER_WRITE OWNER_READ OWNER_EXECUTE
+        GROUP_READ GROUP_EXECUTE
+        WORLD_READ WORLD_EXECUTE
     )
     # Set Xcode project attributes to route compilation and linking
     # through the wrapper scripts

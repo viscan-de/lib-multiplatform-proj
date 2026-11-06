@@ -57,6 +57,8 @@ performs transformation coordinate systems on a set of input points. The
 coordinate system transformation can include translation between projected
 and geographic coordinates as well as the application of datum shifts.
 
+Note however that unlike the :program:`proj`, angular input must be in decimal degrees.
+Any minutes and seconds given will be silently dropped.
 
 The following control parameters can appear in any order:
 
@@ -169,7 +171,7 @@ Should give results comparable to the classic :program:`proj` command
 
 .. code-block:: console
 
-      cct +proj=pipeline +proj=utm +ellps=GRS80 +zone=32 +step +step +inv
+      cct +proj=pipeline +ellps=GRS80 +zone=32 +step +proj=utm +step +proj=utm +inv 
 
 4. As (2) but specify input columns for longitude, latitude, height and time:
 

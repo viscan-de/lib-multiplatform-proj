@@ -13,9 +13,9 @@ invgeod
 Synopsis
 ********
 
-    **geod** *+ellps=<ellipse>* [**-afFIlptwW** [args]] [*+opt[=arg]* ...] file ...
+    **geod** *+ellps=<ellispoid>* [**-afFIlptwW** [args]] [*+opt[=arg]* ...] file ...
 
-    **invgeod** *+ellps=<ellipse>* [**-afFIlptwW** [args]] [*+opt[=arg]* ...] file ...
+    **invgeod** *+ellps=<ellispoid>* [**-afFIlptwW** [args]] [*+opt[=arg]* ...] file ...
 
 Description
 ***********
@@ -66,7 +66,7 @@ The following command-line options can appear in any order:
 .. option:: -f <format>
 
     Where *format* is a printf format string to control the output form of the
-    geographic coordinate values. The default mode is DMS.
+    geographic coordinate and azimuth values. The default mode is DMS.
 
 .. option:: -F <format>
 
@@ -122,7 +122,7 @@ Input geographic coordinates (latitude and longitude) and
 azimuthal data must be in decimal degrees or DMS format and
 input distance data must be in units consistent with the ellipsoid
 major axis or sphere radius units. The latitude must lie
-in the range [-90d,90d]. Output geographic coordinates will be
+in the range [-90d,90d]. Output geographic coordinates and azimuths will be
 in DMS (if the :option:`-f` switch is not employed) to 0.001" with trailing,
 zero-valued minute-second fields deleted. Output distance
 data will be in the same units as the ellipsoid or sphere
@@ -184,6 +184,9 @@ which gives:
 .. code-block:: console
 
     45d31'0.003"N 123d40'59.985"W 75d39'13.094"
+
+i.e., the latitude and longitude of Portland, and the
+back azimuth from Portland to Boston.
 
 .. note::
     Lack of precision in the distance value compromises the

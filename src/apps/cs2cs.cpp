@@ -36,6 +36,8 @@
 #include <string.h>
 
 #include <cassert>
+#include <cmath>
+#include <cstdint>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -61,10 +63,12 @@ static PJ *transformation = nullptr;
 
 static bool srcIsLongLat = false;
 static double srcToRadians = 0.0;
+static bool srcIsDynamic = false;
 
 static bool destIsLongLat = false;
 static double destToRadians = 0.0;
 static bool destIsLatLong = false;
+static bool destIsDynamic = false;
 
 static int reversein = 0, /* != 0 reverse input arguments */
     reverseout = 0,       /* != 0 reverse output arguments */
@@ -151,8 +155,19 @@ static void process(FILE *fid)
         /* is forward verbatim from the input.                               */
         char *before_time = s;
         double t = strtod(s, &s);
-        if (s == before_time)
+        if (s == before_time) {
             t = HUGE_VAL;
+            if (srcIsDynamic) {
+                fprintf(
+                    stderr,
+                    "Input coordinates lack a coordinate epoch, whereas the "
+                    "source CRS is dynamic. Results might be inaccurate.\n");
+            } else if (destIsDynamic) {
+                fprintf(stderr, "Input coordinates lack a coordinate epoch, "
+                                "whereas the destination CRS is dynamic. "
+                                "Results might be inaccurate.\n");
+            }
+        }
         s = before_time;
 
         if (data.v == HUGE_VAL)
@@ -229,19 +244,19 @@ static void process(FILE *fid)
                 data.u *= destToRadians * RAD_TO_DEG;
             }
             if (reverseout) {
-                printf(oform, data.v);
+                limited_fprintf_for_number(stdout, oform, data.v);
                 putchar('\t');
-                printf(oform, data.u);
+                limited_fprintf_for_number(stdout, oform, data.u);
             } else {
-                printf(oform, data.u);
+                limited_fprintf_for_number(stdout, oform, data.u);
                 putchar('\t');
-                printf(oform, data.v);
+                limited_fprintf_for_number(stdout, oform, data.v);
             }
         }
 
         putchar(' ');
         if (oform != nullptr)
-            printf(oform, z);
+            limited_fprintf_for_number(stdout, oform, z);
         else
             printf("%.3f", z);
         if (s)
@@ -256,24 +271,20 @@ static void process(FILE *fid)
 /*                          instantiate_crs()                           */
 /************************************************************************/
 
-static PJ *instantiate_crs(const std::string &definition, bool &isLongLatCS,
+static PJ *instantiate_crs(const PJ *crs_in, bool &isLongLatCS,
                            double &toRadians, bool &isLatFirst) {
-    PJ *crs =
-        proj_create(nullptr, pj_add_type_crs_if_needed(definition).c_str());
-    if (!crs) {
-        return nullptr;
-    }
 
+    PJ *crs = nullptr;
     isLongLatCS = false;
     toRadians = 0.0;
     isLatFirst = false;
 
-    auto type = proj_get_type(crs);
+    auto type = proj_get_type(crs_in);
     if (type == PJ_TYPE_BOUND_CRS) {
-        auto base = proj_get_source_crs(nullptr, crs);
-        proj_destroy(crs);
-        crs = base;
+        crs = proj_get_source_crs(nullptr, crs_in);
         type = proj_get_type(crs);
+    } else {
+        crs = proj_clone(nullptr, crs_in);
     }
     if (type == PJ_TYPE_GEOGRAPHIC_2D_CRS ||
         type == PJ_TYPE_GEOGRAPHIC_3D_CRS || type == PJ_TYPE_GEODETIC_CRS) {
@@ -307,12 +318,12 @@ static PJ *instantiate_crs(const std::string &definition, bool &isLongLatCS,
 /*               get_geog_crs_proj_string_from_proj_crs()               */
 /************************************************************************/
 
-static std::string get_geog_crs_proj_string_from_proj_crs(PJ *src,
-                                                          double &toRadians,
-                                                          bool &isLatFirst) {
+static PJ *get_geog_crs_proj_string_from_proj_crs(const PJ *src,
+                                                  double &toRadians,
+                                                  bool &isLatFirst) {
     auto srcType = proj_get_type(src);
     if (srcType != PJ_TYPE_PROJECTED_CRS) {
-        return std::string();
+        return nullptr;
     }
 
     auto base = proj_get_source_crs(nullptr, src);
@@ -321,7 +332,7 @@ static std::string get_geog_crs_proj_string_from_proj_crs(PJ *src,
     if (baseType != PJ_TYPE_GEOGRAPHIC_2D_CRS &&
         baseType != PJ_TYPE_GEOGRAPHIC_3D_CRS) {
         proj_destroy(base);
-        return std::string();
+        return nullptr;
     }
 
     auto cs = proj_crs_get_coordinate_system(nullptr, base);
@@ -342,10 +353,7 @@ static std::string get_geog_crs_proj_string_from_proj_crs(PJ *src,
 
     proj_destroy(cs);
 
-    auto retCStr = proj_as_proj_string(nullptr, base, PJ_PROJ_5, nullptr);
-    std::string ret(retCStr ? retCStr : "");
-    proj_destroy(base);
-    return ret;
+    return base;
 }
 
 // ---------------------------------------------------------------------------
@@ -388,7 +396,7 @@ int main(int argc, char **argv) {
     }
 
     /* This is just to check that pj_init() is locale-safe */
-    /* Used by nad/testvarious */
+    /* Used by test/cli/test_cs2cs_locale.sh */
     if (getenv("PROJ_USE_ENV_LOCALE") != nullptr)
         use_env_locale = 1;
 
@@ -454,9 +462,23 @@ int main(int argc, char **argv) {
                 std::exit(1);
             }
             try {
-                bboxFilter = Extent::createFromBBOX(
-                                 c_locale_stod(bbox[0]), c_locale_stod(bbox[1]),
-                                 c_locale_stod(bbox[2]), c_locale_stod(bbox[3]))
+                std::vector<double> bboxValues = {
+                    c_locale_stod(bbox[0]), c_locale_stod(bbox[1]),
+                    c_locale_stod(bbox[2]), c_locale_stod(bbox[3])};
+                const double west = bboxValues[0];
+                const double south = bboxValues[1];
+                const double east = bboxValues[2];
+                const double north = bboxValues[3];
+                constexpr double SOME_MARGIN = 10;
+                if (south < -90 - SOME_MARGIN && std::fabs(west) <= 90 &&
+                    std::fabs(east) <= 90)
+                    std::cerr << "Warning: suspicious south latitude: " << south
+                              << std::endl;
+                if (north > 90 + SOME_MARGIN && std::fabs(west) <= 90 &&
+                    std::fabs(east) <= 90)
+                    std::cerr << "Warning: suspicious north latitude: " << north
+                              << std::endl;
+                bboxFilter = Extent::createFromBBOX(west, south, east, north)
                                  .as_nullable();
             } catch (const std::exception &e) {
                 std::cerr << "Invalid value for option --bbox: " << bboxStr
@@ -580,8 +602,10 @@ int main(int argc, char **argv) {
                         }
                         proj_unit_list_destroy(units);
                     } else if (arg[1] == 'm') { /* list prime meridians */
+                        (void)fprintf(stderr, "This list is no longer updated, "
+                                              "and some values may "
+                                              "conflict with other sources.\n");
                         const struct PJ_PRIME_MERIDIANS *lpm;
-
                         for (lpm = proj_list_prime_meridians(); lpm->id; ++lpm)
                             (void)printf("%12s %-30s\n", lpm->id, lpm->defn);
                     } else
@@ -804,49 +828,55 @@ int main(int argc, char **argv) {
     proj_context_use_proj4_init_rules(
         nullptr, proj_context_get_use_proj4_init_rules(nullptr, TRUE));
 
-    PJ *src = nullptr;
-    if (!fromStr.empty()) {
+    PJ *src =
+        !fromStr.empty()
+            ? proj_create(nullptr, pj_add_type_crs_if_needed(fromStr).c_str())
+            : nullptr;
+    PJ *dst =
+        !toStr.empty()
+            ? proj_create(nullptr, pj_add_type_crs_if_needed(toStr).c_str())
+            : nullptr;
+
+    PJ *src_unbound = nullptr;
+    if (src) {
         bool ignored;
-        src = instantiate_crs(fromStr, srcIsLongLat, srcToRadians, ignored);
-        if (!src) {
+        src_unbound = instantiate_crs(src, srcIsLongLat, srcToRadians, ignored);
+        if (!src_unbound) {
             emess(3, "cannot instantiate source coordinate system");
         }
     }
 
-    PJ *dst = nullptr;
-    if (!toStr.empty()) {
-        dst =
-            instantiate_crs(toStr, destIsLongLat, destToRadians, destIsLatLong);
-        if (!dst) {
+    PJ *dst_unbound = nullptr;
+    if (dst) {
+        dst_unbound =
+            instantiate_crs(dst, destIsLongLat, destToRadians, destIsLatLong);
+        if (!dst_unbound) {
             emess(3, "cannot instantiate target coordinate system");
         }
     }
 
-    if (toStr.empty()) {
-        assert(src);
-        toStr = get_geog_crs_proj_string_from_proj_crs(src, destToRadians,
-                                                       destIsLatLong);
-        if (toStr.empty()) {
+    if (!dst) {
+        assert(src_unbound);
+        dst = get_geog_crs_proj_string_from_proj_crs(src_unbound, destToRadians,
+                                                     destIsLatLong);
+        if (!dst) {
             emess(3,
                   "missing target CRS and source CRS is not a projected CRS");
         }
         destIsLongLat = true;
-    } else if (fromStr.empty()) {
-        assert(dst);
+    } else if (!src) {
+        assert(dst_unbound);
         bool ignored;
-        fromStr =
-            get_geog_crs_proj_string_from_proj_crs(dst, srcToRadians, ignored);
-        if (fromStr.empty()) {
+        src = get_geog_crs_proj_string_from_proj_crs(dst_unbound, srcToRadians,
+                                                     ignored);
+        if (!src) {
             emess(3,
                   "missing source CRS and target CRS is not a projected CRS");
         }
         srcIsLongLat = true;
     }
-    proj_destroy(src);
-    proj_destroy(dst);
-
-    src = proj_create(nullptr, pj_add_type_crs_if_needed(fromStr).c_str());
-    dst = proj_create(nullptr, pj_add_type_crs_if_needed(toStr).c_str());
+    proj_destroy(src_unbound);
+    proj_destroy(dst_unbound);
 
     if (promoteTo3D) {
         auto src3D = proj_crs_promote_to_3D(nullptr, nullptr, src);
@@ -899,7 +929,7 @@ int main(int argc, char **argv) {
             sourceEpochDbl = c_locale_stod(sourceEpoch);
         } catch (const std::exception &e) {
             sourceEpochDbl = 0;
-            emess(3, e.what());
+            emess(3, "%s", e.what());
         }
         srcMetadata =
             proj_coordinate_metadata_create(nullptr, src, sourceEpochDbl);
@@ -908,6 +938,8 @@ int main(int argc, char **argv) {
         }
         proj_destroy(src);
         src = srcMetadata;
+    } else if (proj_crs_is_dynamic(nullptr, src)) {
+        srcIsDynamic = true;
     }
 
     if (!targetEpoch.empty()) {
@@ -917,7 +949,7 @@ int main(int argc, char **argv) {
             targetEpochDbl = c_locale_stod(targetEpoch);
         } catch (const std::exception &e) {
             targetEpochDbl = 0;
-            emess(3, e.what());
+            emess(3, "%s", e.what());
         }
         dstMetadata =
             proj_coordinate_metadata_create(nullptr, dst, targetEpochDbl);
@@ -926,6 +958,8 @@ int main(int argc, char **argv) {
         }
         proj_destroy(dst);
         dst = dstMetadata;
+    } else if (proj_crs_is_dynamic(nullptr, dst)) {
+        destIsDynamic = true;
     }
 
     std::string authorityOption; /* keep this variable in this outer scope ! */
@@ -994,7 +1028,7 @@ int main(int argc, char **argv) {
 
         } else {
             if ((fid = fopen(*eargv, "rt")) == nullptr) {
-                emess(-2, *eargv, "input file");
+                emess(-2, "input file: %s", *eargv);
                 continue;
             }
             emess_dat.File_name = *eargv;

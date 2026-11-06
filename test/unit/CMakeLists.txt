@@ -1,87 +1,103 @@
 # CMake configuration for PROJ unit tests
+# External GTest provided by (e.g.) libgtest-dev
 
-find_package(GTest 1.8.1)
-if(GTest_FOUND)
-  option(USE_EXTERNAL_GTEST "Compile against external GTest" ON)
-else()
-  option(USE_EXTERNAL_GTEST "Compile against external GTest" OFF)
+set(MIN_GTest_VERSION "1.8.1")
+
+if(NOT CMAKE_REQUIRED_QUIET)
+  message(CHECK_START "Looking for GTest")
 endif()
+find_package(GTest QUIET)
+set(USE_EXTERNAL_GTEST_DEFAULT OFF)
+if(GTest_FOUND)
+  if(NOT CMAKE_REQUIRED_QUIET)
+    message(CHECK_PASS "found (${GTest_VERSION})")
+  endif()
+  if(GTest_VERSION VERSION_LESS MIN_GTest_VERSION)
+    message(WARNING "External GTest version is too old")
+  else()
+    set(USE_EXTERNAL_GTEST_DEFAULT ON)
+  endif()
+else()
+  if(NOT CMAKE_REQUIRED_QUIET)
+    message(CHECK_FAIL "not found")
+  endif()
+endif()
+
+option(USE_EXTERNAL_GTEST
+  "Compile against external GTest"
+  ${USE_EXTERNAL_GTEST_DEFAULT}
+)
 
 if(USE_EXTERNAL_GTEST)
 
-if(NOT GTest_FOUND)
-    message(FATAL_ERROR "External GTest >= 1.8.1 not found")
-endif()
-message(STATUS "Using external GTest")
+  if(NOT GTest_FOUND)
+    message(SEND_ERROR "External GTest >= ${MIN_GTest_VERSION} not found, \
+      skipping some tests")
+    # exit the remainder of this file
+    return()
+  endif()
+  message(STATUS "Using external GTest")
 
-# CMake < 3.20.0 uses GTest::GTest
-# CMake >= 3.20 uses GTest::gtest, and deprecates GTest::GTest
-# so for older CMake, create an alias from GTest::GTest to GTest::gtest
-if(NOT TARGET GTest::gtest)
-    add_library(GTest::gtest INTERFACE IMPORTED)
-    set_target_properties(GTest::gtest PROPERTIES
-                          INTERFACE_LINK_LIBRARIES "GTest::GTest")
-endif()
+elseif(HAS_NETWORK)
 
+  message(STATUS "Fetching GTest from GitHub ...")
+
+  # Add Google Test
+  #
+  # See https://github.com/google/googletest/blob/main/googletest/README.md
+
+  if(POLICY CMP0135)
+    cmake_policy(SET CMP0135 NEW)  # for DOWNLOAD_EXTRACT_TIMESTAMP option
+  endif()
+
+  set(GTEST_VERSION "1.15.2")
+
+  include(FetchContent)
+  FetchContent_Declare(
+    googletest
+    URL https://github.com/google/googletest/archive/refs/tags/v${GTEST_VERSION}.zip
+    EXCLUDE_FROM_ALL  # ignored before CMake 3.28
+  )
+
+  # For Windows: Prevent overriding the parent project's compiler/linker settings
+  set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+
+  if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.28.0")
+    FetchContent_MakeAvailable(googletest)
+  else()
+    # Pre CMake 3.28 workaround to prevent installing files
+    FetchContent_GetProperties(googletest)
+    if(NOT googletest_POPULATED)
+      FetchContent_Populate(googletest)
+      add_subdirectory(${googletest_SOURCE_DIR} ${googletest_BINARY_DIR} EXCLUDE_FROM_ALL)
+    endif()
+  endif()
 else()
-
-message(STATUS "Using internal GTest")
-
-#
-# Build Google Test
-#
-# Source https://github.com/google/googletest/blob/master/googletest/README.md
-# Download and unpack googletest at configure time
-configure_file(
-  ${PROJ_SOURCE_DIR}/test/googletest/CMakeLists.txt.in
-  ${PROJ_BINARY_DIR}/googletest-download/CMakeLists.txt)
-
-if(CYGWIN)
-# needed at least with gcc 11.3.0 Cygwin, otherwise build errors in
-# in googletest-src/googletest/include/gtest/internal/gtest-port.h related to
-# fileno() and other functions, when building gtest or including it
-add_definitions(-D_GNU_SOURCE)
+  if(TESTING_USE_NETWORK)
+    set(_msg_detail "install GTest dependency")
+  else()
+    set(_msg_detail
+      "either install GTest dependency, or if possible, \
+      set TESTING_USE_NETWORK=ON to fetch content from GitHub"
+    )
+  endif()
+  message(WARNING "Tests that require GTest will be skipped; ${_msg_detail}")
+  # exit the remainder of this file
+  return()
 endif()
-
-execute_process(COMMAND ${CMAKE_COMMAND} -G "${CMAKE_GENERATOR}" .
-  RESULT_VARIABLE result
-  WORKING_DIRECTORY ${PROJ_BINARY_DIR}/googletest-download)
-if(result)
-  message(FATAL_ERROR "CMake step for googletest failed: ${result}")
-endif()
-execute_process(COMMAND ${CMAKE_COMMAND} --build .
-  RESULT_VARIABLE result
-  WORKING_DIRECTORY ${PROJ_BINARY_DIR}/googletest-download)
-if(result)
-  message(FATAL_ERROR "Build step for googletest failed: ${result}")
-endif()
-# Prevent overriding the parent project's compiler/linker
-# settings on Windows
-set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
-# Add googletest directly to our build. This defines
-# the gtest and gtest_main targets.
-option(INSTALL_GTEST "Enable installation of googletest" OFF)
-add_subdirectory(
-  ${PROJ_BINARY_DIR}/googletest-src
-  ${PROJ_BINARY_DIR}/googletest-build
-  EXCLUDE_FROM_ALL)
-
-# Provide the same target name as find_package(GTest)
-add_library(GTest::gtest ALIAS gtest)
-
-endif()  # USE_EXTERNAL_GTEST
 
 #
 # Build PROJ unit tests
 #
 
 include_directories(${PROJ_SOURCE_DIR}/include)
-include_directories(${SQLITE3_INCLUDE_DIR})
+
 # Add the directory containing proj_config.h
 include_directories(${PROJ_BINARY_DIR}/src)
 
 # Apply to targets in the current directory and below
-add_compile_options(${PROJ_CXX_WARN_FLAGS})
+add_compile_options("$<$<COMPILE_LANGUAGE:C>:${PROJ_C_WARN_FLAGS}>")
+add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:${PROJ_CXX_WARN_FLAGS}>")
 
 set(PROJ_TEST_ENVIRONMENT
   "PROJ_SKIP_READ_USER_WRITABLE_DIRECTORY=YES"
@@ -133,7 +149,7 @@ else()
     PROPERTY ENVIRONMENT ${PROJ_TEST_ENVIRONMENT})
 endif()
 
-add_executable(proj_test_cpp_api
+set(PROJ_TEST_CPP_API_SOURCES
   main.cpp
   test_util.cpp
   test_common.cpp
@@ -146,16 +162,27 @@ add_executable(proj_test_cpp_api
   test_datum.cpp
   test_factory.cpp
   test_c_api.cpp
-  test_grids.cpp)
+  test_grids.cpp
+  test_projinfo_lib.cpp)
+add_executable(proj_test_cpp_api ${PROJ_TEST_CPP_API_SOURCES})
+set_property(SOURCE ${PROJ_TEST_CPP_API_SOURCES} PROPERTY SKIP_UNITY_BUILD_INCLUSION ON)
+
 target_link_libraries(proj_test_cpp_api
   PRIVATE GTest::gtest
-  PRIVATE ${PROJ_LIBRARIES}
-  PRIVATE ${SQLITE3_LIBRARY})
+  PRIVATE SQLite3::SQLite3
+  PRIVATE ${PROJ_LIBRARIES})
 add_test(NAME proj_test_cpp_api COMMAND proj_test_cpp_api)
 set_property(TEST proj_test_cpp_api
   PROPERTY ENVIRONMENT ${PROJ_TEST_ENVIRONMENT})
 if(TIFF_ENABLED)
   target_compile_definitions(proj_test_cpp_api PRIVATE -DTIFF_ENABLED)
+endif()
+
+if(EMBED_RESOURCE_FILES)
+    target_compile_definitions(proj_test_cpp_api PRIVATE EMBED_RESOURCE_FILES)
+endif()
+if (USE_ONLY_EMBEDDED_RESOURCE_FILES)
+    target_compile_definitions(proj_test_cpp_api PRIVATE USE_ONLY_EMBEDDED_RESOURCE_FILES)
 endif()
 
 add_executable(gie_self_tests
@@ -177,19 +204,12 @@ add_executable(test_network
   test_network.cpp)
 if(CURL_ENABLED)
   target_compile_definitions(test_network PRIVATE -DCURL_ENABLED)
-  if( CMAKE_VERSION VERSION_LESS 3.11 AND CMAKE_CROSSCOMPILING )
-      # Hack needed for ubuntu:18.04 mingw64 cross compiling to avoid
-      # -isystem to be emitted (similar to https://discourse.cmake.org/t/use-of-isystem/1574)
-      target_include_directories(test_network PRIVATE ${CURL_INCLUDE_DIRS})
-      target_link_libraries(test_network PRIVATE ${CURL_LIBRARIES})
-  else()
-      target_link_libraries(test_network PRIVATE CURL::libcurl)
-  endif()
+  target_link_libraries(test_network PRIVATE CURL::libcurl)
 endif()
 target_link_libraries(test_network
   PRIVATE GTest::gtest
-  PRIVATE ${PROJ_LIBRARIES}
-  PRIVATE ${SQLITE3_LIBRARY})
+  PRIVATE SQLite3::SQLite3
+  PRIVATE ${PROJ_LIBRARIES})
 if(TIFF_ENABLED)
 add_test(NAME test_network COMMAND test_network)
 set_property(TEST test_network
@@ -199,6 +219,11 @@ endif()
 add_executable(test_defmodel
   main.cpp
   test_defmodel.cpp)
+if(NLOHMANN_JSON STREQUAL "external")
+  target_compile_definitions(test_defmodel PRIVATE EXTERNAL_NLOHMANN_JSON)
+  target_link_libraries(test_defmodel
+    PRIVATE $<BUILD_INTERFACE:nlohmann_json::nlohmann_json>)
+endif()
 target_link_libraries(test_defmodel
   PRIVATE GTest::gtest
   PRIVATE ${PROJ_LIBRARIES})
@@ -209,6 +234,11 @@ set_property(TEST test_defmodel
 add_executable(test_tinshift
   main.cpp
   test_tinshift.cpp)
+if(NLOHMANN_JSON STREQUAL "external")
+  target_compile_definitions(test_tinshift PRIVATE EXTERNAL_NLOHMANN_JSON)
+  target_link_libraries(test_tinshift
+    PRIVATE $<BUILD_INTERFACE:nlohmann_json::nlohmann_json>)
+endif()
 target_link_libraries(test_tinshift
   PRIVATE GTest::gtest
   PRIVATE ${PROJ_LIBRARIES})
@@ -226,7 +256,29 @@ add_test(NAME test_misc COMMAND test_misc)
 set_property(TEST test_misc
   PROPERTY ENVIRONMENT ${PROJ_TEST_ENVIRONMENT})
 
-if (Threads_FOUND AND CMAKE_USE_PTHREADS_INIT)
+add_executable(test_tmerczoned
+  main.cpp
+  test_tmerczoned.cpp)
+target_link_libraries(test_tmerczoned
+  PRIVATE GTest::gtest
+  PRIVATE ${PROJ_LIBRARIES})
+add_test(NAME test_tmerczoned COMMAND test_tmerczoned)
+set_property(TEST test_tmerczoned
+  PROPERTY ENVIRONMENT ${PROJ_TEST_ENVIRONMENT})
+
+add_executable(test_polyhedral
+  main.cpp
+  test_polyhedral.cpp)
+target_link_libraries(test_polyhedral
+  PRIVATE GTest::gtest
+  PRIVATE ${PROJ_LIBRARIES})
+target_include_directories(test_polyhedral
+  PRIVATE ${PROJECT_SOURCE_DIR}/src/projections)
+add_test(NAME test_polyhedral COMMAND test_polyhedral)
+set_property(TEST test_polyhedral
+  PROPERTY ENVIRONMENT ${PROJ_TEST_ENVIRONMENT})
+
+if (Threads_FOUND AND CMAKE_USE_PTHREADS_INIT AND NOT APPLE)
 add_definitions(-DPROJ_HAS_PTHREADS)
 add_executable(test_fork
   test_fork.c)

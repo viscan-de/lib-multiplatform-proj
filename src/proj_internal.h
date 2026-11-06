@@ -76,6 +76,7 @@
 #include "proj/common.hpp"
 #include "proj/coordinateoperation.hpp"
 
+#include <cmath>
 #include <string>
 #include <vector>
 
@@ -343,7 +344,9 @@ struct PJCoordOperation {
     std::string name{};
     double accuracy = -1.0;
     double pseudoArea = 0.0;
+    std::string areaName{};
     bool isOffshore = false;
+    bool isUnknownAreaName = false;
     bool isPriorityOp = false;
     bool srcIsLonLatDegree = false;
     bool srcIsLatLonDegree = false;
@@ -364,8 +367,8 @@ struct PJCoordOperation {
                      double minySrcIn, double maxxSrcIn, double maxySrcIn,
                      double minxDstIn, double minyDstIn, double maxxDstIn,
                      double maxyDstIn, PJ *pjIn, const std::string &nameIn,
-                     double accuracyIn, double pseudoAreaIn, bool isOffshoreIn,
-                     const PJ *pjSrcGeocentricToLonLatIn,
+                     double accuracyIn, double pseudoAreaIn,
+                     const char *areaName, const PJ *pjSrcGeocentricToLonLatIn,
                      const PJ *pjDstGeocentricToLonLatIn);
 
     PJCoordOperation(const PJCoordOperation &) = delete;
@@ -377,7 +380,9 @@ struct PJCoordOperation {
           minyDst(other.minyDst), maxxDst(other.maxxDst),
           maxyDst(other.maxyDst), pj(proj_clone(ctx, other.pj)),
           name(std::move(other.name)), accuracy(other.accuracy),
-          pseudoArea(other.pseudoArea), isOffshore(other.isOffshore),
+          pseudoArea(other.pseudoArea), areaName(other.areaName),
+          isOffshore(other.isOffshore),
+          isUnknownAreaName(other.isUnknownAreaName),
           isPriorityOp(other.isPriorityOp),
           srcIsLonLatDegree(other.srcIsLonLatDegree),
           srcIsLatLonDegree(other.srcIsLatLonDegree),
@@ -399,7 +404,9 @@ struct PJCoordOperation {
           minyDst(other.minyDst), maxxDst(other.maxxDst),
           maxyDst(other.maxyDst), name(std::move(other.name)),
           accuracy(other.accuracy), pseudoArea(other.pseudoArea),
-          isOffshore(other.isOffshore), isPriorityOp(other.isPriorityOp),
+          areaName(std::move(other.areaName)), isOffshore(other.isOffshore),
+          isUnknownAreaName(other.isUnknownAreaName),
+          isPriorityOp(other.isPriorityOp),
           srcIsLonLatDegree(other.srcIsLonLatDegree),
           srcIsLatLonDegree(other.srcIsLatLonDegree),
           dstIsLonLatDegree(other.dstIsLonLatDegree),
@@ -422,7 +429,7 @@ struct PJCoordOperation {
                maxxDst == other.maxxDst && maxyDst == other.maxyDst &&
                name == other.name &&
                proj_is_equivalent_to(pj, other.pj, PJ_COMP_STRICT) &&
-               accuracy == other.accuracy && isOffshore == other.isOffshore;
+               accuracy == other.accuracy && areaName == other.areaName;
     }
 
     bool operator!=(const PJCoordOperation &other) const {
@@ -444,6 +451,18 @@ enum class TMercAlgo {
           // Evenden/Snyder
     EVENDEN_SNYDER,
     PODER_ENGSAGER,
+};
+
+enum class AuxLat {
+    GEOGRAPHIC, // 0
+    PARAMETRIC,
+    GEOCENTRIC,
+    RECTIFYING,
+    CONFORMAL,
+    AUTHALIC,
+    NUMBER, // The number of auxiliary latitudes = 6
+    // The order of the expansion in n (ACCIDENTALLY equal to AUXNUMBER)
+    ORDER = 6,
 };
 
 /* base projection data structure */
@@ -669,6 +688,9 @@ struct PJconsts {
         true; /* to remove in PROJ 10? */
     bool skipNonInstantiable = true;
 
+    // Used internally by proj_factors()
+    PJ *cached_op_for_proj_factors = nullptr;
+
     /*************************************************************************************
 
                  E N D   O F    G E N E R A L   P A R A M E T E R   S T R U C T
@@ -678,6 +700,8 @@ struct PJconsts {
     PJconsts();
     PJconsts(const PJconsts &) = delete;
     PJconsts &operator=(const PJconsts &) = delete;
+
+    void copyStateFrom(const PJconsts &);
 };
 
 /* Parameter list (a copy of the +proj=... etc. parameters) */
@@ -772,7 +796,7 @@ struct projFileApiCallbackAndData {
 };
 
 /* proj thread context */
-struct pj_ctx {
+struct PROJ_GCC_DLL pj_ctx {
     std::string lastFullErrorMessage{}; // used by proj_context_errno_string
     int last_errno = 0;
     int debug_level = PJ_LOG_ERROR;
@@ -797,6 +821,9 @@ struct pj_ctx {
                                void *user_data) = nullptr;
     void *file_finder_user_data = nullptr;
 
+    // Cache result of pj_find_file()
+    std::map<std::string, std::string> lookupedFiles{};
+
     bool defer_grid_opening = false; // set transiently by pj_obj_create()
 
     projFileApiCallbackAndData fileApi{};
@@ -808,6 +835,7 @@ struct pj_ctx {
     std::string endpoint{};
     projNetworkCallbacksAndData networking{};
     std::string ca_bundle_path{};
+    bool native_ca = false;
     projGridChunkCache gridChunkCache{};
     TMercAlgo defaultTmercAlgo =
         TMercAlgo::PODER_ENGSAGER; // can be overridden by content of proj.ini
@@ -825,14 +853,14 @@ struct pj_ctx {
 
     pj_ctx &operator=(const pj_ctx &) = delete;
 
-    projCppContext *get_cpp_context();
+    projCppContext PROJ_FOR_TEST *get_cpp_context();
     void set_search_paths(const std::vector<std::string> &search_paths_in);
     void set_ca_bundle_path(const std::string &ca_bundle_path_in);
 
     static pj_ctx createDefault();
 };
 
-#ifdef PJ_LIB_
+#ifndef DO_NOT_DEFINE_PROJ_HEAD
 #define PROJ_HEAD(name, desc) static const char des_##name[] = desc
 
 #define OPERATION(name, NEED_ELLPS)                                            \
@@ -859,14 +887,14 @@ struct pj_ctx {
     PJ *pj_projection_specific_setup_##name(PJ *P)
 
 /* In ISO19000 lingo, an operation is either a conversion or a transformation */
-#define CONVERSION(name, need_ellps) OPERATION(name, need_ellps)
-#define TRANSFORMATION(name, need_ellps) OPERATION(name, need_ellps)
+#define PJ_CONVERSION(name, need_ellps) OPERATION(name, need_ellps)
+#define PJ_TRANSFORMATION(name, need_ellps) OPERATION(name, need_ellps)
 
 /* In PROJ.4 a projection is a conversion taking angular input and giving scaled
  * linear output */
-#define PROJECTION(name) CONVERSION(name, 1)
+#define PJ_PROJECTION(name) PJ_CONVERSION(name, 1)
 
-#endif /* def PJ_LIB_ */
+#endif /* DO_NOT_DEFINE_PROJ_HEAD */
 
 /* procedure prototypes */
 double PROJ_DLL dmstor(const char *, char **);
@@ -883,6 +911,7 @@ PROJVALUE PROJ_DLL pj_param(PJ_CONTEXT *ctx, paralist *, const char *);
 paralist PROJ_DLL *pj_param_exists(paralist *list, const char *parameter);
 paralist PROJ_DLL *pj_mkparam(const char *);
 paralist *pj_mkparam_ws(const char *str, const char **next_str);
+double pj_parse_t_final(PJ *P);
 
 int PROJ_DLL pj_ell_set(PJ_CONTEXT *ctx, paralist *, double *, double *);
 int pj_datum_set(PJ_CONTEXT *, paralist *, PJ *);
@@ -898,19 +927,36 @@ void *free_params(PJ_CONTEXT *ctx, paralist *start, int errlev);
 double *pj_enfn(double);
 double pj_mlfn(double, double, double, const double *);
 double pj_inv_mlfn(double, const double *);
-double pj_qsfn(double, double, double);
 double pj_tsfn(double, double, double);
 double pj_msfn(double, double, double);
 double PROJ_DLL pj_phi2(PJ_CONTEXT *, const double, const double);
 double pj_sinhpsi2tanphi(PJ_CONTEXT *, const double, const double);
-double *pj_authset(double);
-double pj_authlat(double, double *);
+
+// From latitudes.cpp
+double pj_conformal_lat(double phi, const PJ *P);
+double pj_conformal_lat_inverse(double chi, const PJ *P);
+
+double *pj_authalic_lat_compute_coeffs(double n);
+double pj_authalic_lat_q(double sinphi, const PJ *P);
+double pj_authalic_lat(double phi, double sinphi, double cosphi,
+                       const double *APA, const PJ *P, double qp);
+double pj_authalic_lat_inverse(double beta, const double *APA, const PJ *P,
+                               double qp);
+void pj_auxlat_coeffs(double n, AuxLat auxin, AuxLat auxout, double F[]);
+double pj_polyval(double x, const double p[], int N);
+double pj_clenshaw(double szeta, double czeta, const double F[], int K);
+double pj_auxlat_convert(double phi, double sphi, double cphi, const double F[],
+                         int K = int(AuxLat::ORDER));
+double pj_auxlat_convert(double phi, const double F[],
+                         int K = int(AuxLat::ORDER));
+void pj_auxlat_convert(double sphi, double cphi, double &saux, double &caux,
+                       const double F[], int K = int(AuxLat::ORDER));
+double pj_rectifying_radius(double n);
 
 COMPLEX pj_zpoly1(COMPLEX, const COMPLEX *, int);
 COMPLEX pj_zpolyd1(COMPLEX, const COMPLEX *, int, COMPLEX *);
 
 int pj_deriv(PJ_LP, double, const PJ *, struct DERIVS *);
-int pj_factors(PJ_LP, const PJ *, double, struct FACTORS *);
 
 void *proj_mdist_ini(double);
 double proj_mdist(double, double, double, const void *);
@@ -944,8 +990,6 @@ void pj_load_ini(PJ_CONTEXT *ctx);
 std::string PROJ_DLL pj_context_get_grid_cache_filename(PJ_CONTEXT *ctx);
 
 // For use by projsync
-void PROJ_DLL pj_context_set_user_writable_directory(PJ_CONTEXT *ctx,
-                                                     const std::string &path);
 std::string PROJ_DLL pj_get_relative_share_proj(PJ_CONTEXT *ctx);
 
 std::vector<PJCoordOperation>
@@ -960,6 +1004,8 @@ int pj_get_suggested_operation(PJ_CONTEXT *ctx,
 const PJ_UNITS *pj_list_linear_units();
 const PJ_UNITS *pj_list_angular_units();
 
+void pj_clear_proj_info();
+
 void pj_clear_hgridshift_knowngrids_cache();
 void pj_clear_vgridshift_knowngrids_cache();
 void pj_clear_gridshift_knowngrids_cache();
@@ -970,6 +1016,10 @@ PJ_LP pj_generic_inverse_2d(PJ_XY xy, PJ *P, PJ_LP lpInitial,
                             double deltaXYTolerance);
 
 PJ *pj_obj_create(PJ_CONTEXT *ctx, const NS_PROJ::util::BaseObjectNNPtr &objIn);
+
+PJ_DIRECTION pj_opposite_direction(PJ_DIRECTION dir);
+
+void pj_warn_about_missing_grid(PJ *P);
 
 /*****************************************************************************/
 /*                                                                           */
@@ -1001,7 +1051,7 @@ PJ_LPZ pj_inv3d(PJ_XYZ, PJ *);
 
 void pj_clear_initcache(void);
 void PROJ_DLL pj_pr_list(PJ *); /* used by proj.cpp */
-char *pj_get_def(PJ *, int);
+char *pj_get_def(const PJ *, int);
 int pj_has_inverse(PJ *);
 
 char *pj_strdup(const char *str);
@@ -1013,8 +1063,10 @@ bool pj_log_active(PJ_CONTEXT *ctx, int level);
 void pj_log(PJ_CONTEXT *ctx, int level, const char *fmt, ...);
 void pj_stderr_logger(void *, int, const char *);
 
-int pj_find_file(PJ_CONTEXT *ctx, const char *short_filename,
-                 char *out_full_filename, size_t out_full_filename_size);
+// PROJ_DLL for tests
+int PROJ_DLL pj_find_file(PJ_CONTEXT *ctx, const char *short_filename,
+                          char *out_full_filename,
+                          size_t out_full_filename_size, bool disable_network);
 
 // To remove when PROJ_LIB definitely goes away
 void PROJ_DLL pj_stderr_proj_lib_deprecation_warning();

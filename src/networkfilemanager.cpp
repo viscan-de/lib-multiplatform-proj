@@ -35,6 +35,16 @@
 #define _GNU_SOURCE
 #endif
 
+#if defined(EMSCRIPTEN_FETCH_ENABLED)
+#ifndef __EMSCRIPTEN_PTHREADS__
+#error "__EMSCRIPTEN_PTHREADS__ not defined. Are you setting -pthread?"
+#endif
+#ifdef CURL_ENABLED
+#error "EMSCRIPTEN_FETCH is not compatible with CURL. Use only one."
+#endif
+#define DO_EMSCRIPTEN_FETCH
+#endif
+
 #include <stdlib.h>
 
 #include <algorithm>
@@ -45,6 +55,7 @@
 #include "filemanager.hpp"
 #include "proj.h"
 #include "proj/internal/internal.hpp"
+#include "proj/internal/io_internal.hpp"
 #include "proj/internal/lru_cache.hpp"
 #include "proj_internal.h"
 #include "sqlite3_utils.hpp"
@@ -52,6 +63,13 @@
 #ifdef CURL_ENABLED
 #include <curl/curl.h>
 #include <sqlite3.h> // for sqlite3_snprintf
+#endif
+
+#ifdef DO_EMSCRIPTEN_FETCH
+#include <emscripten/fetch.h>
+#include <iostream>
+#include <sqlite3.h> // for sqlite3_snprintf
+#include <unordered_map>
 #endif
 
 #include <sys/stat.h>
@@ -179,7 +197,6 @@ class DiskChunkCache {
     PJ_CONTEXT *ctx_ = nullptr;
     std::string path_{};
     sqlite3 *hDB_ = nullptr;
-    std::string thisNamePtr_{};
     std::unique_ptr<SQLite3VFS> vfs_{};
 
     explicit DiskChunkCache(PJ_CONTEXT *ctx, const std::string &path);
@@ -1596,6 +1613,13 @@ static std::string pj_context_get_bundle_path(PJ_CONTEXT *ctx) {
     return ctx->ca_bundle_path;
 }
 
+#if CURL_AT_LEAST_VERSION(7, 71, 0)
+static bool pj_context_get_native_ca(PJ_CONTEXT *ctx) {
+    pj_load_ini(ctx);
+    return ctx->native_ca;
+}
+#endif
+
 // ---------------------------------------------------------------------------
 
 CurlFileHandle::CurlFileHandle(PJ_CONTEXT *ctx, const char *url, CURL *handle)
@@ -1623,7 +1647,19 @@ CurlFileHandle::CurlFileHandle(PJ_CONTEXT *ctx, const char *url, CURL *handle)
 #if defined(SSL_OPTIONS)
     // https://curl.se/libcurl/c/CURLOPT_SSL_OPTIONS.html
     auto ssl_options = static_cast<long>(SSL_OPTIONS);
+#if CURL_AT_LEAST_VERSION(7, 71, 0)
+    if (pj_context_get_native_ca(ctx)) {
+        ssl_options = ssl_options | CURLSSLOPT_NATIVE_CA;
+    }
+#endif
     CHECK_RET(ctx, curl_easy_setopt(handle, CURLOPT_SSL_OPTIONS, ssl_options));
+#else
+#if CURL_AT_LEAST_VERSION(7, 71, 0)
+    if (pj_context_get_native_ca(ctx)) {
+        CHECK_RET(ctx, curl_easy_setopt(handle, CURLOPT_SSL_OPTIONS,
+                                        (long)CURLSSLOPT_NATIVE_CA));
+    }
+#endif
 #endif
 
     const auto ca_bundle_path = pj_context_get_bundle_path(ctx);
@@ -1676,7 +1712,9 @@ static double GetNewRetryDelay(int response_code, double dfOldDelay,
         // S3 sends some client timeout errors as 400 Client Error
         (response_code == 400 && pszErrBuf &&
          strstr(pszErrBuf, "RequestTimeout")) ||
-        (pszCurlError && strstr(pszCurlError, "Connection timed out"))) {
+        (pszCurlError && strstr(pszCurlError, "Connection reset by peer")) ||
+        (pszCurlError && strstr(pszCurlError, "Connection timed out")) ||
+        (pszCurlError && strstr(pszCurlError, "SSL connection timeout"))) {
         // Use an exponential backoff factor of 2 plus some random jitter
         // We don't care about cryptographic quality randomness, hence:
         // coverity[dont_call]
@@ -1901,6 +1939,268 @@ static const char *pj_curl_get_header_value(PJ_CONTEXT *,
     return handle->m_lastval.c_str();
 }
 
+#elif defined(DO_EMSCRIPTEN_FETCH)
+
+constexpr double MIN_RETRY_DELAY_MS = 500;
+constexpr double MAX_RETRY_DELAY_MS = 60000;
+struct EmscriptenFileHandle {
+    PJ_CONTEXT *m_ctx; // for logging? TODO
+    std::string m_url;
+    std::unordered_map<std::string, std::string> m_headers;
+    std::string m_lastval{};
+    std::string m_useragent{};
+
+    EmscriptenFileHandle(const EmscriptenFileHandle &) = delete;
+    EmscriptenFileHandle &operator=(const EmscriptenFileHandle &) = delete;
+    explicit EmscriptenFileHandle(PJ_CONTEXT *ctx, const char *url);
+    ~EmscriptenFileHandle();
+
+    static PROJ_NETWORK_HANDLE *
+    open(PJ_CONTEXT *, const char *url, unsigned long long offset,
+         size_t size_to_read, void *buffer, size_t *out_size_read,
+         size_t error_string_max_size, char *out_error_string, void *);
+};
+
+EmscriptenFileHandle::EmscriptenFileHandle(PJ_CONTEXT *ctx, const char *url)
+    : m_ctx(ctx), m_url(url) {
+
+    pj_log(ctx, PJ_LOG_DEBUG, "EmscriptenFileHandle created with url %s", url);
+    if (getenv("PROJ_NO_USERAGENT") == nullptr) {
+        m_useragent = "PROJ " STR(PROJ_VERSION_MAJOR) "." STR(
+            PROJ_VERSION_MINOR) "." STR(PROJ_VERSION_PATCH);
+        const auto exeName = std::string{}; // TODO: GetExecutableName();
+        if (!exeName.empty()) {
+            m_useragent = exeName + " using " + m_useragent;
+        }
+    }
+}
+
+EmscriptenFileHandle::~EmscriptenFileHandle() {}
+
+// Same as in Curl?
+static double GetNewRetryDelay(int response_code, double dfOldDelay,
+                               const char *pszErrBuf,
+                               const char *pszCurlError) {
+    if (response_code == 429 || response_code == 500 ||
+        (response_code >= 502 && response_code <= 504) ||
+        // S3 sends some client timeout errors as 400 Client Error
+        (response_code == 400 && pszErrBuf &&
+         strstr(pszErrBuf, "RequestTimeout")) ||
+        (pszCurlError && strstr(pszCurlError, "Connection reset by peer")) ||
+        (pszCurlError && strstr(pszCurlError, "Connection timed out")) ||
+        (pszCurlError && strstr(pszCurlError, "SSL connection timeout"))) {
+        // Use an exponential backoff factor of 2 plus some random jitter
+        // We don't care about cryptographic quality randomness, hence:
+        // coverity[dont_call]
+        return dfOldDelay * (2 + rand() * 0.5 / RAND_MAX);
+    } else {
+        return 0;
+    }
+}
+
+#define DO_TRACE_FETCH 0
+#if DO_TRACE_FETCH != 0
+#define TRACE_FETCH(data)                                                      \
+    do {                                                                       \
+        std::cout << data << std::endl;                                        \
+    } while (false)
+#else
+#define TRACE_FETCH(data)
+#endif
+
+static size_t pj_emscripten_read_range(PJ_CONTEXT *ctx,
+                                       PROJ_NETWORK_HANDLE *raw_handle,
+                                       unsigned long long offset,
+                                       size_t size_to_read, void *buffer,
+                                       size_t error_string_max_size,
+                                       char *out_error_string, void *) {
+    auto handle = reinterpret_cast<EmscriptenFileHandle *>(raw_handle);
+
+    double oldDelay = MIN_RETRY_DELAY_MS;
+
+    char szBuffer[128];
+    sqlite3_snprintf(sizeof(szBuffer), szBuffer, "bytes=%llu-%llu", offset,
+                     offset + size_to_read - 1);
+
+    // To work in the browser, we need to run the fetch part in Web Worker,
+    // otherwise we cannot run it synchronous. (at least with my tests)
+    // It is easier running all PROJ in the Web Worker (that is the test done).
+    // Documentation says compiling with pthread flag is needed.
+    // https://emscripten.org/docs/api_reference/fetch.html#synchronous-fetches
+    // We encapsulate the code related to empscripten_fetch in a lambda.
+    // Some tests running this lambda in a thread were partially successful.
+    size_t real_read = 0;
+    const std::string url = handle->m_url;
+    auto fetching = [&]() {
+        emscripten_fetch_t *fetch = nullptr;
+        while (true) {
+
+            emscripten_fetch_attr_t attr;
+            emscripten_fetch_attr_init(&attr);
+            strcpy(attr.requestMethod, "GET");
+            const char *requestHeaders[] = {"Range", szBuffer, nullptr};
+            attr.requestHeaders = requestHeaders;
+            attr.attributes = EMSCRIPTEN_FETCH_LOAD_TO_MEMORY |
+                              EMSCRIPTEN_FETCH_SYNCHRONOUS |
+                              EMSCRIPTEN_FETCH_REPLACE;
+            if (fetch) {
+                emscripten_fetch_close(fetch);
+            }
+
+            TRACE_FETCH("Pre-fetch, url: " << url << ", range: " << szBuffer);
+            fetch = emscripten_fetch(&attr, url.c_str());
+            // emscripten_fetch_wait(fetch, -1); // This is deprecated
+            TRACE_FETCH("Post-fetch");
+
+            if (!fetch) {
+                snprintf(out_error_string, error_string_max_size,
+                         "Cannot init emscripten_fetch for url %s",
+                         url.c_str());
+                return;
+            }
+            const auto response_code = fetch->status;
+            TRACE_FETCH("Received HTTP response code: " << response_code);
+            if (response_code == 0 || response_code >= 300) {
+                const double delay =
+                    GetNewRetryDelay(static_cast<int>(response_code), oldDelay,
+                                     fetch->data, fetch->statusText);
+                if (delay != 0 && delay < MAX_RETRY_DELAY_MS) {
+                    pj_log(ctx, PJ_LOG_TRACE,
+                           "Got a HTTP %ld error. Retrying in %d ms",
+                           response_code, static_cast<int>(delay));
+                    TRACE_FETCH("HTTP error " << response_code
+                                              << ", retrying in " << delay
+                                              << " ms");
+
+                    sleep_ms(static_cast<int>(delay));
+                    oldDelay = delay;
+                } else {
+                    if (out_error_string) {
+                        if (fetch->statusText[0]) {
+                            snprintf(out_error_string, error_string_max_size,
+                                     "%s", fetch->statusText);
+                        } else {
+                            snprintf(out_error_string, error_string_max_size,
+                                     "HTTP error %hu: %s", response_code,
+                                     fetch->data);
+                        }
+                    }
+                    TRACE_FETCH("HTTP error for " << url);
+                    emscripten_fetch_close(fetch);
+                    return;
+                }
+            } else {
+                break;
+            }
+        } // end of while(true)
+
+        if (out_error_string && error_string_max_size) {
+            out_error_string[0] = '\0';
+        }
+
+        const size_t numBytes = static_cast<size_t>(fetch->numBytes);
+
+        TRACE_FETCH("Read bytes: " << numBytes);
+        TRACE_FETCH("Size to read: " << size_to_read);
+
+        if (fetch->readyState != 4) {
+            std::cout << "fetch ready state (" << fetch->readyState
+                      << ") is not 4. That's a problem " << std::endl;
+            return;
+        }
+
+        real_read = std::min(size_to_read, numBytes);
+        if (numBytes) {
+            memcpy(buffer, fetch->data, real_read);
+        }
+        TRACE_FETCH("Real read: " << real_read);
+
+        // get the http headers
+        {
+            // https://github.com/emscripten-core/emscripten/blob/56c214a/test/fetch/test_fetch_headers_received.c
+            size_t headersLengthBytes =
+                emscripten_fetch_get_response_headers_length(fetch) + 1;
+            TRACE_FETCH("Headers length: " << headersLengthBytes);
+            char *headerString = (char *)malloc(headersLengthBytes);
+            assert(headerString);
+
+            emscripten_fetch_get_response_headers(fetch, headerString,
+                                                  headersLengthBytes);
+            TRACE_FETCH("Raw headers:\n" << headerString);
+
+            char **responseHeaders =
+                emscripten_fetch_unpack_response_headers(headerString);
+            assert(responseHeaders);
+
+            free(headerString);
+
+            TRACE_FETCH("Parsed headers:");
+            int numHeaders = 0;
+            for (; responseHeaders[numHeaders * 2]; ++numHeaders) {
+                // Check both the header and its value are present.
+                assert(responseHeaders[(numHeaders * 2) + 1]);
+                std::string key(responseHeaders[numHeaders * 2]);
+                std::string val(responseHeaders[(numHeaders * 2) + 1]);
+                TRACE_FETCH("  " << key << ": " << val);
+                std::transform(key.begin(), key.end(), key.begin(), ::tolower);
+                handle->m_headers.emplace(key, val);
+            }
+            TRACE_FETCH("Finished receiving " << numHeaders << " headers");
+            emscripten_fetch_free_unpacked_response_headers(responseHeaders);
+        }
+
+        TRACE_FETCH("Pre-close");
+        emscripten_fetch_close(fetch);
+        TRACE_FETCH("Post-close");
+        return;
+    };
+    fetching();
+    TRACE_FETCH("Post-fetching");
+
+    if (real_read == 0) {
+        std::cout << "Problems in fetch:" << out_error_string << std::endl;
+    }
+
+    return real_read;
+}
+
+static const char *
+pj_emscripten_get_header_value(PJ_CONTEXT *, PROJ_NETWORK_HANDLE *raw_handle,
+                               const char *header_name, void *) {
+    TRACE_FETCH("EmscriptenFileHandle::header_name " << header_name);
+    auto handle = reinterpret_cast<EmscriptenFileHandle *>(raw_handle);
+    std::string key(header_name);
+    std::transform(key.begin(), key.end(), key.begin(), ::tolower);
+    const auto it = handle->m_headers.find(key);
+    if (it != handle->m_headers.end()) {
+        TRACE_FETCH("EmscriptenFileHandle::header_value " << it->second);
+        return it->second.c_str();
+    }
+    return nullptr;
+}
+
+static void pj_emscripten_close(PJ_CONTEXT *, PROJ_NETWORK_HANDLE *handle,
+                                void * /*user_data*/) {
+    delete reinterpret_cast<EmscriptenFileHandle *>(handle);
+}
+
+PROJ_NETWORK_HANDLE *EmscriptenFileHandle::open(
+    PJ_CONTEXT *ctx, const char *url, unsigned long long offset,
+    size_t size_to_read, void *buffer, size_t *out_size_read,
+    size_t error_string_max_size, char *out_error_string, void *) {
+
+    auto file = std::unique_ptr<EmscriptenFileHandle>(
+        new EmscriptenFileHandle(ctx, url));
+
+    PROJ_NETWORK_HANDLE *handle =
+        reinterpret_cast<PROJ_NETWORK_HANDLE *>(file.get());
+    *out_size_read = pj_emscripten_read_range(ctx, handle, offset, size_to_read,
+                                              buffer, error_string_max_size,
+                                              out_error_string, nullptr);
+
+    return reinterpret_cast<PROJ_NETWORK_HANDLE *>(file.release());
+}
+
 #else
 
 // ---------------------------------------------------------------------------
@@ -1935,6 +2235,11 @@ void FileManager::fillDefaultNetworkInterface(PJ_CONTEXT *ctx) {
     ctx->networking.close = pj_curl_close;
     ctx->networking.read_range = pj_curl_read_range;
     ctx->networking.get_header_value = pj_curl_get_header_value;
+#elif defined(DO_EMSCRIPTEN_FETCH)
+    ctx->networking.open = EmscriptenFileHandle::open;
+    ctx->networking.close = pj_emscripten_close;
+    ctx->networking.read_range = pj_emscripten_read_range;
+    ctx->networking.get_header_value = pj_emscripten_get_header_value;
 #else
     ctx->networking.open = no_op_network_open;
     ctx->networking.close = no_op_network_close;
@@ -1955,24 +2260,25 @@ NS_PROJ_END
 // ---------------------------------------------------------------------------
 
 #ifdef WIN32
-static const char dir_chars[] = "/\\";
+static const char nfm_dir_chars[] = "/\\";
 #else
-static const char dir_chars[] = "/";
+static const char nfm_dir_chars[] = "/";
 #endif
 
-static bool is_tilde_slash(const char *name) {
-    return *name == '~' && strchr(dir_chars, name[1]);
+static bool nfm_is_tilde_slash(const char *name) {
+    return *name == '~' && strchr(nfm_dir_chars, name[1]);
 }
 
-static bool is_rel_or_absolute_filename(const char *name) {
-    return strchr(dir_chars, *name) ||
-           (*name == '.' && strchr(dir_chars, name[1])) ||
-           (!strncmp(name, "..", 2) && strchr(dir_chars, name[2])) ||
-           (name[0] != '\0' && name[1] == ':' && strchr(dir_chars, name[2]));
+static bool nfm_is_rel_or_absolute_filename(const char *name) {
+    return strchr(nfm_dir_chars, *name) ||
+           (*name == '.' && strchr(nfm_dir_chars, name[1])) ||
+           (!strncmp(name, "..", 2) && strchr(nfm_dir_chars, name[2])) ||
+           (name[0] != '\0' && name[1] == ':' &&
+            strchr(nfm_dir_chars, name[2]));
 }
 
 static std::string build_url(PJ_CONTEXT *ctx, const char *name) {
-    if (!is_tilde_slash(name) && !is_rel_or_absolute_filename(name) &&
+    if (!nfm_is_tilde_slash(name) && !nfm_is_rel_or_absolute_filename(name) &&
         !starts_with(name, "http://") && !starts_with(name, "https://")) {
         std::string remote_file(proj_context_get_url_endpoint(ctx));
         if (!remote_file.empty()) {
@@ -2042,6 +2348,8 @@ int proj_context_set_enable_network(PJ_CONTEXT *ctx, int enable) {
     pj_load_ini(ctx);
     ctx->networking.enabled = enable != FALSE;
 #ifdef CURL_ENABLED
+    return ctx->networking.enabled;
+#elif defined(DO_EMSCRIPTEN_FETCH)
     return ctx->networking.enabled;
 #else
     return ctx->networking.enabled &&
@@ -2315,6 +2623,17 @@ int proj_is_download_needed(PJ_CONTEXT *ctx, const char *url_or_filename,
 
 // ---------------------------------------------------------------------------
 
+static NS_PROJ::io::DatabaseContextPtr nfm_getDBcontext(PJ_CONTEXT *ctx) {
+    try {
+        return ctx->get_cpp_context()->getDatabaseContext().as_nullable();
+    } catch (const std::exception &e) {
+        pj_log(ctx, PJ_LOG_DEBUG, "%s", e.what());
+        return nullptr;
+    }
+}
+
+// ---------------------------------------------------------------------------
+
 /** Download a file in the PROJ user-writable directory.
  *
  * The file will only be downloaded if it does not exist yet in the
@@ -2363,12 +2682,28 @@ int proj_download_file(PJ_CONTEXT *ctx, const char *url_or_filename,
     }
 
     const auto url(build_url(ctx, url_or_filename));
-    const char *filename = strrchr(url.c_str(), '/');
-    if (filename == nullptr)
+    const char *lastSlash = strrchr(url.c_str(), '/');
+    if (lastSlash == nullptr)
         return false;
     const auto localFilename(
         std::string(proj_context_get_user_writable_directory(ctx, true)) +
-        filename);
+        lastSlash);
+
+    // Evict potential existing (empty) entry from ctx->lookupedFiles if we
+    // have tried previously from accessing the non-existing local file.
+    // Cf https://github.com/OSGeo/PROJ/issues/4397
+    {
+        const char *short_filename = lastSlash + 1;
+        auto iter = ctx->lookupedFiles.find(short_filename);
+        if (iter != ctx->lookupedFiles.end()) {
+            ctx->lookupedFiles.erase(iter);
+        }
+
+        auto dbContext = nfm_getDBcontext(ctx);
+        if (dbContext) {
+            dbContext->invalidateGridInfo(short_filename);
+        }
+    }
 
 #ifdef _WIN32
     const int nPID = GetCurrentProcessId();

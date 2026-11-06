@@ -176,7 +176,6 @@ struct WKTFormatter::Private {
     std::string hDatumExtension_{};
     std::string vDatumExtension_{};
     crs::GeographicCRSPtr geogCRSOfCompoundCRS_{};
-    std::vector<bool> inversionStack_{false};
     std::string result_{};
 
     // cppcheck-suppress functionStatic
@@ -205,7 +204,7 @@ WKTFormatterNNPtr WKTFormatter::create(Convention convention,
                                        // cppcheck-suppress passedByValue
                                        DatabaseContextPtr dbContext) {
     auto ret = NN_NO_CHECK(WKTFormatter::make_unique<WKTFormatter>(convention));
-    ret->d->dbContext_ = dbContext;
+    ret->d->dbContext_ = std::move(dbContext);
     return ret;
 }
 
@@ -357,7 +356,7 @@ const std::string &WKTFormatter::toString() const {
 // ---------------------------------------------------------------------------
 
 WKTFormatter::WKTFormatter(Convention convention)
-    : d(internal::make_unique<Private>()) {
+    : d(std::make_unique<Private>()) {
     d->params_.convention_ = convention;
     switch (convention) {
     case Convention::WKT2_2019:
@@ -426,7 +425,8 @@ void WKTFormatter::Private::addNewLine() { result_ += '\n'; }
 // ---------------------------------------------------------------------------
 
 void WKTFormatter::Private::addIndentation() {
-    result_ += std::string(indentLevel_ * params_.indentWidth_, ' ');
+    result_ += std::string(
+        static_cast<size_t>(indentLevel_) * params_.indentWidth_, ' ');
 }
 
 // ---------------------------------------------------------------------------
@@ -888,25 +888,6 @@ void WKTFormatter::ingestWKTNode(const WKTNodeNNPtr &node) {
     endNode();
 }
 
-#ifdef unused
-// ---------------------------------------------------------------------------
-
-void WKTFormatter::startInversion() {
-    d->inversionStack_.push_back(!d->inversionStack_.back());
-}
-
-// ---------------------------------------------------------------------------
-
-void WKTFormatter::stopInversion() {
-    assert(!d->inversionStack_.empty());
-    d->inversionStack_.pop_back();
-}
-
-// ---------------------------------------------------------------------------
-
-bool WKTFormatter::isInverted() const { return d->inversionStack_.back(); }
-#endif
-
 //! @endcond
 
 // ---------------------------------------------------------------------------
@@ -914,7 +895,7 @@ bool WKTFormatter::isInverted() const { return d->inversionStack_.back(); }
 //! @cond Doxygen_Suppress
 
 static WKTNodeNNPtr
-    null_node(NN_NO_CHECK(internal::make_unique<WKTNode>(std::string())));
+    null_node(NN_NO_CHECK(std::make_unique<WKTNode>(std::string())));
 
 static inline bool isNull(const WKTNodeNNPtr &node) {
     return &node == &null_node;
@@ -1037,7 +1018,7 @@ const WKTNodeNNPtr &WKTNode::Private::lookForChild(
  * @param valueIn the name of the node.
  */
 WKTNode::WKTNode(const std::string &valueIn)
-    : d(internal::make_unique<Private>(valueIn)) {}
+    : d(std::make_unique<Private>(valueIn)) {}
 
 // ---------------------------------------------------------------------------
 
@@ -1187,7 +1168,7 @@ WKTNodeNNPtr WKTNode::createFrom(const std::string &wkt, size_t indexStart,
         }
     }
 
-    auto node = NN_NO_CHECK(internal::make_unique<WKTNode>(value));
+    auto node = NN_NO_CHECK(std::make_unique<WKTNode>(value));
 
     if (indexStart > 0) {
         if (wkt[i] == ',') {
@@ -1227,7 +1208,7 @@ WKTNodeNNPtr WKTNode::createFrom(const std::string &wkt, size_t indexStart,
  *
  * @param wkt the WKT string to parse.
  * @param indexStart the start index in the wkt string.
- * @throw ParsingException
+ * @throw ParsingException if the string cannot be parsed.
  */
 WKTNodeNNPtr WKTNode::createFrom(const std::string &wkt, size_t indexStart) {
     size_t indexEnd;
@@ -1285,6 +1266,7 @@ struct WKTParser::Private {
     bool strict_ = true;
     bool unsetIdentifiersIfIncompatibleDef_ = true;
     std::list<std::string> warningList_{};
+    std::list<std::string> grammarErrorList_{};
     std::vector<double> toWGS84Parameters_{};
     std::string datumPROJ4Grids_{};
     bool esriStyle_ = false;
@@ -1292,28 +1274,23 @@ struct WKTParser::Private {
     DatabaseContextPtr dbContext_{};
     crs::GeographicCRSPtr geogCRSOfCompoundCRS_{};
 
-    static constexpr int MAX_PROPERTY_SIZE = 1024;
-    PropertyMap **properties_{};
-    int propertyCount_ = 0;
+    static constexpr unsigned int MAX_PROPERTY_SIZE = 1024;
+    std::vector<std::unique_ptr<PropertyMap>> properties_{};
 
-    Private() { properties_ = new PropertyMap *[MAX_PROPERTY_SIZE]; }
-
-    ~Private() {
-        for (int i = 0; i < propertyCount_; i++) {
-            delete properties_[i];
-        }
-        delete[] properties_;
-    }
+    Private() = default;
+    ~Private() = default;
     Private(const Private &) = delete;
     Private &operator=(const Private &) = delete;
 
-    void emitRecoverableWarning(const std::string &errorMsg);
+    void emitRecoverableWarning(const std::string &warningMsg);
+    void emitGrammarError(const std::string &errorMsg);
     void emitRecoverableMissingUNIT(const std::string &parentNodeName,
                                     const UnitOfMeasure &fallbackUnit);
 
     BaseObjectNNPtr build(const WKTNodeNNPtr &node);
 
-    IdentifierPtr buildId(const WKTNodeNNPtr &node, bool tolerant,
+    IdentifierPtr buildId(const WKTNodeNNPtr &parentNode,
+                          const WKTNodeNNPtr &node, bool tolerant,
                           bool removeInverseOf);
 
     PropertyMap &buildProperties(const WKTNodeNNPtr &node,
@@ -1368,7 +1345,8 @@ struct WKTParser::Private {
                                   const WKTNodeNNPtr &parentNode,
                                   const UnitOfMeasure &defaultAngularUnit);
 
-    GeodeticCRSNNPtr buildGeodeticCRS(const WKTNodeNNPtr &node);
+    GeodeticCRSNNPtr buildGeodeticCRS(const WKTNodeNNPtr &node,
+                                      bool forceGeocentricIfNoCs = false);
 
     CRSNNPtr buildDerivedGeodeticCRS(const WKTNodeNNPtr &node);
 
@@ -1493,7 +1471,7 @@ struct WKTParser::Private {
 
 // ---------------------------------------------------------------------------
 
-WKTParser::WKTParser() : d(internal::make_unique<Private>()) {}
+WKTParser::WKTParser() : d(std::make_unique<Private>()) {}
 
 // ---------------------------------------------------------------------------
 
@@ -1536,6 +1514,20 @@ std::list<std::string> WKTParser::warningList() const {
 
 // ---------------------------------------------------------------------------
 
+/** \brief Return the list of grammar errors found during parsing.
+ *
+ * Grammar errors are non-compliance issues with respect to the WKT grammar.
+ *
+ * \note The list might be non-empty only is setStrict(false) has been called.
+ *
+ * @since PROJ 9.5
+ */
+std::list<std::string> WKTParser::grammarErrorList() const {
+    return d->grammarErrorList_;
+}
+
+// ---------------------------------------------------------------------------
+
 //! @cond Doxygen_Suppress
 void WKTParser::Private::emitRecoverableWarning(const std::string &errorMsg) {
     if (strict_) {
@@ -1544,6 +1536,19 @@ void WKTParser::Private::emitRecoverableWarning(const std::string &errorMsg) {
         warningList_.push_back(errorMsg);
     }
 }
+//! @endcond
+
+// ---------------------------------------------------------------------------
+
+//! @cond Doxygen_Suppress
+void WKTParser::Private::emitGrammarError(const std::string &errorMsg) {
+    if (strict_) {
+        throw ParsingException(errorMsg);
+    } else {
+        grammarErrorList_.push_back(errorMsg);
+    }
+}
+//! @endcond
 
 // ---------------------------------------------------------------------------
 
@@ -1589,6 +1594,7 @@ static ParsingException buildRethrow(const char *funcName,
 
 // ---------------------------------------------------------------------------
 
+//! @cond Doxygen_Suppress
 std::string WKTParser::Private::stripQuotes(const WKTNodeNNPtr &node) {
     return ::stripQuotes(node->GP()->value());
 }
@@ -1601,7 +1607,8 @@ double WKTParser::Private::asDouble(const WKTNodeNNPtr &node) {
 
 // ---------------------------------------------------------------------------
 
-IdentifierPtr WKTParser::Private::buildId(const WKTNodeNNPtr &node,
+IdentifierPtr WKTParser::Private::buildId(const WKTNodeNNPtr &parentNode,
+                                          const WKTNodeNNPtr &node,
                                           bool tolerant, bool removeInverseOf) {
     const auto *nodeP = node->GP();
     const auto &nodeChildren = nodeP->children();
@@ -1623,7 +1630,7 @@ IdentifierPtr WKTParser::Private::buildId(const WKTNodeNNPtr &node,
                 std::string codeSpaceOut;
                 if (dbContext_->getVersionedAuthority(codeSpace, version,
                                                       codeSpaceOut)) {
-                    codeSpace = codeSpaceOut;
+                    codeSpace = std::move(codeSpaceOut);
                     version.clear();
                 }
             }
@@ -1634,6 +1641,26 @@ IdentifierPtr WKTParser::Private::buildId(const WKTNodeNNPtr &node,
         }
 
         auto code = stripQuotes(nodeChildren[1]);
+
+        // Prior to PROJ 9.5, when synthetizing an ID for a CONVERSION UTM Zone
+        // south, we generated a wrong value. Auto-fix that
+        const auto &parentNodeKeyword(parentNode->GP()->value());
+        if (parentNodeKeyword == WKTConstants::CONVERSION &&
+            codeSpace == Identifier::EPSG) {
+            const auto &parentNodeChildren = parentNode->GP()->children();
+            if (!parentNodeChildren.empty()) {
+                const auto parentNodeName(stripQuotes(parentNodeChildren[0]));
+                if (ci_starts_with(parentNodeName, "UTM Zone ") &&
+                    parentNodeName.find('S') != std::string::npos) {
+                    const int nZone =
+                        atoi(parentNodeName.c_str() + strlen("UTM Zone "));
+                    if (nZone >= 1 && nZone <= 60) {
+                        code = internal::toString(16100 + nZone);
+                    }
+                }
+            }
+        }
+
         auto &citationNode = nodeP->lookForChild(WKTConstants::CITATION);
         auto &uriNode = nodeP->lookForChild(WKTConstants::URI);
 
@@ -1675,12 +1702,11 @@ PropertyMap &WKTParser::Private::buildProperties(const WKTNodeNNPtr &node,
                                                  bool removeInverseOf,
                                                  bool hasName) {
 
-    if (propertyCount_ == MAX_PROPERTY_SIZE) {
+    if (properties_.size() >= MAX_PROPERTY_SIZE) {
         throw ParsingException("MAX_PROPERTY_SIZE reached");
     }
-    properties_[propertyCount_] = new PropertyMap();
-    auto &&properties = properties_[propertyCount_];
-    propertyCount_++;
+    properties_.push_back(std::make_unique<PropertyMap>());
+    auto properties = properties_.back().get();
 
     std::string authNameFromAlias;
     std::string codeFromAlias;
@@ -1692,7 +1718,7 @@ PropertyMap &WKTParser::Private::buildProperties(const WKTNodeNNPtr &node,
         const auto &subNodeName(subNode->GP()->value());
         if (ci_equal(subNodeName, WKTConstants::ID) ||
             ci_equal(subNodeName, WKTConstants::AUTHORITY)) {
-            auto id = buildId(subNode, true, removeInverseOf);
+            auto id = buildId(node, subNode, true, removeInverseOf);
             if (id) {
                 identifiers->add(NN_NO_CHECK(id));
             }
@@ -1761,7 +1787,7 @@ PropertyMap &WKTParser::Private::buildProperties(const WKTNodeNNPtr &node,
                 name, tableNameForAlias, "ESRI", false, outTableName,
                 authNameFromAlias, codeFromAlias);
             if (!officialName.empty()) {
-                name = officialName;
+                name = std::move(officialName);
 
                 // Clearing authority for geodetic_crs because of
                 // potential axis order mismatch.
@@ -1870,18 +1896,26 @@ WKTParser::Private::buildObjectDomain(const WKTNodeNNPtr &node) {
             if (!isNull(bboxNode)) {
                 const auto &bboxChildren = bboxNode->GP()->children();
                 if (bboxChildren.size() == 4) {
+                    double south, west, north, east;
                     try {
-                        double south = asDouble(bboxChildren[0]);
-                        double west = asDouble(bboxChildren[1]);
-                        double north = asDouble(bboxChildren[2]);
-                        double east = asDouble(bboxChildren[3]);
-                        auto bbox = GeographicBoundingBox::create(west, south,
-                                                                  east, north);
-                        geogExtent.emplace_back(bbox);
+                        south = asDouble(bboxChildren[0]);
+                        west = asDouble(bboxChildren[1]);
+                        north = asDouble(bboxChildren[2]);
+                        east = asDouble(bboxChildren[3]);
                     } catch (const std::exception &) {
                         throw ParsingException(concat("not 4 double values in ",
                                                       bboxNode->GP()->value(),
                                                       " node"));
+                    }
+                    try {
+                        auto bbox = GeographicBoundingBox::create(west, south,
+                                                                  east, north);
+                        geogExtent.emplace_back(bbox);
+                    } catch (const std::exception &e) {
+                        throw ParsingException(concat("Invalid ",
+                                                      bboxNode->GP()->value(),
+                                                      " node: ") +
+                                               e.what());
                     }
                 } else {
                     ThrowNotRequiredNumberOfChildren(bboxNode->GP()->value());
@@ -1994,9 +2028,9 @@ UnitOfMeasure WKTParser::Private::buildUnit(const WKTNodeNNPtr &node,
                 unitName, "unit_of_measure", "ESRI", false, outTableName,
                 authNameFromAlias, codeFromAlias);
             if (!officialName.empty()) {
-                unitName = officialName;
-                codeSpace = authNameFromAlias;
-                code = codeFromAlias;
+                unitName = std::move(officialName);
+                codeSpace = std::move(authNameFromAlias);
+                code = std::move(codeFromAlias);
             }
         }
 
@@ -2102,15 +2136,17 @@ EllipsoidNNPtr WKTParser::Private::buildEllipsoid(const WKTNodeNNPtr &node) {
         Scale invFlattening(invFlatteningChild->GP()->value() == "\"inf\""
                                 ? 0
                                 : asDouble(invFlatteningChild));
-        const auto celestialBody(
-            Ellipsoid::guessBodyName(dbContext_, semiMajorAxis.getSIValue()));
+        const auto ellpsProperties = buildProperties(node);
+        std::string ellpsName;
+        ellpsProperties.getStringValue(IdentifiedObject::NAME_KEY, ellpsName);
+        const auto celestialBody(Ellipsoid::guessBodyName(
+            dbContext_, semiMajorAxis.getSIValue(), ellpsName));
         if (invFlattening.getSIValue() == 0) {
-            return Ellipsoid::createSphere(buildProperties(node), semiMajorAxis,
+            return Ellipsoid::createSphere(ellpsProperties, semiMajorAxis,
                                            celestialBody);
         } else {
             return Ellipsoid::createFlattenedSphere(
-                buildProperties(node), semiMajorAxis, invFlattening,
-                celestialBody);
+                ellpsProperties, semiMajorAxis, invFlattening, celestialBody);
         }
     } catch (const std::exception &e) {
         throw buildRethrow(__FUNCTION__, e);
@@ -2291,7 +2327,7 @@ GeodeticReferenceFrameNNPtr WKTParser::Private::buildGeodeticReferenceFrame(
                     const auto aliases =
                         authFactory->databaseContext()->getAliases(
                             *id->codeSpace(), id->code(), refDatum->nameStr(),
-                            "geodetic_datum", std::string());
+                            "geodetic_datum", "not EPSG_OLD");
                     for (const auto &alias : aliases) {
                         if (metadata::Identifier::isEquivalentName(
                                 l_name.c_str(), alias.c_str())) {
@@ -2323,7 +2359,7 @@ GeodeticReferenceFrameNNPtr WKTParser::Private::buildGeodeticReferenceFrame(
                 auto &idNode = nodeP->lookForChild(WKTConstants::AUTHORITY);
                 if (!isNull(idNode)) {
                     try {
-                        auto id = buildId(idNode, false, false);
+                        auto id = buildId(node, idNode, false, false);
                         auto authFactory2 = AuthorityFactory::create(
                             NN_NO_CHECK(dbContext_), *id->codeSpace());
                         auto dbDatum =
@@ -2341,18 +2377,20 @@ GeodeticReferenceFrameNNPtr WKTParser::Private::buildGeodeticReferenceFrame(
 
     // Remap GDAL WGS_1984 to EPSG v9 "World Geodetic System 1984" official
     // name.
-    // Also remap EPSG v10 datum ensemble names to non-ensemble EPSG v9
     bool nameSet = false;
-    if (name == "WGS_1984" || name == "World Geodetic System 1984 ensemble") {
+    if (name == "WGS_1984") {
         nameSet = true;
         properties.set(IdentifiedObject::NAME_KEY,
                        GeodeticReferenceFrame::EPSG_6326->nameStr());
-    } else if (name == "European Terrestrial Reference System 1989 ensemble") {
-        nameSet = true;
-        properties.set(IdentifiedObject::NAME_KEY,
-                       "European Terrestrial Reference System 1989");
     }
-
+    // Also remap EPSG v10 datum ensemble names to non-ensemble EPSG v9
+    else if (internal::ends_with(name, " ensemble")) {
+        auto massagedName = DatumEnsemble::ensembleNameToNonEnsembleName(name);
+        if (!massagedName.empty()) {
+            nameSet = true;
+            properties.set(IdentifiedObject::NAME_KEY, massagedName);
+        }
+    }
     // If we got hints this might be a ESRI WKT, then check in the DB to
     // confirm
     std::string officialName;
@@ -2385,6 +2423,8 @@ GeodeticReferenceFrameNNPtr WKTParser::Private::buildGeodeticReferenceFrame(
             codeFromAlias = "6258";
         } else if (name == "D_unknown") {
             name = "unknown";
+        } else if (name == "D_Unknown_based_on_WGS_84_ellipsoid") {
+            name = "Unknown based on WGS 84 ellipsoid";
         } else {
             tableNameForAlias = "geodetic_datum";
         }
@@ -2415,10 +2455,10 @@ GeodeticReferenceFrameNNPtr WKTParser::Private::buildGeodeticReferenceFrame(
                     auto nameWithPM =
                         officialName + " (" + primeMeridian->nameStr() + ")";
                     if (dbContext_->isKnownName(nameWithPM, "geodetic_datum")) {
-                        officialName = nameWithPM;
+                        officialName = std::move(nameWithPM);
                     }
                 }
-                name = officialName;
+                name = std::move(officialName);
             }
         }
 
@@ -2452,6 +2492,15 @@ GeodeticReferenceFrameNNPtr WKTParser::Private::buildGeodeticReferenceFrame(
                 for (const auto &child : TOWGS84Children) {
                     toWGS84Parameters_.push_back(asDouble(child));
                 }
+
+                if (TOWGS84Size == 7 && dbContext_) {
+                    dbContext_->toWGS84AutocorrectWrongValues(
+                        toWGS84Parameters_[0], toWGS84Parameters_[1],
+                        toWGS84Parameters_[2], toWGS84Parameters_[3],
+                        toWGS84Parameters_[4], toWGS84Parameters_[5],
+                        toWGS84Parameters_[6]);
+                }
+
                 for (size_t i = TOWGS84Size; i < 7; ++i) {
                     toWGS84Parameters_.push_back(0.0);
                 }
@@ -2499,6 +2548,8 @@ WKTParser::Private::buildDatumEnsemble(const WKTNodeNNPtr &node,
         ThrowMissing(WKTConstants::ELLIPSOID);
     }
 
+    auto properties = buildProperties(node);
+
     std::vector<DatumNNPtr> datums;
     for (const auto &subNode : nodeP->children()) {
         if (ci_equal(subNode->GP()->value(), WKTConstants::MEMBER)) {
@@ -2518,6 +2569,31 @@ WKTParser::Private::buildDatumEnsemble(const WKTNodeNNPtr &node,
         }
     }
 
+    if (datums.empty() && !nodeP->children().empty()) {
+        auto name = stripQuotes(nodeP->children()[0]);
+        if (dbContext_) {
+            auto authFactory = AuthorityFactory::create(NN_NO_CHECK(dbContext_),
+                                                        std::string());
+            auto res = authFactory->createObjectsFromName(
+                name, {AuthorityFactory::ObjectType::DATUM_ENSEMBLE}, true, 1);
+            if (res.size() == 1) {
+                auto datumEnsemble =
+                    dynamic_cast<const DatumEnsemble *>(res.front().get());
+                if (datumEnsemble) {
+                    datums = datumEnsemble->datums();
+                }
+            } else {
+                throw ParsingException(
+                    "No entry for datum ensemble '" + name +
+                    "' in database, and no explicit member specified");
+            }
+        } else {
+            throw ParsingException("Datum ensemble '" + name +
+                                   "' has no explicit member specified and no "
+                                   "connection to database");
+        }
+    }
+
     auto &accuracyNode = nodeP->lookForChild(WKTConstants::ENSEMBLEACCURACY);
     auto &accuracyNodeChildren = accuracyNode->GP()->children();
     if (accuracyNodeChildren.empty()) {
@@ -2527,7 +2603,7 @@ WKTParser::Private::buildDatumEnsemble(const WKTNodeNNPtr &node,
         PositionalAccuracy::create(accuracyNodeChildren[0]->GP()->value());
 
     try {
-        return DatumEnsemble::create(buildProperties(node), datums, accuracy);
+        return DatumEnsemble::create(properties, datums, accuracy);
     } catch (const util::Exception &e) {
         throw buildRethrow(__FUNCTION__, e);
     }
@@ -2660,6 +2736,14 @@ WKTParser::Private::buildAxis(const WKTNodeNNPtr &node,
         // Cf https://github.com/OSGeo/gdal/issues/7210
         emitRecoverableWarning("UNKNOWN is not a valid direction name.");
         direction = &AxisDirection::UNSPECIFIED;
+    }
+
+    // Set common axis abbreviations for WKT1
+    if (abbreviation.empty()) {
+        if (axisName == AxisName::Easting)
+            abbreviation = AxisAbbreviation::E;
+        else if (axisName == AxisName::Northing)
+            abbreviation = AxisAbbreviation::N;
     }
 
     if (!direction) {
@@ -2796,9 +2880,9 @@ WKTParser::Private::buildCS(const WKTNodeNNPtr &node, /* maybe null */
                                          children[1]->GP()->value()));
         }
     } else {
-        const char *csTypeCStr = "";
+        const char *csTypeCStr = CartesianCS::WKT2_TYPE;
         if (ci_equal(parentNodeName, WKTConstants::GEOCCS)) {
-            csTypeCStr = CartesianCS::WKT2_TYPE;
+            // csTypeCStr = CartesianCS::WKT2_TYPE;
             isGeocentric = true;
             if (axisCount == 0) {
                 auto unit =
@@ -3021,10 +3105,21 @@ WKTParser::Private::buildCS(const WKTNodeNNPtr &node, /* maybe null */
         }
     } else if (ci_equal(csType, CartesianCS::WKT2_TYPE)) {
         if (axisCount == 2) {
-            return CartesianCS::create(csMap, axisList[0], axisList[1]);
-        } else if (axisCount == 3) {
+            if (axisList[0]->unit() != axisList[1]->unit()) {
+                emitRecoverableWarning(
+                    "All axis of a CartesianCS must have the same unit");
+            }
             return CartesianCS::create(csMap, axisList[0], axisList[1],
-                                       axisList[2]);
+                                       /* enforceSameUnit = */ false);
+        } else if (axisCount == 3) {
+            if (axisList[0]->unit() != axisList[1]->unit() ||
+                axisList[0]->unit() != axisList[2]->unit()) {
+                emitRecoverableWarning(
+                    "All axis of a CartesianCS must have the same unit");
+            }
+            return CartesianCS::create(csMap, axisList[0], axisList[1],
+                                       axisList[2],
+                                       /* enforceSameUnit = */ false);
         }
     } else if (ci_equal(csType, AffineCS::WKT2_TYPE)) {
         if (axisCount == 2) {
@@ -3109,7 +3204,8 @@ void WKTParser::Private::addExtensionProj4ToProp(const WKTNode::Private *nodeP,
 // ---------------------------------------------------------------------------
 
 GeodeticCRSNNPtr
-WKTParser::Private::buildGeodeticCRS(const WKTNodeNNPtr &node) {
+WKTParser::Private::buildGeodeticCRS(const WKTNodeNNPtr &node,
+                                     bool forceGeocentricIfNoCs) {
     const auto *nodeP = node->GP();
     auto &datumNode = nodeP->lookForChild(
         WKTConstants::DATUM, WKTConstants::GEODETICDATUM, WKTConstants::TRF);
@@ -3203,7 +3299,7 @@ WKTParser::Private::buildGeodeticCRS(const WKTNodeNNPtr &node) {
             const auto &subNodeName(subNode->GP()->value());
             if (ci_equal(subNodeName, WKTConstants::ID) ||
                 ci_equal(subNodeName, WKTConstants::AUTHORITY)) {
-                auto id = buildId(subNode, true, false);
+                auto id = buildId(node, subNode, true, false);
                 if (id) {
                     try {
                         auto authFactory = AuthorityFactory::create(
@@ -3215,6 +3311,10 @@ WKTParser::Private::buildGeodeticCRS(const WKTNodeNNPtr &node) {
                 }
             }
         }
+    }
+    if (forceGeocentricIfNoCs && isNull(csNode) &&
+        ci_equal(nodeName, WKTConstants::BASEGEODCRS)) {
+        cs = cs::CartesianCS::createGeocentric(UnitOfMeasure::METRE);
     }
 
     auto ellipsoidalCS = nn_dynamic_pointer_cast<EllipsoidalCS>(cs);
@@ -3332,8 +3432,6 @@ CRSNNPtr WKTParser::Private::buildDerivedGeodeticCRS(const WKTNodeNNPtr &node) {
     // given the constraints enforced on calling code path
     assert(!isNull(baseGeodCRSNode));
 
-    auto baseGeodCRS = buildGeodeticCRS(baseGeodCRSNode);
-
     auto &derivingConversionNode =
         nodeP->lookForChild(WKTConstants::DERIVINGCONVERSION);
     if (isNull(derivingConversionNode)) {
@@ -3347,6 +3445,29 @@ CRSNNPtr WKTParser::Private::buildDerivedGeodeticCRS(const WKTNodeNNPtr &node) {
         ThrowMissing(WKTConstants::CS_);
     }
     auto cs = buildCS(csNode, node, UnitOfMeasure::NONE);
+
+    bool forceGeocentricIfNoCs = false;
+    auto cartesianCS = nn_dynamic_pointer_cast<CartesianCS>(cs);
+    if (cartesianCS) {
+        if (cartesianCS->axisList().size() != 3) {
+            throw ParsingException(
+                "Cartesian CS for a GeodeticCRS should have 3 axis");
+        }
+        const int methodCode = derivingConversion->method()->getEPSGCode();
+        if ((methodCode == EPSG_CODE_METHOD_COORDINATE_FRAME_GEOCENTRIC ||
+             methodCode ==
+                 EPSG_CODE_METHOD_COORDINATE_FRAME_FULL_MATRIX_GEOCENTRIC ||
+             methodCode == EPSG_CODE_METHOD_POSITION_VECTOR_GEOCENTRIC ||
+             methodCode == EPSG_CODE_METHOD_GEOCENTRIC_TRANSLATION_GEOCENTRIC ||
+             methodCode ==
+                 EPSG_CODE_METHOD_TIME_DEPENDENT_POSITION_VECTOR_GEOCENTRIC ||
+             methodCode ==
+                 EPSG_CODE_METHOD_TIME_DEPENDENT_COORDINATE_FRAME_GEOCENTRIC) &&
+            nodeP->lookForChild(WKTConstants::BASEGEODCRS) != nullptr) {
+            forceGeocentricIfNoCs = true;
+        }
+    }
+    auto baseGeodCRS = buildGeodeticCRS(baseGeodCRSNode, forceGeocentricIfNoCs);
 
     auto ellipsoidalCS = nn_dynamic_pointer_cast<EllipsoidalCS>(cs);
     if (ellipsoidalCS) {
@@ -3367,12 +3488,7 @@ CRSNNPtr WKTParser::Private::buildDerivedGeodeticCRS(const WKTNodeNNPtr &node) {
                                       cs->getWKT2Type(true)));
     }
 
-    auto cartesianCS = nn_dynamic_pointer_cast<CartesianCS>(cs);
     if (cartesianCS) {
-        if (cartesianCS->axisList().size() != 3) {
-            throw ParsingException(
-                "Cartesian CS for a GeodeticCRS should have 3 axis");
-        }
         return DerivedGeodeticCRS::create(buildProperties(node), baseGeodCRS,
                                           derivingConversion,
                                           NN_NO_CHECK(cartesianCS));
@@ -3634,8 +3750,8 @@ WKTParser::Private::buildCoordinateOperation(const WKTNodeNNPtr &node) {
 
     std::vector<OperationParameterNNPtr> parameters;
     std::vector<ParameterValueNNPtr> values;
-    auto defaultLinearUnit = UnitOfMeasure::NONE;
-    auto defaultAngularUnit = UnitOfMeasure::NONE;
+    const auto &defaultLinearUnit = UnitOfMeasure::NONE;
+    const auto &defaultAngularUnit = UnitOfMeasure::NONE;
     consumeParameters(node, false, parameters, values, defaultLinearUnit,
                       defaultAngularUnit);
 
@@ -3680,8 +3796,8 @@ WKTParser::Private::buildPointMotionOperation(const WKTNodeNNPtr &node) {
 
     std::vector<OperationParameterNNPtr> parameters;
     std::vector<ParameterValueNNPtr> values;
-    auto defaultLinearUnit = UnitOfMeasure::NONE;
-    auto defaultAngularUnit = UnitOfMeasure::NONE;
+    const auto &defaultLinearUnit = UnitOfMeasure::NONE;
+    const auto &defaultAngularUnit = UnitOfMeasure::NONE;
     consumeParameters(node, false, parameters, values, defaultLinearUnit,
                       defaultAngularUnit);
 
@@ -3736,8 +3852,9 @@ WKTParser::Private::buildConcatenatedOperation(const WKTNodeNNPtr &node) {
         }
     }
 
-    ConcatenatedOperation::fixStepsDirection(
-        NN_NO_CHECK(sourceCRS), NN_NO_CHECK(targetCRS), operations, dbContext_);
+    ConcatenatedOperation::fixSteps(
+        NN_NO_CHECK(sourceCRS), NN_NO_CHECK(targetCRS), operations, dbContext_,
+        /* fixDirectionAllowed = */ true);
 
     std::vector<PositionalAccuracyNNPtr> accuracies;
     auto &accuracyNode = nodeP->lookForChild(WKTConstants::OPERATIONACCURACY);
@@ -4026,8 +4143,8 @@ ConversionNNPtr WKTParser::Private::buildProjectionFromESRI(
     return Conversion::create(
                PropertyMap().set(IdentifiedObject::NAME_KEY,
                                  esriProjectionName == "Gauss_Kruger"
-                                     ? "unnnamed (Gauss Kruger)"
-                                     : "unnamed"),
+                                     ? "unknown (Gauss Kruger)"
+                                     : "unknown"),
                propertiesMethod, parameters, values)
         ->identify();
 }
@@ -4164,7 +4281,7 @@ ConversionNNPtr WKTParser::Private::buildProjectionStandard(
         if (latitudeOfOrigin.unit() != UnitOfMeasure::NONE &&
             scaleFactor.getSIValue() == 1.0) {
             return Conversion::createPolarStereographicVariantB(
-                PropertyMap().set(IdentifiedObject::NAME_KEY, "unnamed"),
+                PropertyMap().set(IdentifiedObject::NAME_KEY, "unknown"),
                 Angle(latitudeOfOrigin.value(), latitudeOfOrigin.unit()),
                 Angle(centralMeridian.value(), centralMeridian.unit()),
                 Length(falseEasting.value(), falseEasting.unit()),
@@ -4176,7 +4293,7 @@ ConversionNNPtr WKTParser::Private::buildProjectionStandard(
                           UnitOfMeasure::DEGREE)) -
                       90.0) < 1e-10) {
             return Conversion::createPolarStereographicVariantA(
-                PropertyMap().set(IdentifiedObject::NAME_KEY, "unnamed"),
+                PropertyMap().set(IdentifiedObject::NAME_KEY, "unknown"),
                 Angle(latitudeOfOrigin.value(), latitudeOfOrigin.unit()),
                 Angle(centralMeridian.value(), centralMeridian.unit()),
                 Scale(scaleFactor.value(), scaleFactor.unit()),
@@ -4206,7 +4323,7 @@ ConversionNNPtr WKTParser::Private::buildProjectionStandard(
         }
     }
 
-    std::string projectionName(wkt1ProjectionName);
+    std::string projectionName(std::move(wkt1ProjectionName));
     const MethodMapping *mapping =
         tryToIdentifyWKT1Method ? getMappingFromWKT1(projectionName) : nullptr;
 
@@ -4408,14 +4525,14 @@ ConversionNNPtr WKTParser::Private::buildProjectionStandard(
                 foundAngleRecifiedToSkewGrid = true;
             } else if (foundParameters[idx] &&
                        mapping->params[idx]->epsg_code ==
-                           EPSG_CODE_PARAMETER_AZIMUTH_INITIAL_LINE) {
+                           EPSG_CODE_PARAMETER_AZIMUTH_PROJECTION_CENTRE) {
                 foundAzimuth = true;
             }
         }
         if (!foundAngleRecifiedToSkewGrid && foundAzimuth) {
             for (size_t idx = 0; idx < parameters.size(); ++idx) {
                 if (parameters[idx]->getEPSGCode() ==
-                    EPSG_CODE_PARAMETER_AZIMUTH_INITIAL_LINE) {
+                    EPSG_CODE_PARAMETER_AZIMUTH_PROJECTION_CENTRE) {
                     PropertyMap propertiesParameter;
                     propertiesParameter.set(
                         Identifier::CODE_KEY,
@@ -4434,7 +4551,7 @@ ConversionNNPtr WKTParser::Private::buildProjectionStandard(
     }
 
     return Conversion::create(
-               PropertyMap().set(IdentifiedObject::NAME_KEY, "unnamed"),
+               PropertyMap().set(IdentifiedObject::NAME_KEY, "unknown"),
                propertiesMethod, parameters, values)
         ->identify();
 }
@@ -4444,7 +4561,7 @@ ConversionNNPtr WKTParser::Private::buildProjectionStandard(
 static ProjectedCRSNNPtr createPseudoMercator(const PropertyMap &props,
                                               const cs::CartesianCSNNPtr &cs) {
     auto conversion = Conversion::createPopularVisualisationPseudoMercator(
-        PropertyMap().set(IdentifiedObject::NAME_KEY, "unnamed"), Angle(0),
+        PropertyMap().set(IdentifiedObject::NAME_KEY, "unknown"), Angle(0),
         Angle(0), Length(0), Length(0));
     return ProjectedCRS::create(props, GeographicCRS::EPSG_4326, conversion,
                                 cs);
@@ -4479,10 +4596,132 @@ WKTParser::Private::buildProjectedCRS(const WKTNodeNNPtr &node) {
         !ci_equal(nodeValue, WKTConstants::BASEPROJCRS)) {
         ThrowMissing(WKTConstants::CS_);
     }
-    auto cs = buildCS(csNode, node, UnitOfMeasure::NONE);
+
+    std::string projCRSName = stripQuotes(nodeP->children()[0]);
+
+    auto cs = [this, &projCRSName, &nodeP, &csNode, &node, &nodeValue,
+               &conversionNode]() -> CoordinateSystemNNPtr {
+        if (isNull(csNode) && ci_equal(nodeValue, WKTConstants::BASEPROJCRS) &&
+            !isNull(conversionNode)) {
+            // A BASEPROJCRS (as of WKT2 18-010r11) normally lacks an explicit
+            // CS[] which cause issues to properly instantiate it. So we first
+            // start by trying to identify the BASEPROJCRS by its id or name.
+            // And fallback to exploring the conversion parameters to infer the
+            // CS AXIS unit from the linear parameter unit... Not fully bullet
+            // proof.
+            if (dbContext_) {
+                // Get official name from database if ID is present
+                auto &idNode = nodeP->lookForChild(WKTConstants::ID);
+                if (!isNull(idNode)) {
+                    try {
+                        auto id = buildId(node, idNode, false, false);
+                        auto authFactory = AuthorityFactory::create(
+                            NN_NO_CHECK(dbContext_), *id->codeSpace());
+                        auto projCRS =
+                            authFactory->createProjectedCRS(id->code());
+                        return projCRS->coordinateSystem();
+                    } catch (const std::exception &) {
+                    }
+                }
+
+                auto authFactory = AuthorityFactory::create(
+                    NN_NO_CHECK(dbContext_), std::string());
+                auto res = authFactory->createObjectsFromName(
+                    projCRSName, {AuthorityFactory::ObjectType::PROJECTED_CRS},
+                    false, 2);
+                if (res.size() == 1) {
+                    auto projCRS =
+                        dynamic_cast<const ProjectedCRS *>(res.front().get());
+                    if (projCRS) {
+                        return projCRS->coordinateSystem();
+                    }
+                }
+            }
+
+            auto conv = buildConversion(conversionNode, UnitOfMeasure::METRE,
+                                        UnitOfMeasure::DEGREE);
+            UnitOfMeasure linearUOM = UnitOfMeasure::NONE;
+            for (const auto &genOpParamvalue : conv->parameterValues()) {
+                auto opParamvalue =
+                    dynamic_cast<const operation::OperationParameterValue *>(
+                        genOpParamvalue.get());
+                if (opParamvalue) {
+                    const auto &parameterValue = opParamvalue->parameterValue();
+                    if (parameterValue->type() ==
+                        operation::ParameterValue::Type::MEASURE) {
+                        const auto &measure = parameterValue->value();
+                        const auto &unit = measure.unit();
+                        if (unit.type() == UnitOfMeasure::Type::LINEAR) {
+                            if (linearUOM == UnitOfMeasure::NONE) {
+                                linearUOM = unit;
+                            } else if (linearUOM != unit) {
+                                linearUOM = UnitOfMeasure::NONE;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            if (linearUOM != UnitOfMeasure::NONE) {
+                return CartesianCS::createEastingNorthing(linearUOM);
+            }
+        }
+        return buildCS(csNode, node, UnitOfMeasure::NONE);
+    }();
     auto cartesianCS = nn_dynamic_pointer_cast<CartesianCS>(cs);
 
-    const std::string projCRSName = stripQuotes(nodeP->children()[0]);
+    if (dbContext_ && ((!esriStyle_ && projCRSName == "ETRF2000-PL / CS92" &&
+                        baseGeodCRS->nameStr() == "ETRF2000-PL") ||
+                       (esriStyle_ && projCRSName == "ETRF2000-PL_CS92" &&
+                        (baseGeodCRS->nameStr() == "GCS_ETRF2000-PL" ||
+                         baseGeodCRS->nameStr() == "ETRF2000-PL")))) {
+        // Oddity: "ETRF2000-PL / CS92" (EPSG:2180) has switched back to
+        // "ETRS89 / PL-1992"
+        auto authFactoryEPSG =
+            io::AuthorityFactory::create(NN_NO_CHECK(dbContext_), "EPSG");
+        auto newProjCRS = authFactoryEPSG->createProjectedCRS("2180");
+        props.set(IdentifiedObject::NAME_KEY, newProjCRS->nameStr());
+        baseGeodCRS = newProjCRS->baseCRS();
+    }
+    // In EPSG v12.025, Norway projected systems based on ETRS89 (EPSG:4258)
+    // have switched to use ETRS89-NOR [EUREF89] (EPSG:10875).
+    // Similarly for other ETRS89-like datums in later releases
+    else if (dbContext_ &&
+             (((starts_with(projCRSName, "ETRS89 / ") ||
+                (esriStyle_ && starts_with(projCRSName, "ETRS_1989_"))) &&
+               baseGeodCRS->nameStr() == "ETRS89") ||
+              starts_with(projCRSName, "ETRF2000-PL /")) &&
+             util::isOfExactType<GeographicCRS>(*(baseGeodCRS.get())) &&
+             baseGeodCRS->coordinateSystem()->axisList().size() == 2) {
+        auto authFactoryEPSG =
+            io::AuthorityFactory::create(NN_NO_CHECK(dbContext_), "EPSG");
+        const auto objCandidates = authFactoryEPSG->createObjectsFromNameEx(
+            projCRSName, {io::AuthorityFactory::ObjectType::PROJECTED_CRS},
+            false, // approximateMatch
+            0,     // limit
+            true   // useAliases
+        );
+        for (const auto &[obj, name] : objCandidates) {
+            if (name == projCRSName) {
+                auto candidateProj =
+                    dynamic_cast<const crs::ProjectedCRS *>(obj.get());
+                if (candidateProj &&
+                    candidateProj->baseCRS()->nameStr() !=
+                        baseGeodCRS->nameStr() &&
+                    candidateProj->baseCRS()->_isEquivalentTo(
+                        baseGeodCRS.get(),
+                        util::IComparable::Criterion::
+                            EQUIVALENT_EXCEPT_AXIS_ORDER_GEOGCRS,
+                        dbContext_)) {
+                    props.set(IdentifiedObject::NAME_KEY,
+                              candidateProj->nameStr());
+                    baseGeodCRS = candidateProj->baseCRS();
+                    break;
+                }
+            }
+        }
+    }
+
     if (esriStyle_ && dbContext_) {
         if (cartesianCS) {
             std::string outTableName;
@@ -4511,10 +4750,11 @@ WKTParser::Private::buildProjectedCRS(const WKTNodeNNPtr &node) {
                             false, outTableName, authNameFromAlias,
                             codeFromAlias);
                     if (!officialNameFromFeet.empty()) {
-                        officialName = officialNameFromFeet;
+                        officialName = std::move(officialNameFromFeet);
                     }
                 }
 
+                projCRSName = officialName;
                 props.set(IdentifiedObject::NAME_KEY, officialName);
             }
         }
@@ -4540,11 +4780,11 @@ WKTParser::Private::buildProjectedCRS(const WKTNodeNNPtr &node) {
 
     // For WKT2, if there is no explicit parameter unit, use metre for linear
     // units and degree for angular units
-    auto linearUnit =
+    const UnitOfMeasure linearUnit(
         !isNull(conversionNode)
             ? UnitOfMeasure::METRE
-            : buildUnitInSubNode(node, UnitOfMeasure::Type::LINEAR);
-    auto angularUnit =
+            : buildUnitInSubNode(node, UnitOfMeasure::Type::LINEAR));
+    const auto &angularUnit =
         !isNull(conversionNode)
             ? UnitOfMeasure::DEGREE
             : baseGeodCRS->coordinateSystem()->axisList()[0]->unit();
@@ -4680,14 +4920,15 @@ VerticalReferenceFrameNNPtr WKTParser::Private::buildVerticalReferenceFrame(
     const auto *nodeP = node->GP();
     const std::string &name(nodeP->value());
     auto &props = buildProperties(node);
+    const auto &children = nodeP->children();
 
-    if (esriStyle_ && dbContext_) {
+    if (esriStyle_ && dbContext_ && !children.empty()) {
         std::string outTableName;
         std::string authNameFromAlias;
         std::string codeFromAlias;
         auto authFactory =
             AuthorityFactory::create(NN_NO_CHECK(dbContext_), std::string());
-        const std::string datumName = stripQuotes(nodeP->children()[0]);
+        const std::string datumName = stripQuotes(children[0]);
         auto officialName = authFactory->getOfficialNameFromAlias(
             datumName, "vertical_datum", "ESRI", false, outTableName,
             authNameFromAlias, codeFromAlias);
@@ -4697,7 +4938,6 @@ VerticalReferenceFrameNNPtr WKTParser::Private::buildVerticalReferenceFrame(
     }
 
     if (ci_equal(name, WKTConstants::VERT_DATUM)) {
-        const auto &children = nodeP->children();
         if (children.size() >= 2) {
             props.set("VERT_DATUM_TYPE", children[1]->GP()->value());
         }
@@ -4915,20 +5155,36 @@ CRSNNPtr WKTParser::Private::buildVerticalCRS(const WKTNodeNNPtr &node) {
         ci_equal(nodeValue, WKTConstants::VERTCS)) {
         std::string name;
         if (props.getStringValue(IdentifiedObject::NAME_KEY, name)) {
-            std::string geoidName;
+            std::string navd88GeoidName;
             for (const char *prefix :
                  {"NAVD88 - ", "NAVD88 via ", "NAVD88 height - ",
                   "NAVD88 height (ftUS) - "}) {
                 if (starts_with(name, prefix)) {
-                    geoidName = name.substr(strlen(prefix));
-                    auto pos = geoidName.find_first_of(" (");
+                    navd88GeoidName = name.substr(strlen(prefix));
+                    auto pos = navd88GeoidName.find_first_of(" (");
                     if (pos != std::string::npos) {
-                        geoidName.resize(pos);
+                        navd88GeoidName.resize(pos);
                     }
                     break;
                 }
             }
-            if (!geoidName.empty()) {
+
+            // Deal with vertical CRS names like "Geoid 2012A"
+            if (navd88GeoidName.empty() && ci_starts_with(name, "Geoid") &&
+                geogCRSOfCompoundCRS_ &&
+                starts_with(geogCRSOfCompoundCRS_->nameStr(), "NAD83")) {
+                // Remove spaces
+                navd88GeoidName = replaceAll(name, " ", "");
+                // Morph "Geoid 20XX[Y]" to "GeoidXX[Y]"
+                if (navd88GeoidName.size() >= 9 &&
+                    ci_starts_with(navd88GeoidName, "Geoid20") &&
+                    navd88GeoidName[7] >= '0' && navd88GeoidName[7] <= '9' &&
+                    navd88GeoidName[8] >= '0' && navd88GeoidName[8] <= '9') {
+                    navd88GeoidName = "Geoid" + navd88GeoidName.substr(7);
+                }
+            }
+
+            if (!navd88GeoidName.empty()) {
                 const auto &axis = verticalCS->axisList()[0];
                 const auto &dir = axis->direction();
                 if (dir == cs::AxisDirection::UP) {
@@ -4944,7 +5200,8 @@ CRSNNPtr WKTParser::Private::buildVerticalCRS(const WKTNodeNNPtr &node) {
                     }
                 }
                 PropertyMap propsModel;
-                propsModel.set(IdentifiedObject::NAME_KEY, toupper(geoidName));
+                propsModel.set(IdentifiedObject::NAME_KEY,
+                               toupper(navd88GeoidName));
                 PropertyMap propsDatum;
                 propsDatum.set(IdentifiedObject::NAME_KEY,
                                "North American Vertical Datum 1988");
@@ -5131,7 +5388,7 @@ static TransformationNNPtr buildTransformationForBoundCRS(
             EPSG_CODE_PARAMETER_GEOID_CORRECTION_FILENAME);
         if (fileParameter &&
             fileParameter->type() == ParameterValue::Type::FILENAME) {
-            auto filename = fileParameter->valueFile();
+            const auto &filename = fileParameter->valueFile();
 
             transformation =
                 Transformation::createGravityRelatedHeightToGeographic3D(
@@ -5183,8 +5440,8 @@ BoundCRSNNPtr WKTParser::Private::buildBoundCRS(const WKTNodeNNPtr &node) {
 
     std::vector<OperationParameterNNPtr> parameters;
     std::vector<ParameterValueNNPtr> values;
-    auto defaultLinearUnit = UnitOfMeasure::NONE;
-    auto defaultAngularUnit = UnitOfMeasure::NONE;
+    const auto &defaultLinearUnit = UnitOfMeasure::NONE;
+    const auto &defaultAngularUnit = UnitOfMeasure::NONE;
     consumeParameters(abridgedNode, true, parameters, values, defaultLinearUnit,
                       defaultAngularUnit);
 
@@ -5397,7 +5654,7 @@ WKTParser::Private::buildDerivedProjectedCRS(const WKTNodeNNPtr &node) {
     }
 
     auto linearUnit = buildUnitInSubNode(node);
-    auto angularUnit =
+    const auto &angularUnit =
         baseProjCRS->baseCRS()->coordinateSystem()->axisList()[0]->unit();
 
     auto conversion = buildConversion(conversionNode, linearUnit, angularUnit);
@@ -5687,7 +5944,7 @@ BaseObjectNNPtr WKTParser::Private::build(const WKTNodeNNPtr &node) {
     if (ci_equal(name, WKTConstants::ID) ||
         ci_equal(name, WKTConstants::AUTHORITY)) {
         return util::nn_static_pointer_cast<BaseObject>(
-            NN_NO_CHECK(buildId(node, false, false)));
+            NN_NO_CHECK(buildId(node, node, false, false)));
     }
 
     if (ci_equal(name, WKTConstants::COORDINATEMETADATA)) {
@@ -5697,12 +5954,15 @@ BaseObjectNNPtr WKTParser::Private::build(const WKTNodeNNPtr &node) {
 
     throw ParsingException(concat("unhandled keyword: ", name));
 }
+//! @endcond
 
 // ---------------------------------------------------------------------------
 
+//! @cond Doxygen_Suppress
 class JSONParser {
     DatabaseContextPtr dbContext_{};
     std::string deformationModelName_{};
+    PJ_CONTEXT *ctx_ = nullptr;
 
     static std::string getString(const json &j, const char *key);
     static json getObject(const json &j, const char *key);
@@ -5715,7 +5975,8 @@ class JSONParser {
     static Length getLength(const json &j, const char *key);
     static Measure getMeasure(const json &j);
 
-    IdentifierNNPtr buildId(const json &j, bool removeInverseOf);
+    IdentifierNNPtr buildId(const json &parentJ, const json &j,
+                            bool removeInverseOf);
     static ObjectDomainPtr buildObjectDomain(const json &j);
     PropertyMap buildProperties(const json &j, bool removeInverseOf = false,
                                 bool nameRequired = true);
@@ -5812,11 +6073,26 @@ class JSONParser {
                                  NN_NO_CHECK(csCast));
     }
 
+    void emitRecoverableWarning(const std::string &warningMsg) {
+        if (ctx_) {
+            proj_context_log_debug(ctx_, "PROJJSON parsing: %s",
+                                   warningMsg.c_str());
+        }
+    }
+
+    JSONParser(const JSONParser &) = delete;
+    JSONParser &operator=(const JSONParser &) = delete;
+
   public:
     JSONParser() = default;
 
     JSONParser &attachDatabaseContext(const DatabaseContextPtr &dbContext) {
         dbContext_ = dbContext;
+        return *this;
+    }
+
+    JSONParser &attachContext(PJ_CONTEXT *ctx) {
+        ctx_ = ctx;
         return *this;
     }
 
@@ -6004,8 +6280,13 @@ ObjectDomainPtr JSONParser::buildObjectDomain(const json &j) {
         double west = getNumber(bbox, "west_longitude");
         double north = getNumber(bbox, "north_latitude");
         double east = getNumber(bbox, "east_longitude");
-        geogExtent.emplace_back(
-            GeographicBoundingBox::create(west, south, east, north));
+        try {
+            geogExtent.emplace_back(
+                GeographicBoundingBox::create(west, south, east, north));
+        } catch (const std::exception &e) {
+            throw ParsingException(
+                std::string("Invalid bbox node: ").append(e.what()));
+        }
     }
 
     std::vector<VerticalExtentNNPtr> verticalExtent;
@@ -6047,7 +6328,8 @@ ObjectDomainPtr JSONParser::buildObjectDomain(const json &j) {
 
 // ---------------------------------------------------------------------------
 
-IdentifierNNPtr JSONParser::buildId(const json &j, bool removeInverseOf) {
+IdentifierNNPtr JSONParser::buildId(const json &parentJ, const json &j,
+                                    bool removeInverseOf) {
 
     PropertyMap propertiesId;
     auto codeSpace(getString(j, "authority"));
@@ -6081,7 +6363,7 @@ IdentifierNNPtr JSONParser::buildId(const json &j, bool removeInverseOf) {
         std::string codeSpaceOut;
         if (dbContext_->getVersionedAuthority(codeSpace, version,
                                               codeSpaceOut)) {
-            codeSpace = codeSpaceOut;
+            codeSpace = std::move(codeSpaceOut);
             version.clear();
         }
     }
@@ -6099,6 +6381,21 @@ IdentifierNNPtr JSONParser::buildId(const json &j, bool removeInverseOf) {
         code = internal::toString(codeJ.get<int>());
     } else {
         throw ParsingException("Unexpected type for value of \"code\"");
+    }
+
+    // Prior to PROJ 9.5, when synthetizing an ID for a CONVERSION UTM Zone
+    // south, we generated a wrong value. Auto-fix that
+    if (parentJ.contains("type") && getType(parentJ) == "Conversion" &&
+        codeSpace == Identifier::EPSG && parentJ.contains("name")) {
+        const auto parentNodeName(getName(parentJ));
+        if (ci_starts_with(parentNodeName, "UTM Zone ") &&
+            parentNodeName.find('S') != std::string::npos) {
+            const int nZone =
+                atoi(parentNodeName.c_str() + strlen("UTM Zone "));
+            if (nZone >= 1 && nZone <= 60) {
+                code = internal::toString(16100 + nZone);
+            }
+        }
     }
 
     if (!version.empty()) {
@@ -6139,13 +6436,13 @@ PropertyMap JSONParser::buildProperties(const json &j, bool removeInverseOf,
                 throw ParsingException(
                     "Unexpected type for value of \"ids\" child");
             }
-            identifiers->add(buildId(idJ, removeInverseOf));
+            identifiers->add(buildId(j, idJ, removeInverseOf));
         }
         map.set(IdentifiedObject::IDENTIFIERS_KEY, identifiers);
     } else if (j.contains("id")) {
         auto idJ = getObject(j, "id");
         auto identifiers = ArrayOfBaseObject::create();
-        identifiers->add(buildId(idJ, removeInverseOf));
+        identifiers->add(buildId(j, idJ, removeInverseOf));
         map.set(IdentifiedObject::IDENTIFIERS_KEY, identifiers);
     }
 
@@ -6723,8 +7020,9 @@ JSONParser::buildConcatenatedOperation(const json &j) {
         operations.emplace_back(NN_NO_CHECK(op));
     }
 
-    ConcatenatedOperation::fixStepsDirection(sourceCRS, targetCRS, operations,
-                                             dbContext_);
+    ConcatenatedOperation::fixSteps(sourceCRS, targetCRS, operations,
+                                    dbContext_,
+                                    /* fixDirectionAllowed = */ true);
 
     std::vector<PositionalAccuracyNNPtr> accuracies;
     if (j.contains("accuracy")) {
@@ -6779,9 +7077,10 @@ MeridianNNPtr JSONParser::buildMeridian(const json &j) {
 CoordinateSystemAxisNNPtr JSONParser::buildAxis(const json &j) {
     auto dirString = getString(j, "direction");
     auto abbreviation = getString(j, "abbreviation");
-    auto unit = j.contains("unit") ? getUnit(j, "unit")
-                                   : UnitOfMeasure(std::string(), 1.0,
-                                                   UnitOfMeasure::Type::NONE);
+    const UnitOfMeasure unit(
+        j.contains("unit")
+            ? getUnit(j, "unit")
+            : UnitOfMeasure(std::string(), 1.0, UnitOfMeasure::Type::NONE));
     auto direction = AxisDirection::valueOf(dirString);
     if (!direction) {
         throw ParsingException(concat("unhandled axis direction: ", dirString));
@@ -6849,11 +7148,22 @@ CoordinateSystemNNPtr JSONParser::buildCS(const json &j) {
     }
     if (subtype == CartesianCS::WKT2_TYPE) {
         if (axisCount == 2) {
-            return CartesianCS::create(csMap, axisList[0], axisList[1]);
+            if (axisList[0]->unit() != axisList[1]->unit()) {
+                emitRecoverableWarning(
+                    "All axis of a CartesianCS must have the same unit");
+            }
+            return CartesianCS::create(csMap, axisList[0], axisList[1],
+                                       /* enforceSameUnit = */ false);
         }
         if (axisCount == 3) {
+            if (axisList[0]->unit() != axisList[1]->unit() ||
+                axisList[0]->unit() != axisList[2]->unit()) {
+                emitRecoverableWarning(
+                    "All axis of a CartesianCS must have the same unit");
+            }
             return CartesianCS::create(csMap, axisList[0], axisList[1],
-                                       axisList[2]);
+                                       axisList[2],
+                                       /* enforceSameUnit = */ false);
         }
         throw ParsingException("Expected 2 or 3 axis");
     }
@@ -6917,70 +7227,98 @@ CoordinateSystemNNPtr JSONParser::buildCS(const json &j) {
 // ---------------------------------------------------------------------------
 
 DatumEnsembleNNPtr JSONParser::buildDatumEnsemble(const json &j) {
-    auto membersJ = getArray(j, "members");
     std::vector<DatumNNPtr> datums;
-    const bool hasEllipsoid(j.contains("ellipsoid"));
-    for (const auto &memberJ : membersJ) {
-        if (!memberJ.is_object()) {
-            throw ParsingException(
-                "Unexpected type for value of a \"members\" member");
-        }
-        auto datumName(getName(memberJ));
-        bool datumAdded = false;
-        if (dbContext_ && memberJ.contains("id")) {
-            auto id = getObject(memberJ, "id");
-            auto authority = getString(id, "authority");
-            auto authFactory =
-                AuthorityFactory::create(NN_NO_CHECK(dbContext_), authority);
-            auto code = id["code"];
-            std::string codeStr;
-            if (code.is_string()) {
-                codeStr = code.get<std::string>();
-            } else if (code.is_number_integer()) {
-                codeStr = internal::toString(code.get<int>());
-            } else {
-                throw ParsingException("Unexpected type for value of \"code\"");
+    if (j.contains("members")) {
+        auto membersJ = getArray(j, "members");
+        const bool hasEllipsoid(j.contains("ellipsoid"));
+        for (const auto &memberJ : membersJ) {
+            if (!memberJ.is_object()) {
+                throw ParsingException(
+                    "Unexpected type for value of a \"members\" member");
             }
-            try {
-                datums.push_back(authFactory->createDatum(codeStr));
-                datumAdded = true;
-            } catch (const std::exception &) {
-                // Silently ignore, as this isn't necessary an error.
-                // If an older PROJ version parses a DatumEnsemble object of
-                // a more recent PROJ version where the datum ensemble got
-                // a new member, it might be unknown from the older PROJ.
+            auto datumName(getName(memberJ));
+            bool datumAdded = false;
+            if (dbContext_ && memberJ.contains("id")) {
+                auto id = getObject(memberJ, "id");
+                auto authority = getString(id, "authority");
+                auto authFactory = AuthorityFactory::create(
+                    NN_NO_CHECK(dbContext_), authority);
+                auto code = id["code"];
+                std::string codeStr;
+                if (code.is_string()) {
+                    codeStr = code.get<std::string>();
+                } else if (code.is_number_integer()) {
+                    codeStr = internal::toString(code.get<int>());
+                } else {
+                    throw ParsingException(
+                        "Unexpected type for value of \"code\"");
+                }
+                try {
+                    datums.push_back(authFactory->createDatum(codeStr));
+                    datumAdded = true;
+                } catch (const std::exception &) {
+                    // Silently ignore, as this isn't necessary an error.
+                    // If an older PROJ version parses a DatumEnsemble object of
+                    // a more recent PROJ version where the datum ensemble got
+                    // a new member, it might be unknown from the older PROJ.
+                }
             }
-        }
 
-        if (dbContext_ && !datumAdded) {
+            if (dbContext_ && !datumAdded) {
+                auto authFactory = AuthorityFactory::create(
+                    NN_NO_CHECK(dbContext_), std::string());
+                auto list = authFactory->createObjectsFromName(
+                    datumName, {AuthorityFactory::ObjectType::DATUM},
+                    false /* approximate=false*/);
+                if (!list.empty()) {
+                    auto datum =
+                        util::nn_dynamic_pointer_cast<Datum>(list.front());
+                    if (!datum)
+                        throw ParsingException(
+                            "DatumEnsemble member is not a datum");
+                    datums.push_back(NN_NO_CHECK(datum));
+                    datumAdded = true;
+                }
+            }
+
+            if (!datumAdded) {
+                // Fallback if no db match
+                if (hasEllipsoid) {
+                    datums.emplace_back(GeodeticReferenceFrame::create(
+                        buildProperties(memberJ),
+                        buildEllipsoid(getObject(j, "ellipsoid")),
+                        optional<std::string>(), PrimeMeridian::GREENWICH));
+                } else {
+                    datums.emplace_back(VerticalReferenceFrame::create(
+                        buildProperties(memberJ)));
+                }
+            }
+        }
+    } else {
+        auto name = getString(j, "name");
+        if (dbContext_) {
             auto authFactory = AuthorityFactory::create(NN_NO_CHECK(dbContext_),
                                                         std::string());
-            auto list = authFactory->createObjectsFromName(
-                datumName, {AuthorityFactory::ObjectType::DATUM},
-                false /* approximate=false*/);
-            if (!list.empty()) {
-                auto datum = util::nn_dynamic_pointer_cast<Datum>(list.front());
-                if (!datum)
-                    throw ParsingException(
-                        "DatumEnsemble member is not a datum");
-                datums.push_back(NN_NO_CHECK(datum));
-                datumAdded = true;
-            }
-        }
-
-        if (!datumAdded) {
-            // Fallback if no db match
-            if (hasEllipsoid) {
-                datums.emplace_back(GeodeticReferenceFrame::create(
-                    buildProperties(memberJ),
-                    buildEllipsoid(getObject(j, "ellipsoid")),
-                    optional<std::string>(), PrimeMeridian::GREENWICH));
+            auto res = authFactory->createObjectsFromName(
+                name, {AuthorityFactory::ObjectType::DATUM_ENSEMBLE}, true, 1);
+            if (res.size() == 1) {
+                auto datumEnsemble =
+                    dynamic_cast<const DatumEnsemble *>(res.front().get());
+                if (datumEnsemble) {
+                    datums = datumEnsemble->datums();
+                }
             } else {
-                datums.emplace_back(
-                    VerticalReferenceFrame::create(buildProperties(memberJ)));
+                throw ParsingException(
+                    "No entry for datum ensemble '" + name +
+                    "' in database, and no explicit member specified");
             }
+        } else {
+            throw ParsingException("Datum ensemble '" + name +
+                                   "' has no explicit member specified and no "
+                                   "connection to database");
         }
     }
+
     return DatumEnsemble::create(
         buildProperties(j), datums,
         PositionalAccuracy::create(getString(j, "accuracy")));
@@ -7070,15 +7408,18 @@ PrimeMeridianNNPtr JSONParser::buildPrimeMeridian(const json &j) {
 EllipsoidNNPtr JSONParser::buildEllipsoid(const json &j) {
     if (j.contains("semi_major_axis")) {
         auto semiMajorAxis = getLength(j, "semi_major_axis");
-        const auto celestialBody(
-            Ellipsoid::guessBodyName(dbContext_, semiMajorAxis.getSIValue()));
+        const auto ellpsProperties = buildProperties(j);
+        std::string ellpsName;
+        ellpsProperties.getStringValue(IdentifiedObject::NAME_KEY, ellpsName);
+        const auto celestialBody(Ellipsoid::guessBodyName(
+            dbContext_, semiMajorAxis.getSIValue(), ellpsName));
         if (j.contains("semi_minor_axis")) {
-            return Ellipsoid::createTwoAxis(buildProperties(j), semiMajorAxis,
+            return Ellipsoid::createTwoAxis(ellpsProperties, semiMajorAxis,
                                             getLength(j, "semi_minor_axis"),
                                             celestialBody);
         } else if (j.contains("inverse_flattening")) {
             return Ellipsoid::createFlattenedSphere(
-                buildProperties(j), semiMajorAxis,
+                ellpsProperties, semiMajorAxis,
                 Scale(getNumber(j, "inverse_flattening")), celestialBody);
         } else {
             throw ParsingException(
@@ -7094,7 +7435,11 @@ EllipsoidNNPtr JSONParser::buildEllipsoid(const json &j) {
     throw ParsingException("Missing semi_major_axis or radius");
 }
 
+//! @endcond
+
 // ---------------------------------------------------------------------------
+
+//! @cond Doxygen_Suppress
 
 // import a CRS encoded as OGC Best Practice document 11-135.
 
@@ -7232,7 +7577,7 @@ static CRSNNPtr importFromWMSAUTO(const std::string &text) {
             throw ParsingException("invalid WMS AUTO CRS definition");
         }
 
-        const auto getConversion = [=]() {
+        const auto getConversion = [dfRefLong, dfRefLat, &parts]() {
             const int nProjId = std::stoi(parts[0]);
             switch (nProjId) {
             case 42001: // Auto UTM
@@ -7275,7 +7620,7 @@ static CRSNNPtr importFromWMSAUTO(const std::string &text) {
             }
         };
 
-        const auto getUnits = [=]() {
+        const auto getUnits = [nUnitsId]() -> const UnitOfMeasure & {
             switch (nUnitsId) {
             case 9001:
                 return UnitOfMeasure::METRE;
@@ -7293,7 +7638,7 @@ static CRSNNPtr importFromWMSAUTO(const std::string &text) {
         };
 
         return crs::ProjectedCRS::create(
-            util::PropertyMap().set(IdentifiedObject::NAME_KEY, "unnamed"),
+            util::PropertyMap().set(IdentifiedObject::NAME_KEY, "unknown"),
             crs::GeographicCRS::EPSG_4326, getConversion(),
             cs::CartesianCS::createEastingNorthing(getUnits()));
 
@@ -7418,11 +7763,18 @@ static BaseObjectNNPtr createFromUserInput(const std::string &text,
     if (!text.empty() && text[0] == '{') {
         json j;
         try {
-            j = json::parse(text);
+            j = json::parse(text, [](int depth, json::parse_event_t, json &) {
+                if (depth >= 128)
+                    throw ParsingException("Too deep nesting in JSON content");
+                return true;
+            });
         } catch (const std::exception &e) {
             throw ParsingException(e.what());
         }
-        return JSONParser().attachDatabaseContext(dbContext).create(j);
+        return JSONParser()
+            .attachContext(ctx)
+            .attachDatabaseContext(dbContext)
+            .create(j);
     }
 
     if (!ci_starts_with(text, "step proj=") &&
@@ -7474,7 +7826,9 @@ static BaseObjectNNPtr createFromUserInput(const std::string &text,
         return importFromWMSAUTO(text);
     }
 
-    auto tokens = split(text, ':');
+    std::vector<std::string> tokens;
+    if (text.find(' ') == std::string::npos)
+        tokens = split(text, ':');
     if (tokens.size() == 2) {
         if (!dbContext) {
             throw ParsingException("no database context specified");
@@ -7767,7 +8121,7 @@ static BaseObjectNNPtr createFromUserInput(const std::string &text,
     // urn:ogc:def:crs:EPSG::4326
     if (tokens.size() == 7 && tolower(tokens[0]) == "urn") {
 
-        const auto type = tokens[3] == "CRS" ? "crs" : tokens[3];
+        const std::string type(tokens[3] == "CRS" ? "crs" : tokens[3]);
         const auto &authName = tokens[4];
         const auto &version = tokens[5];
         const auto &code = tokens[6];
@@ -7833,20 +8187,23 @@ static BaseObjectNNPtr createFromUserInput(const std::string &text,
 
                 // If there's exactly only one object whose name is equivalent
                 // to the user input, return it.
-                IdentifiedObjectPtr identifiedObj;
-                for (const auto &obj : res) {
-                    if (Identifier::isEquivalentName(obj->nameStr().c_str(),
-                                                     objectName.c_str())) {
-                        if (identifiedObj == nullptr) {
-                            identifiedObj = obj.as_nullable();
-                        } else {
-                            identifiedObj = nullptr;
-                            break;
+                for (int pass = 0; pass <= 1; ++pass) {
+                    IdentifiedObjectPtr identifiedObj;
+                    for (const auto &obj : res) {
+                        if (Identifier::isEquivalentName(
+                                obj->nameStr().c_str(), objectName.c_str(),
+                                /* biggerDifferencesAllowed = */ pass == 1)) {
+                            if (identifiedObj == nullptr) {
+                                identifiedObj = obj.as_nullable();
+                            } else {
+                                identifiedObj = nullptr;
+                                break;
+                            }
                         }
                     }
-                }
-                if (identifiedObj) {
-                    return identifiedObj;
+                    if (identifiedObj) {
+                        return identifiedObj;
+                    }
                 }
 
                 std::string msg("several objects matching this name: ");
@@ -7999,7 +8356,7 @@ static BaseObjectNNPtr createFromUserInput(const std::string &text,
  * easting, northing axis order (except the ones with Transverse Mercator South
  * Orientated projection). In that mode, the epsg:XXXX syntax will be also
  * interpreted the same way.
- * @throw ParsingException
+ * @throw ParsingException if the string cannot be parsed.
  */
 BaseObjectNNPtr createFromUserInput(const std::string &text,
                                     const DatabaseContextPtr &dbContext,
@@ -8046,7 +8403,7 @@ BaseObjectNNPtr createFromUserInput(const std::string &text,
  *
  * @param text One of the above mentioned text format
  * @param ctx PROJ context
- * @throw ParsingException
+ * @throw ParsingException if the string cannot be parsed.
  */
 BaseObjectNNPtr createFromUserInput(const std::string &text, PJ_CONTEXT *ctx) {
     DatabaseContextPtr dbContext;
@@ -8078,7 +8435,7 @@ BaseObjectNNPtr createFromUserInput(const std::string &text, PJ_CONTEXT *ctx) {
  * in warningList(). This does not prevent more severe errors to cause an
  * exception to be thrown.
  *
- * @throw ParsingException
+ * @throw ParsingException if the string cannot be parsed.
  */
 BaseObjectNNPtr WKTParser::createFromWKT(const std::string &wkt) {
 
@@ -8154,13 +8511,13 @@ BaseObjectNNPtr WKTParser::createFromWKT(const std::string &wkt) {
         dialect == WKTGuessedDialect::WKT1_ESRI) {
         auto errorMsg = pj_wkt1_parse(wkt);
         if (!errorMsg.empty()) {
-            d->emitRecoverableWarning(errorMsg);
+            d->emitGrammarError(errorMsg);
         }
     } else if (dialect == WKTGuessedDialect::WKT2_2015 ||
                dialect == WKTGuessedDialect::WKT2_2019) {
         auto errorMsg = pj_wkt2_parse(wkt);
         if (!errorMsg.empty()) {
-            d->emitRecoverableWarning(errorMsg);
+            d->emitGrammarError(errorMsg);
         }
     }
 
@@ -8183,6 +8540,10 @@ WKTParser::attachDatabaseContext(const DatabaseContextPtr &dbContext) {
  */
 WKTParser::WKTGuessedDialect
 WKTParser::guessDialect(const std::string &inputWkt) noexcept {
+
+    // cppcheck complains (rightly) that the method could be static
+    (void)this;
+
     std::string wkt = inputWkt;
     std::size_t idxFirstCharNotSpace = wkt.find_first_not_of(" \t\r\n");
     if (idxFirstCharNotSpace > 0 && idxFirstCharNotSpace != std::string::npos) {
@@ -8441,7 +8802,7 @@ struct PROJStringFormatter::Private {
 //! @cond Doxygen_Suppress
 PROJStringFormatter::PROJStringFormatter(Convention conventionIn,
                                          const DatabaseContextPtr &dbContext)
-    : d(internal::make_unique<Private>()) {
+    : d(std::make_unique<Private>()) {
     d->convention_ = conventionIn;
     d->dbContext_ = dbContext;
 }
@@ -8624,6 +8985,11 @@ const std::string &PROJStringFormatter::toString() const {
             step.inverted = false;
             continue;
         }
+
+        // set does the same in forward and inverse paths
+        if (step.name == "set") {
+            step.inverted = false;
+        }
     }
 
     {
@@ -8751,10 +9117,10 @@ const std::string &PROJStringFormatter::toString() const {
                     first.paramValues[0].keyEquals("z_in") &&
                     first.paramValues[1].keyEquals("z_out")) {
 
-                    auto xy_in = second.paramValues[0].value;
-                    auto xy_out = second.paramValues[1].value;
-                    auto z_in = first.paramValues[0].value;
-                    auto z_out = first.paramValues[1].value;
+                    const std::string xy_in(second.paramValues[0].value);
+                    const std::string xy_out(second.paramValues[1].value);
+                    const std::string z_in(first.paramValues[0].value);
+                    const std::string z_out(first.paramValues[1].value);
 
                     iterCur->paramValues.clear();
                     iterCur->paramValues.emplace_back(
@@ -8793,8 +9159,8 @@ const std::string &PROJStringFormatter::toString() const {
                     second.paramValues[1].keyEquals("xy_out") &&
                     first.paramValues[0].value == second.paramValues[1].value &&
                     first.paramValues[2].value == second.paramValues[0].value) {
-                    auto z_in = first.paramValues[1].value;
-                    auto z_out = first.paramValues[3].value;
+                    const std::string z_in(first.paramValues[1].value);
+                    const std::string z_out(first.paramValues[3].value);
                     if (z_in != z_out) {
                         iterCur->paramValues.clear();
                         iterCur->paramValues.emplace_back(
@@ -8828,10 +9194,10 @@ const std::string &PROJStringFormatter::toString() const {
                 curStep.paramValues[0].keyEquals("z_in") &&
                 curStep.paramValues[1].keyEquals("z_out") &&
                 prevStep.paramValues[3].value == curStep.paramValues[0].value) {
-                auto xy_in = prevStep.paramValues[0].value;
-                auto z_in = prevStep.paramValues[1].value;
-                auto xy_out = prevStep.paramValues[2].value;
-                auto z_out = curStep.paramValues[1].value;
+                const std::string xy_in(prevStep.paramValues[0].value);
+                const std::string z_in(prevStep.paramValues[1].value);
+                const std::string xy_out(prevStep.paramValues[2].value);
+                const std::string z_out(curStep.paramValues[1].value);
 
                 iterCur->paramValues.clear();
                 iterCur->paramValues.emplace_back(
@@ -8861,10 +9227,10 @@ const std::string &PROJStringFormatter::toString() const {
                 curStep.paramValues[2].keyEquals("xy_out") &&
                 curStep.paramValues[3].keyEquals("z_out") &&
                 prevStep.paramValues[1].value == curStep.paramValues[1].value) {
-                auto xy_in = curStep.paramValues[0].value;
-                auto z_in = prevStep.paramValues[0].value;
-                auto xy_out = curStep.paramValues[2].value;
-                auto z_out = curStep.paramValues[3].value;
+                const std::string xy_in(curStep.paramValues[0].value);
+                const std::string z_in(prevStep.paramValues[0].value);
+                const std::string xy_out(curStep.paramValues[2].value);
+                const std::string z_out(curStep.paramValues[3].value);
 
                 iterCur->paramValues.clear();
                 iterCur->paramValues.emplace_back(
@@ -8894,10 +9260,10 @@ const std::string &PROJStringFormatter::toString() const {
                 curStep.paramValues[0].keyEquals("xy_in") &&
                 curStep.paramValues[1].keyEquals("xy_out") &&
                 prevStep.paramValues[2].value == curStep.paramValues[0].value) {
-                auto xy_in = prevStep.paramValues[0].value;
-                auto z_in = prevStep.paramValues[1].value;
-                auto xy_out = curStep.paramValues[1].value;
-                auto z_out = prevStep.paramValues[3].value;
+                const std::string xy_in(prevStep.paramValues[0].value);
+                const std::string z_in(prevStep.paramValues[1].value);
+                const std::string xy_out(curStep.paramValues[1].value);
+                const std::string z_out(prevStep.paramValues[3].value);
 
                 iterCur->paramValues.clear();
                 iterCur->paramValues.emplace_back(
@@ -8940,10 +9306,10 @@ const std::string &PROJStringFormatter::toString() const {
                 curStep.paramValues[3].keyEquals("z_out") &&
                 prevStep.paramValues[2].value == curStep.paramValues[0].value &&
                 curStep.paramValues[1].value == curStep.paramValues[3].value) {
-                auto xy_in = prevStep.paramValues[0].value;
-                auto z_in = prevStep.paramValues[1].value;
-                auto xy_out = curStep.paramValues[2].value;
-                auto z_out = prevStep.paramValues[3].value;
+                const std::string xy_in(prevStep.paramValues[0].value);
+                const std::string z_in(prevStep.paramValues[1].value);
+                const std::string xy_out(curStep.paramValues[2].value);
+                const std::string z_out(prevStep.paramValues[3].value);
 
                 iterCur->paramValues.clear();
                 iterCur->paramValues.emplace_back(
@@ -8979,10 +9345,10 @@ const std::string &PROJStringFormatter::toString() const {
                 prevStep.paramValues[1].value ==
                     prevStep.paramValues[3].value &&
                 curStep.paramValues[0].value == prevStep.paramValues[2].value) {
-                auto xy_in = prevStep.paramValues[0].value;
-                auto z_in = curStep.paramValues[1].value;
-                auto xy_out = curStep.paramValues[2].value;
-                auto z_out = curStep.paramValues[3].value;
+                const std::string xy_in(prevStep.paramValues[0].value);
+                const std::string z_in(curStep.paramValues[1].value);
+                const std::string xy_out(curStep.paramValues[2].value);
+                const std::string z_out(curStep.paramValues[3].value);
 
                 iterCur->paramValues.clear();
                 iterCur->paramValues.emplace_back(
@@ -9092,6 +9458,34 @@ const std::string &PROJStringFormatter::toString() const {
                 }
             }
 
+            // "+proj=set +v_4=X" followed by "+proj=set +v_4=X +omit_fwd"
+            // can be optimized as "+proj=set +v_4=X"
+            if (curStep.name == "set" && prevStep.name == "set" &&
+                !curStep.inverted && !prevStep.inverted &&
+                curStepParamCount == 2 && prevStepParamCount == 1 &&
+                curStep.paramValues[0].keyEquals("v_4") &&
+                prevStep.paramValues[0].keyEquals("v_4") &&
+                curStep.paramValues[1].keyEquals("omit_fwd") &&
+                curStep.paramValues[0].value == prevStep.paramValues[0].value) {
+
+                iterCur = steps.erase(iterCur);
+                continue;
+            }
+
+            // "+proj=set +v_4=X +omit_inv" followed by "+proj=set +v_4=X"
+            // can be optimized as "+proj=set +v_4=X"
+            if (curStep.name == "set" && prevStep.name == "set" &&
+                !curStep.inverted && !prevStep.inverted &&
+                curStepParamCount == 1 && prevStepParamCount == 2 &&
+                curStep.paramValues[0].keyEquals("v_4") &&
+                prevStep.paramValues[0].keyEquals("v_4") &&
+                prevStep.paramValues[1].keyEquals("omit_inv") &&
+                curStep.paramValues[0].value == prevStep.paramValues[0].value) {
+
+                deletePrevIter();
+                continue;
+            }
+
             // for practical purposes WGS84 and GRS80 ellipsoids are
             // equivalents (cartesian transform between both lead to differences
             // of the order of 1e-14 deg..).
@@ -9109,7 +9503,6 @@ const std::string &PROJStringFormatter::toString() const {
             }
 
             if (curStep.name == "helmert" && prevStep.name == "helmert" &&
-                !curStep.inverted && !prevStep.inverted &&
                 curStepParamCount == 3 &&
                 curStepParamCount == prevStepParamCount) {
                 std::map<std::string, double> leftParamsMap;
@@ -9134,12 +9527,18 @@ const std::string &PROJStringFormatter::toString() const {
                     rightParamsMap.find(y) != rightParamsMap.end() &&
                     rightParamsMap.find(z) != rightParamsMap.end()) {
 
-                    const double xSum = leftParamsMap[x] + rightParamsMap[x];
-                    const double ySum = leftParamsMap[y] + rightParamsMap[y];
-                    const double zSum = leftParamsMap[z] + rightParamsMap[z];
+                    const double signLeft = prevStep.inverted ? -1 : 1;
+                    const double signRight = curStep.inverted ? -1 : 1;
+                    const double xSum = signLeft * leftParamsMap[x] +
+                                        signRight * rightParamsMap[x];
+                    const double ySum = signLeft * leftParamsMap[y] +
+                                        signRight * rightParamsMap[y];
+                    const double zSum = signLeft * leftParamsMap[z] +
+                                        signRight * rightParamsMap[z];
                     if (xSum == 0.0 && ySum == 0.0 && zSum == 0.0) {
                         deletePrevAndCurIter();
                     } else {
+                        prevStep.inverted = false;
                         prevStep.paramValues[0] =
                             Step::KeyValue("x", internal::toString(xSum));
                         prevStep.paramValues[1] =
@@ -9154,9 +9553,9 @@ const std::string &PROJStringFormatter::toString() const {
                 }
             }
 
-            // hermert followed by its inverse is a no-op
+            // Helmert followed by its inverse is a no-op
             if (curStep.name == "helmert" && prevStep.name == "helmert" &&
-                !curStep.inverted && !prevStep.inverted &&
+                (curStep.inverted == prevStep.inverted) &&
                 curStepParamCount == prevStepParamCount) {
                 std::set<std::string> leftParamsSet;
                 std::set<std::string> rightParamsSet;
@@ -9256,6 +9655,51 @@ const std::string &PROJStringFormatter::toString() const {
                         deletePrevAndCurIter();
                         continue;
                     }
+                }
+            }
+
+            // Optimize patterns like Krovak (South West) to Krovak East North
+            // (also applies to Modified Krovak)
+            //   +step +inv +proj=krovak +axis=swu +lat_0=49.5
+            //   +lon_0=24.8333333333333
+            //     +alpha=30.2881397527778 +k=0.9999 +x_0=0 +y_0=0 +ellps=bessel
+            //   +step +proj=krovak +lat_0=49.5 +lon_0=24.8333333333333
+            //     +alpha=30.2881397527778 +k=0.9999 +x_0=0 +y_0=0 +ellps=bessel
+            // as:
+            //   +step +proj=axisswap +order=-2,-1
+            // Also applies for the symmetrical case where +axis=swu is on the
+            // second step.
+            if (curStep.inverted != prevStep.inverted &&
+                curStep.name == prevStep.name &&
+                ((curStepParamCount + 1 == prevStepParamCount &&
+                  prevStep.paramValues[0].equals("axis", "swu")) ||
+                 (prevStepParamCount + 1 == curStepParamCount &&
+                  curStep.paramValues[0].equals("axis", "swu")))) {
+                const auto &swStep = (curStepParamCount < prevStepParamCount)
+                                         ? prevStep
+                                         : curStep;
+                const auto &enStep = (curStepParamCount < prevStepParamCount)
+                                         ? curStep
+                                         : prevStep;
+                // Check if all remaining parameters (except leading axis=swu
+                // in swStep) are identical.
+                bool allSame = true;
+                for (size_t j = 0;
+                     j < std::min(curStepParamCount, prevStepParamCount); j++) {
+                    if (enStep.paramValues[j] != swStep.paramValues[j + 1]) {
+                        allSame = false;
+                        break;
+                    }
+                }
+                if (allSame) {
+                    iterCur->inverted = false;
+                    iterCur->name = "axisswap";
+                    iterCur->paramValues.clear();
+                    iterCur->paramValues.emplace_back(
+                        Step::KeyValue("order", "-2,-1"));
+
+                    deletePrevIter();
+                    continue;
                 }
             }
 
@@ -9532,9 +9976,10 @@ const std::string &PROJStringFormatter::toString() const {
                 }
 
                 if (ok) {
-                    auto stepVgridshift = *iterVgridshift;
+                    Step stepVgridshift(*iterVgridshift);
                     steps.erase(iterPrev, iterPush);
-                    steps.insert(std::next(iterNext), stepVgridshift);
+                    steps.insert(std::next(iterNext),
+                                 std::move(stepVgridshift));
                     iterPrev = iterPush;
                     iterCur = std::next(iterPush);
                     continue;
@@ -9624,7 +10069,9 @@ const std::string &PROJStringFormatter::toString() const {
         std::string curLine;
         if (!d->result_.empty()) {
             if (d->multiLine_) {
-                curLine = std::string(d->indentLevel_ * d->indentWidth_, ' ');
+                curLine = std::string(static_cast<size_t>(d->indentLevel_) *
+                                          d->indentWidth_,
+                                      ' ');
                 curLine += "+step";
             } else {
                 curLine = " +step";
@@ -9653,8 +10100,10 @@ const std::string &PROJStringFormatter::toString() const {
                 if (!d->result_.empty())
                     d->result_ += '\n';
                 d->result_ += curLine;
-                curLine = std::string(
-                    d->indentLevel_ * d->indentWidth_ + strlen("+step "), ' ');
+                curLine = std::string(static_cast<size_t>(d->indentLevel_) *
+                                              d->indentWidth_ +
+                                          strlen("+step "),
+                                      ' ');
             } else {
                 if (!curLine.empty())
                     curLine += ' ';
@@ -9763,11 +10212,11 @@ PROJStringSyntaxParser(const std::string &projString, std::vector<Step> &steps,
                 steps.back().name.empty()) {
                 assert(hasProj);
                 auto stepName = word.substr(strlen("proj="));
-                steps.back().name = stepName;
+                steps.back().name = std::move(stepName);
             } else if (starts_with(word, "init=")) {
                 assert(hasInit);
                 auto initName = word.substr(strlen("init="));
-                steps.back().name = initName;
+                steps.back().name = std::move(initName);
                 steps.back().isInit = true;
             } else if (word == "inv") {
                 if (!steps.empty()) {
@@ -9777,15 +10226,16 @@ PROJStringSyntaxParser(const std::string &projString, std::vector<Step> &steps,
                 title = word.substr(strlen("title="));
             } else if (word != "step") {
                 const auto pos = word.find('=');
-                auto key = word.substr(0, pos);
+                const auto key = word.substr(0, pos);
 
-                auto pair = (pos != std::string::npos)
-                                ? Step::KeyValue(key, word.substr(pos + 1))
-                                : Step::KeyValue(key);
+                Step::KeyValue pair(
+                    (pos != std::string::npos)
+                        ? Step::KeyValue(key, word.substr(pos + 1))
+                        : Step::KeyValue(key));
                 if (steps.empty()) {
-                    globalParamValues.push_back(pair);
+                    globalParamValues.push_back(std::move(pair));
                 } else {
-                    steps.back().paramValues.push_back(pair);
+                    steps.back().paramValues.push_back(std::move(pair));
                 }
             }
         }
@@ -9814,28 +10264,28 @@ PROJStringSyntaxParser(const std::string &projString, std::vector<Step> &steps,
         } else if (inPipeline && !steps.empty() && starts_with(word, "proj=") &&
                    steps.back().name.empty()) {
             auto stepName = word.substr(strlen("proj="));
-            steps.back().name = stepName;
+            steps.back().name = std::move(stepName);
         } else if (inPipeline && !steps.empty() && starts_with(word, "init=") &&
                    steps.back().name.empty()) {
             auto initName = word.substr(strlen("init="));
-            steps.back().name = initName;
+            steps.back().name = std::move(initName);
             steps.back().isInit = true;
         } else if (!inPipeline && starts_with(word, "title=")) {
             title = word.substr(strlen("title="));
         } else {
             const auto pos = word.find('=');
             auto key = word.substr(0, pos);
-            auto pair = (pos != std::string::npos)
-                            ? Step::KeyValue(key, word.substr(pos + 1))
-                            : Step::KeyValue(key);
+            Step::KeyValue pair((pos != std::string::npos)
+                                    ? Step::KeyValue(key, word.substr(pos + 1))
+                                    : Step::KeyValue(key));
             if (steps.empty()) {
-                globalParamValues.push_back(pair);
+                globalParamValues.emplace_back(std::move(pair));
             } else {
-                steps.back().paramValues.push_back(pair);
+                steps.back().paramValues.emplace_back(std::move(pair));
             }
         }
     }
-    if (invGlobal) {
+    if (invGlobal && !steps.empty()) {
         for (auto &step : steps) {
             step.inverted = !step.inverted;
         }
@@ -9977,8 +10427,8 @@ void PROJStringFormatter::addParam(const std::string &paramName, int val) {
 
 // ---------------------------------------------------------------------------
 
-static std::string formatToString(double val) {
-    if (std::abs(val * 10 - std::round(val * 10)) < 1e-8) {
+static std::string formatToString(double val, double precision) {
+    if (std::abs(val * 10 - std::round(val * 10)) < precision) {
         // For the purpose of
         // https://www.epsg-registry.org/export.htm?wkt=urn:ogc:def:crs:EPSG::27561
         // Latitude of natural of origin to be properly rounded from 55 grad
@@ -9996,7 +10446,12 @@ void PROJStringFormatter::addParam(const char *paramName, double val) {
 }
 
 void PROJStringFormatter::addParam(const std::string &paramName, double val) {
-    addParam(paramName, formatToString(val));
+    if (paramName == "dt") {
+        addParam(paramName,
+                 normalizeSerializedString(internal::toString(val, 7)));
+    } else {
+        addParam(paramName, formatToString(val, 1e-8));
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -10008,7 +10463,7 @@ void PROJStringFormatter::addParam(const char *paramName,
         if (i > 0) {
             paramValue += ',';
         }
-        paramValue += formatToString(vals[i]);
+        paramValue += formatToString(vals[i], 1e-8);
     }
     addParam(paramName, paramValue);
 }
@@ -10067,6 +10522,35 @@ std::set<std::string> PROJStringFormatter::getUsedGridNames() const {
         }
     }
     return res;
+}
+
+// ---------------------------------------------------------------------------
+
+bool PROJStringFormatter::requiresPerCoordinateInputTime() const {
+    for (const auto &step : d->steps_) {
+        if (step.name == "set" && !step.inverted) {
+            for (const auto &param : step.paramValues) {
+                if (param.keyEquals("v_4")) {
+                    return false;
+                }
+            }
+        } else if (step.name == "helmert") {
+            for (const auto &param : step.paramValues) {
+                if (param.keyEquals("t_epoch")) {
+                    return true;
+                }
+            }
+        } else if (step.name == "deformation") {
+            for (const auto &param : step.paramValues) {
+                if (param.keyEquals("t_epoch")) {
+                    return true;
+                }
+            }
+        } else if (step.name == "defmodel") {
+            return true;
+        }
+    }
+    return false;
 }
 
 // ---------------------------------------------------------------------------
@@ -10319,7 +10803,7 @@ struct PROJStringParser::Private {
 
 // ---------------------------------------------------------------------------
 
-PROJStringParser::PROJStringParser() : d(internal::make_unique<Private>()) {}
+PROJStringParser::PROJStringParser() : d(std::make_unique<Private>()) {}
 
 // ---------------------------------------------------------------------------
 
@@ -10614,7 +11098,7 @@ PrimeMeridianNNPtr PROJStringParser::Private::buildPrimeMeridian(Step &step) {
 std::string PROJStringParser::Private::guessBodyName(double a) {
 
     auto ret = Ellipsoid::guessBodyName(dbContext_, a);
-    if (ret == "Non-Earth body" && dbContext_ == nullptr && ctx_ != nullptr) {
+    if (ret == NON_EARTH_BODY && dbContext_ == nullptr && ctx_ != nullptr) {
         dbContext_ =
             ctx_->get_cpp_context()->getDatabaseContext().as_nullable();
         if (dbContext_) {
@@ -10647,7 +11131,7 @@ PROJStringParser::Private::buildDatum(Step &step, const std::string &title) {
         !fStr.empty() || !esStr.empty() || !eStr.empty();
 
     if (!numericParamPresent && ellpsStr.empty() && datumStr.empty() &&
-        step.name == "krovak") {
+        (step.name == "krovak" || step.name == "mod_krovak")) {
         ellpsStr = "bessel";
     }
 
@@ -10675,7 +11159,7 @@ PROJStringParser::Private::buildDatum(Step &step, const std::string &title) {
             } else {
                 return GeodeticReferenceFrame::create(
                     PropertyMap().set(IdentifiedObject::NAME_KEY,
-                                      "Unknown based on " +
+                                      UNKNOWN_BASED_ON +
                                           grf->ellipsoid()->nameStr() +
                                           " ellipsoid" + datumNameSuffix),
                     grf->ellipsoid(), grf->anchorDefinition(), pm);
@@ -10748,18 +11232,18 @@ PROJStringParser::Private::buildDatum(Step &step, const std::string &title) {
             if (ellpsStr == "WGS84") {
                 return GeodeticReferenceFrame::create(
                     grfMap.set(IdentifiedObject::NAME_KEY,
-                               title.empty()
-                                   ? "Unknown based on WGS 84 ellipsoid" +
-                                         datumNameSuffix
-                                   : title),
+                               title.empty() ? std::string(UNKNOWN_BASED_ON)
+                                                   .append("WGS 84 ellipsoid")
+                                                   .append(datumNameSuffix)
+                                             : title),
                     Ellipsoid::WGS84, optionalEmptyString, pm);
             } else if (ellpsStr == "GRS80") {
                 return GeodeticReferenceFrame::create(
                     grfMap.set(IdentifiedObject::NAME_KEY,
-                               title.empty()
-                                   ? "Unknown based on GRS 1980 ellipsoid" +
-                                         datumNameSuffix
-                                   : title),
+                               title.empty() ? std::string(UNKNOWN_BASED_ON)
+                                                   .append("GRS 1980 ellipsoid")
+                                                   .append(datumNameSuffix)
+                                             : title),
                     Ellipsoid::GRS1980, optionalEmptyString, pm);
             } else {
                 auto proj_ellps = proj_list_ellps();
@@ -10793,9 +11277,10 @@ PROJStringParser::Private::buildDatum(Step &step, const std::string &title) {
                         return GeodeticReferenceFrame::create(
                             grfMap.set(IdentifiedObject::NAME_KEY,
                                        title.empty()
-                                           ? std::string("Unknown based on ") +
-                                                 proj_ellps[i].name +
-                                                 " ellipsoid" + datumNameSuffix
+                                           ? std::string(UNKNOWN_BASED_ON)
+                                                 .append(proj_ellps[i].name)
+                                                 .append(" ellipsoid")
+                                                 .append(datumNameSuffix)
                                            : title),
                             NN_NO_CHECK(ellipsoid), optionalEmptyString, pm);
                     }
@@ -10828,7 +11313,7 @@ PROJStringParser::Private::buildDatum(Step &step, const std::string &title) {
         std::string datumName(title);
         if (title.empty()) {
             if (ellipsoid->nameStr() != "unknown") {
-                datumName = "Unknown based on ";
+                datumName = UNKNOWN_BASED_ON;
                 datumName += ellipsoid->nameStr();
                 datumName += " ellipsoid";
             } else {
@@ -10999,7 +11484,7 @@ PROJStringParser::Private::processAxisSwap(Step &step,
                                /*: (axisType == AxisType::SOUTH_POLE)
                                      ? AxisDirection::NORTH*/
                                : AxisDirection::NORTH;
-    CoordinateSystemAxisNNPtr north = createAxis(
+    const CoordinateSystemAxisNNPtr north = createAxis(
         northName, northAbbev, northDir, unit,
         isGeographic ? nullMeridian
         : (axisType == AxisType::NORTH_POLE)
@@ -11071,9 +11556,10 @@ PROJStringParser::Private::processAxisSwap(Step &step,
                 throw ParsingException("Unhandled order=" + orderStr);
             }
         }
-    } else if (step.name == "krovak" && hasParamValue(step, "czech")) {
-        axis[0] = west;
-        axis[1] = south;
+    } else if ((step.name == "krovak" || step.name == "mod_krovak") &&
+               hasParamValue(step, "czech")) {
+        axis[0] = std::move(west);
+        axis[1] = std::move(south);
     }
     return axis;
 }
@@ -11290,6 +11776,26 @@ PROJStringParser::Private::buildBoundOrCompoundCRSIfNeeded(int iStep,
                 throw ParsingException("Non numerical value in towgs84 clause");
             }
         }
+
+        if (towgs84Values.size() == 7 && dbContext_) {
+            if (dbContext_->toWGS84AutocorrectWrongValues(
+                    towgs84Values[0], towgs84Values[1], towgs84Values[2],
+                    towgs84Values[3], towgs84Values[4], towgs84Values[5],
+                    towgs84Values[6])) {
+                for (auto &pair : step.paramValues) {
+                    if (ci_equal(pair.key, "towgs84")) {
+                        pair.value.clear();
+                        for (int i = 0; i < 7; ++i) {
+                            if (i > 0)
+                                pair.value += ',';
+                            pair.value += internal::toString(towgs84Values[i]);
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+
         crs = BoundCRS::createFromTOWGS84(crs, towgs84Values);
     }
 
@@ -11531,6 +12037,16 @@ PROJStringParser::Private::buildProjectedCRS(int iStep,
     } else if (step.name == "krovak" && iAxisSwap < 0 &&
                hasParamValue(step, "czech") && !hasParamValue(step, "axis")) {
         mapping = getMapping(EPSG_CODE_METHOD_KROVAK);
+    } else if (step.name == "mod_krovak" &&
+               ((iAxisSwap < 0 && getParamValue(step, "axis") == "swu" &&
+                 !hasParamValue(step, "czech")) ||
+                (iAxisSwap > 0 &&
+                 getParamValue(steps_[iAxisSwap], "order") == "-2,-1" &&
+                 !hasParamValue(step, "czech")))) {
+        mapping = getMapping(EPSG_CODE_METHOD_KROVAK_MODIFIED);
+    } else if (step.name == "mod_krovak" && iAxisSwap < 0 &&
+               hasParamValue(step, "czech") && !hasParamValue(step, "axis")) {
+        mapping = getMapping(EPSG_CODE_METHOD_KROVAK_MODIFIED);
     } else if (step.name == "merc") {
         if (hasParamValue(step, "a") && hasParamValue(step, "b") &&
             getParamValue(step, "a") == getParamValue(step, "b") &&
@@ -11622,6 +12138,13 @@ PROJStringParser::Private::buildProjectedCRS(int iStep,
                 axisType = AxisType::SOUTH_POLE;
             }
         }
+    } else if (step.name == "ortho") {
+        const std::string &k = getParamValueK(step);
+        if ((!k.empty() && getNumericValue(k) != 1.0) ||
+            (hasParamValue(step, "alpha") &&
+             getNumericValue(getParamValue(step, "alpha")) != 0.0)) {
+            mapping = getMapping(EPSG_CODE_METHOD_LOCAL_ORTHOGRAPHIC);
+        }
     }
 
     UnitOfMeasure unit = buildUnit(step, "units", "to_meter");
@@ -11704,7 +12227,7 @@ PROJStringParser::Private::buildProjectedCRS(int iStep,
                 if (!paramValue->empty()) {
                     value = getAngularValue(*paramValue);
                 }
-            } else if (step.name == "krovak") {
+            } else if (step.name == "krovak" || step.name == "mod_krovak") {
                 // Keep it in sync with defaults of krovak.cpp
                 if (param->epsg_code ==
                     EPSG_CODE_PARAMETER_LATITUDE_PROJECTION_CENTRE) {
@@ -11803,7 +12326,9 @@ PROJStringParser::Private::buildProjectedCRS(int iStep,
             }
             if (param.value.empty()) {
                 methodName += " " + param.key;
-            } else if (isalpha(param.value[0])) {
+            } else if (isalpha(param.value[0]) || param.key == "gores") {
+                // The value of gores can be a string or a number.
+                // See interrupted.cpp for more info.
                 methodName += " " + param.key + "=" + param.value;
             } else {
                 parameters.push_back(OperationParameter::create(
@@ -11821,7 +12346,6 @@ PROJStringParser::Private::buildProjectedCRS(int iStep,
                                "q,"                         // urm5
                                "path,lsat,"                 // lsat
                                "W,M,"                       // hammer
-                               "aperture,resolution,"       // isea
                                )) {
                     double value = getNumericValue(param.value, &hasError);
                     values.push_back(ParameterValue::create(
@@ -11851,7 +12375,7 @@ PROJStringParser::Private::buildProjectedCRS(int iStep,
                 if (geogCRS) {
                     return DerivedGeographicCRS::create(
                         PropertyMap().set(IdentifiedObject::NAME_KEY,
-                                          "unnamed"),
+                                          "unknown"),
                         NN_NO_CHECK(geogCRS), NN_NO_CHECK(conv),
                         buildEllipsoidalCS(iStep, iUnitConvert, iAxisSwap,
                                            false));
@@ -11865,9 +12389,11 @@ PROJStringParser::Private::buildProjectedCRS(int iStep,
 
     auto csGeodCRS = geodCRS->coordinateSystem();
     auto cs = csGeodCRS->axisList().size() == 2
-                  ? CartesianCS::create(emptyPropertyMap, axis[0], axis[1])
+                  ? CartesianCS::create(emptyPropertyMap, axis[0], axis[1],
+                                        /* enforceSameUnit = */ false)
                   : CartesianCS::create(emptyPropertyMap, axis[0], axis[1],
-                                        csGeodCRS->axisList()[2]);
+                                        csGeodCRS->axisList()[2],
+                                        /* enforceSameUnit = */ false);
     if (isTopocentricStep(step.name)) {
         cs = CartesianCS::create(
             emptyPropertyMap,
@@ -11932,7 +12458,7 @@ struct PJContextHolder {
  * The projString must contain +type=crs for the object to be detected as a
  * CRS instead of a CoordinateOperation.
  *
- * @throw ParsingException
+ * @throw ParsingException if the string cannot be parsed.
  */
 BaseObjectNNPtr
 PROJStringParser::createFromPROJString(const std::string &projString) {
@@ -11989,25 +12515,35 @@ PROJStringParser::createFromPROJString(const std::string &projString) {
     if (d->steps_.size() == 1 && d->steps_[0].isInit &&
         !d->steps_[0].inverted) {
 
+        auto ctx = d->ctx_ ? d->ctx_ : proj_context_create();
+        if (!ctx) {
+            throw ParsingException("out of memory");
+        }
+        PJContextHolder contextHolder(ctx, ctx != d->ctx_);
+
         // Those used to come from a text init file
         // We only support them in compatibility mode
         const std::string &stepName = d->steps_[0].name;
         if (ci_starts_with(stepName, "epsg:") ||
             ci_starts_with(stepName, "IGNF:")) {
 
-            /* We create a new context so as to avoid messing up with the */
-            /* errorno of the main context, when trying to find the likely */
-            /* missing epsg file */
-            auto ctx = proj_context_create();
-            if (!ctx) {
-                throw ParsingException("out of memory");
-            }
-            PJContextHolder contextHolder(ctx, true);
-            if (d->ctx_) {
-                ctx->set_search_paths(d->ctx_->search_paths);
-                ctx->file_finder = d->ctx_->file_finder;
-                ctx->file_finder_user_data = d->ctx_->file_finder_user_data;
-            }
+            struct BackupContextErrno {
+                PJ_CONTEXT *m_ctxt = nullptr;
+                int m_last_errno = 0;
+
+                explicit BackupContextErrno(PJ_CONTEXT *ctxtIn)
+                    : m_ctxt(ctxtIn), m_last_errno(m_ctxt->last_errno) {
+                    m_ctxt->debug_level = PJ_LOG_ERROR;
+                }
+
+                ~BackupContextErrno() { m_ctxt->last_errno = m_last_errno; }
+
+                BackupContextErrno(const BackupContextErrno &) = delete;
+                BackupContextErrno &
+                operator=(const BackupContextErrno &) = delete;
+            };
+
+            BackupContextErrno backupContextErrno(ctx);
 
             bool usePROJ4InitRules = d->usePROJ4InitRules_;
             if (!usePROJ4InitRules) {
@@ -12023,7 +12559,8 @@ PROJStringParser::createFromPROJString(const std::string &projString) {
             std::string initname(stepName);
             initname.resize(initname.find(':'));
             int file_found =
-                pj_find_file(ctx, initname.c_str(), unused, sizeof(unused));
+                pj_find_file(ctx, initname.c_str(), unused, sizeof(unused),
+                             /* disable_network = */ true);
 
             if (!file_found) {
                 auto obj = createFromUserInput(stepName, d->dbContext_, true);
@@ -12113,12 +12650,6 @@ PROJStringParser::createFromPROJString(const std::string &projString) {
                 }
             }
         }
-
-        auto ctx = d->ctx_ ? d->ctx_ : proj_context_create();
-        if (!ctx) {
-            throw ParsingException("out of memory");
-        }
-        PJContextHolder contextHolder(ctx, ctx != d->ctx_);
 
         paralist *init = pj_mkparam(("init=" + d->steps_[0].name).c_str());
         if (!init) {
@@ -12290,7 +12821,8 @@ PROJStringParser::createFromPROJString(const std::string &projString) {
                 continue;
             }
             foundKeys.insert(kv.key);
-            if (step.name == "krovak" && kv.key == "alpha") {
+            if ((step.name == "krovak" || step.name == "mod_krovak") &&
+                kv.key == "alpha") {
                 // We recognize it in our CRS parsing code
                 recognizedByPROJ = true;
             } else {
@@ -12321,7 +12853,7 @@ PROJStringParser::createFromPROJString(const std::string &projString) {
                 newParamValues.emplace_back(kv);
             }
         }
-        step.paramValues = newParamValues;
+        step.paramValues = std::move(newParamValues);
 
         d->projString_.clear();
         if (!step.name.empty()) {
@@ -12346,13 +12878,13 @@ PROJStringParser::createFromPROJString(const std::string &projString) {
 
     if (!valid) {
         const int l_errno = proj_context_errno(pj_context);
-        std::string prefix("Error " + toString(l_errno) + " (" +
-                           proj_errno_string(l_errno) + ")");
-        if (logger.msg.empty()) {
-            logger.msg = prefix;
-        } else {
-            logger.msg = prefix + ": " + logger.msg;
+        std::string msg("Error " + toString(l_errno) + " (" +
+                        proj_errno_string(l_errno) + ")");
+        if (!logger.msg.empty()) {
+            msg += ": ";
+            msg += logger.msg;
         }
+        logger.msg = std::move(msg);
     }
 
     if (pj_context != d->ctx_) {
@@ -12457,8 +12989,6 @@ struct JSONFormatter::Private {
     bool abridgedTransformationWriteSourceCRS_ = false;
     std::string schema_ = PROJJSON_DEFAULT_VERSION;
 
-    std::string result_{};
-
     // cppcheck-suppress functionStatic
     void pushOutputId(bool outputIdIn) { outputIdStack_.push_back(outputIdIn); }
 
@@ -12478,7 +13008,7 @@ struct JSONFormatter::Private {
 JSONFormatterNNPtr JSONFormatter::create( // cppcheck-suppress passedByValue
     DatabaseContextPtr dbContext) {
     auto ret = NN_NO_CHECK(JSONFormatter::make_unique<JSONFormatter>());
-    ret->d->dbContext_ = dbContext;
+    ret->d->dbContext_ = std::move(dbContext);
     return ret;
 }
 
@@ -12514,7 +13044,7 @@ JSONFormatter &JSONFormatter::setSchema(const std::string &schema) noexcept {
 
 //! @cond Doxygen_Suppress
 
-JSONFormatter::JSONFormatter() : d(internal::make_unique<Private>()) {}
+JSONFormatter::JSONFormatter() : d(std::make_unique<Private>()) {}
 
 // ---------------------------------------------------------------------------
 

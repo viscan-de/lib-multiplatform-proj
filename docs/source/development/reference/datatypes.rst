@@ -608,7 +608,8 @@ List structures
 
 .. c:type:: PJ_PRIME_MERIDIANS
 
-    Prime meridians defined in PROJ.
+    Hard-coded prime meridians defined in PROJ. Note that the structure is
+    no longer updated, and some values may conflict with other sources.
 
     .. code-block:: C
 
@@ -736,7 +737,7 @@ Info structures
 
         Name of grid, e.g. "*BETA2007.gsb*".
 
-    .. c:member:: char PJ_GRID_INFO
+    .. c:member:: char PJ_GRID_INFO.filename[260]
 
         Full path of grid file, e.g. *"C:\\OSGeo4W64\\share\\proj\\BETA2007.gsb"*
 
@@ -996,4 +997,7 @@ C API for ISO-19111 functionality
    :content-only:
    :members:
 
+.. doxygengroup:: iso19111_advanced_types
+   :project: doxygen_api
+   :content-only:
 

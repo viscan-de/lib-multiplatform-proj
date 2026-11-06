@@ -3,7 +3,7 @@
 PROJ has a wide and varied user base. Some are highly skilled geodesists with a deep
 knowledge of map projections and reference systems, some are GIS software developers
 and others are GIS users. All users, regardless of the profession or skill level,
-has the ability to contribute to PROJ. Here's a few suggestion on how:
+have the ability to contribute to PROJ. Here are a few suggestions on how:
 
 * Help PROJ-users that is less experienced than yourself.
 * Write a bug report
@@ -18,6 +18,7 @@ account. Familiarity with [issues](https://guides.github.com/features/issues/) a
 the [GitHub Flow](https://guides.github.com/introduction/flow/) is an advantage.
 
 ## Help a fellow PROJ user
+
 The main forum for support for PROJ is the mailing list. You can subscribe to
 the mailing list [here](http://lists.osgeo.org/mailman/listinfo/proj) and read
 the archive [here](http://lists.osgeo.org/pipermail/proj/).
@@ -76,12 +77,12 @@ on GitHub.
 If you intend to document one of PROJ's supported projections please use the
 [Mercator projection](https://proj.org/operations/projections/merc.html) as a template.
 
-
 ## Code contributions
 
 See [Code Contributions](https://proj.org/community/code_contributions.html)
 
-#### Legalese
+### Legalese
+
 Committers are the front line gatekeepers to keep the code base clear of improperly contributed code.
 It is important to the PROJ users, developers and the OSGeo foundation to avoid contributing any
 code to the project without it being clearly licensed under the project license.
@@ -122,7 +123,6 @@ improperly contributing code to the source repository:
 * If there is uncertainty about whether a change is proper to contribute to the code base, please
   seek more information from the project steering committee, or the foundation legal counsel.
 
-
 ## Additional Resources
 
 * [General GitHub documentation](https://help.github.com/)
@@ -130,6 +130,6 @@ improperly contributing code to the source repository:
 
 ## Acknowledgements
 
-The _code contribution_ section of this CONTRIBUTING file is inspired by
-[PDAL's](https://github.com/PDAL/PDAL/blob/master/CONTRIBUTING.md) and the _legalese_ section is
-modified from [GDAL committer guidelines](https://trac.osgeo.org/gdal/wiki/rfc3_commiters)
+The [code contribution](#Code Contributions) section of this CONTRIBUTING file is inspired by
+[PDAL's](https://github.com/PDAL/PDAL/blob/master/CONTRIBUTING.md) and the [legalese](#legalese)
+section is modified from [GDAL committer guidelines](https://trac.osgeo.org/gdal/wiki/rfc3_commiters)

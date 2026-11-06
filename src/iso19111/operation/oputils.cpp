@@ -44,6 +44,8 @@
 
 #include "proj_constants.h"
 
+#include <algorithm>
+
 // ---------------------------------------------------------------------------
 
 NS_PROJ_START
@@ -287,7 +289,7 @@ util::PropertyMap createPropertiesForInverse(const CoordinateOperation *op,
                 }
             }
             if (!curToken.empty()) {
-                tokens.push_back(curToken);
+                tokens.push_back(std::move(curToken));
             }
             for (size_t i = tokens.size(); i > 0;) {
                 i--;
@@ -307,6 +309,11 @@ util::PropertyMap createPropertiesForInverse(const CoordinateOperation *op,
                    forwardName != buildOpName(opType, sourceCRS, targetCRS)) {
             if (forwardName.find(" + ") != std::string::npos) {
                 name = INVERSE_OF + '\'' + forwardName + '\'';
+            } else if (starts_with(forwardName, INVERSE_OF)) {
+                name = forwardName.substr(INVERSE_OF.size());
+                if (!name.empty() && name.front() == '\'' &&
+                    name.back() == '\'')
+                    name = name.substr(1, name.size() - 2);
             } else {
                 name = INVERSE_OF + forwardName;
             }
@@ -382,6 +389,7 @@ static std::set<std::string> buildSetEquivalentParameters() {
 
         {EPSG_NAME_PARAMETER_SCALE_FACTOR_AT_NATURAL_ORIGIN, WKT1_SCALE_FACTOR,
          EPSG_NAME_PARAMETER_SCALE_FACTOR_INITIAL_LINE,
+         EPSG_NAME_PARAMETER_SCALE_FACTOR_PROJECTION_CENTRE,
          EPSG_NAME_PARAMETER_SCALE_FACTOR_PSEUDO_STANDARD_PARALLEL, nullptr},
 
         {WKT1_LATITUDE_OF_ORIGIN, WKT1_LATITUDE_OF_CENTER,
@@ -395,6 +403,9 @@ static std::set<std::string> buildSetEquivalentParameters() {
          EPSG_NAME_PARAMETER_LONGITUDE_FALSE_ORIGIN,
          EPSG_NAME_PARAMETER_LONGITUDE_PROJECTION_CENTRE,
          EPSG_NAME_PARAMETER_LONGITUDE_OF_ORIGIN, nullptr},
+
+        {EPSG_NAME_PARAMETER_AZIMUTH_INITIAL_LINE,
+         EPSG_NAME_PARAMETER_AZIMUTH_PROJECTION_CENTRE, nullptr},
 
         {"pseudo_standard_parallel_1", WKT1_STANDARD_PARALLEL_1, nullptr},
     };
@@ -575,13 +586,51 @@ double getAccuracy(const CoordinateOperationNNPtr &op) {
 // Returns the accuracy of a set of concatenated operations, or -1 if unknown
 double getAccuracy(const std::vector<CoordinateOperationNNPtr> &ops) {
     double accuracy = -1.0;
-    for (const auto &subop : ops) {
-        const double subops_accuracy = getAccuracy(subop);
+    double next_accuracy = -1.0;
+    for (size_t i = 0; i < ops.size(); ++i) {
+        const double subops_accuracy =
+            next_accuracy >= 0 ? next_accuracy : getAccuracy(ops[i]);
         if (subops_accuracy < 0.0) {
             return -1.0;
         }
         if (accuracy < 0.0) {
             accuracy = 0.0;
+        }
+        next_accuracy = -1.0;
+        if (subops_accuracy > 0 && i + 1 < ops.size()) {
+            next_accuracy = getAccuracy(ops[i + 1]);
+            if (next_accuracy > 0) {
+                const auto crs1 = ops[i]->sourceCRS();
+                const auto crsMiddle = ops[i]->targetCRS();
+                const auto crs2 = ops[i + 1]->targetCRS();
+
+                // Special case when doing ETRS89-XXX -> ETRS89/ETRFzzzz ->
+                // ETRS89-YYY and at least one of the 2 operations is a no-op
+                constexpr double ACCURACY_ENSEMBLE_ETRS89 = 0.1;
+                if (crs1 && crsMiddle && crs2 &&
+                    std::max(subops_accuracy, next_accuracy) <=
+                        ACCURACY_ENSEMBLE_ETRS89 &&
+                    (crsMiddle->nameStr() == "ETRS89" ||
+                     starts_with(crsMiddle->nameStr(), "ETRF")) &&
+                    starts_with(crs1->nameStr(), "ETRS89-") &&
+                    starts_with(crs2->nameStr(), "ETRS89-")) {
+                    const auto IsNoOp = [](const CoordinateOperationNNPtr &op) {
+                        auto formatter = io::PROJStringFormatter::create();
+                        try {
+                            return op->exportToPROJString(formatter.get()) ==
+                                   "+proj=noop";
+                        } catch (const std::exception &) {
+                        }
+                        return false;
+                    };
+                    if (IsNoOp(ops[i]) || IsNoOp(ops[i + 1])) {
+                        accuracy += std::max(subops_accuracy, next_accuracy);
+                        next_accuracy = -1.0;
+                        ++i;
+                        continue;
+                    }
+                }
+            }
         }
         accuracy += subops_accuracy;
     }

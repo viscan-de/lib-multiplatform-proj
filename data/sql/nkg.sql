@@ -1,6 +1,6 @@
 INSERT INTO "metadata" VALUES('NKG.SOURCE', 'https://github.com/NordicGeodesy/NordicTransformations');
-INSERT INTO "metadata" VALUES('NKG.VERSION', '1.0.0');
-INSERT INTO "metadata" VALUES('NKG.DATE', '2020-12-21');
+INSERT INTO "metadata" VALUES('NKG.VERSION', '1.0.w');
+INSERT INTO "metadata" VALUES('NKG.DATE', '2025-02-13');
 
 -- extent for NKG2008 transformations
 INSERT INTO "extent" VALUES(
@@ -48,6 +48,7 @@ INSERT INTO "geodetic_datum" VALUES (
     2000.0,         -- frame reference epoch
     NULL,           -- ensemble accuracy
     NULL,           -- anchor
+    NULL,           -- anchor_epoch
     0               -- deprecated
 );
 
@@ -93,6 +94,7 @@ INSERT INTO "geodetic_datum" VALUES (
     2000.0,         -- frame reference epoch
     NULL,           -- ensemble accuracy
     NULL,           -- anchor
+    NULL,           -- anchor_epoch
     0               -- deprecated
 );
 
@@ -179,10 +181,10 @@ INSERT INTO "usage" VALUES (
 
 
 INSERT INTO "concatenated_operation_step" (
-    operation_auth_name, operation_code, step_number, step_auth_name, step_code
+    operation_auth_name, operation_code, step_number, step_auth_name, step_code, step_direction
 ) VALUES
-    ('NKG', 'ITRF2000_TO_NKG_ETRF00', 2, 'EPSG', '7941'), -- ITRF2000 -> ETRF2000
-    ('NKG', 'ITRF2000_TO_NKG_ETRF00', 3, 'NKG', 'NKG_ETRF00_TO_ETRF2000')
+    ('NKG', 'ITRF2000_TO_NKG_ETRF00', 2, 'EPSG', '7941', 'forward'), -- ITRF2000 -> ETRF2000
+    ('NKG', 'ITRF2000_TO_NKG_ETRF00', 3, 'NKG', 'NKG_ETRF00_TO_ETRF2000', 'reverse')
 ;
 
 
@@ -250,10 +252,10 @@ INSERT INTO "usage" VALUES (
 
 
 INSERT INTO "concatenated_operation_step" (
-    operation_auth_name, operation_code, step_number, step_auth_name, step_code
+    operation_auth_name, operation_code, step_number, step_auth_name, step_code, step_direction
 ) VALUES
-    ('NKG', 'ITRF2014_TO_NKG_ETRF14', 2, 'EPSG', '8366'), -- ITRF2014 -> ETRF2014
-    ('NKG', 'ITRF2014_TO_NKG_ETRF14', 3, 'NKG', 'NKG_ETRF14_TO_ETRF2014')
+    ('NKG', 'ITRF2014_TO_NKG_ETRF14', 2, 'EPSG', '8366', 'forward'), -- ITRF2014 -> ETRF2014
+    ('NKG', 'ITRF2014_TO_NKG_ETRF14', 3, 'NKG', 'NKG_ETRF14_TO_ETRF2014', 'reverse')
 ;
 
 
@@ -309,7 +311,7 @@ INSERT INTO "usage" VALUES (
 -- EE
 INSERT INTO "helmert_transformation" VALUES (
     'NKG','P1_2008_EE', -- operation auth+code
-    'NKG_ETRF00 to ETRF96@2000.0', -- name
+    'NKG_ETRF00 to ETRF96@2000.0 (Estonia)', -- name
     'Transformation from NKG_ETRF00 to ETRF96, at transformation reference epoch 2000.0', -- description / remark
     'EPSG','1033',  -- method auth+code
     'Position Vector transformation (geocentric domain)',
@@ -343,7 +345,7 @@ INSERT INTO "usage" VALUES (
 -- FI
 INSERT INTO "helmert_transformation" VALUES (
     'NKG','P1_2008_FI', -- operation auth+code
-    'NKG_ETRF00 to ETRF96@2000.0', -- name
+    'NKG_ETRF00 to ETRF96@2000.0 (Finland)', -- name
     'Transformation from NKG_ETRF00 to ETRF96, at transformation reference epoch 2000.0', -- description / remark
     'EPSG','1033',  -- method auth+code
     'Position Vector transformation (geocentric domain)',
@@ -551,7 +553,7 @@ INSERT INTO "usage" VALUES (
 -- EE
 INSERT INTO "helmert_transformation" VALUES (
     'NKG','PAR_2020_EE', -- operation auth+code
-    'NKG_ETRF14 to ETRF96@2000.0', -- name
+    'NKG_ETRF14 to ETRF96@2000.0 (Estonia)', -- name
     'Transformation from NKG_ETRF14 to ETRF96, at transformation reference epoch 2000.0', -- description / remark
     'EPSG','1033',  -- method auth+code
     'Position Vector transformation (geocentric domain)',
@@ -585,7 +587,7 @@ INSERT INTO "usage" VALUES (
 -- FI
 INSERT INTO "helmert_transformation" VALUES (
     'NKG','PAR_2020_FI', -- operation auth+code
-    'NKG_ETRF14 to ETRF96@2000.0', -- name
+    'NKG_ETRF14 to ETRF96@2000.0 (Finland)', -- name
     'Transformation from NKG_ETRF14 to ETRF96, at transformation reference epoch 2000.0', -- description / remark
     'EPSG','1033',  -- method auth+code
     'Position Vector transformation (geocentric domain)',
@@ -685,7 +687,7 @@ INSERT INTO "usage" VALUES (
 -- NO
 INSERT INTO "helmert_transformation" VALUES (
     'NKG','PAR_2020_NO', -- operation auth+code
-    'NKG_ETRF14 to ETRF93@2000.0', -- name
+    'NKG_ETRF14 to ETRF93@2000.0 (Helmert)', -- name
     'Transformation from NKG_ETRF14 to ETRF93, at transformation reference epoch 2000.0', -- description / remark
     'EPSG','1033',  -- method auth+code
     'Position Vector transformation (geocentric domain)',
@@ -733,9 +735,9 @@ INSERT INTO "other_transformation" (
 )
 VALUES(
     'NKG', 'NKG_ETRF14_ETRF93_2000', -- object auth+code
-    'NKG_ETRF14 to ETRF93@2000.0', -- name
+    'NKG_ETRF14 to ETRF93@2000.0 (Gridshift)', -- name
     'Transformation from NKG_ETRF14 to ETRF93, at transformation reference epoch 2000.0', -- description / remark
-    'PROJ', 'PROJString', 
+    'PROJ', 'PROJString',
     '+proj=xyzgridshift +grids=no_kv_NKGETRF14_EPSG7922_2000.tif',
     'NKG','ETRF14',  -- source auth+code
     'EPSG','7922',   -- target auth+code
@@ -810,7 +812,7 @@ INSERT INTO "other_transformation" (
 )
 VALUES(
     'NKG', 'ETRF92_2000_TO_ETRF92_1994',-- object auth+code
-    'ETRF92@2000.0 to ETRF92@1994.704', -- name
+    'ETRF92@2000.0 to ETRF92@1994.704 using nkgrf03vel_realigned', -- name
     NULL, -- description
     'PROJ', 'PROJString',               -- method auth+cod
     '+proj=deformation +dt=-5.296 +grids=eur_nkg_nkgrf03vel_realigned.tif',
@@ -842,10 +844,10 @@ INSERT INTO "concatenated_operation" VALUES(
 
 
 INSERT INTO "concatenated_operation_step" (
-    operation_auth_name, operation_code, step_number, step_auth_name, step_code
+    operation_auth_name, operation_code, step_number, step_auth_name, step_code, step_direction
 ) VALUES
-    ('NKG', 'ETRF00_TO_DK', 1, 'NKG', 'P1_2008_DK'),
-    ('NKG', 'ETRF00_TO_DK', 2, 'NKG', 'ETRF92_2000_TO_ETRF92_1994')
+    ('NKG', 'ETRF00_TO_DK', 1, 'NKG', 'P1_2008_DK', 'forward'),
+    ('NKG', 'ETRF00_TO_DK', 2, 'NKG', 'ETRF92_2000_TO_ETRF92_1994', 'forward')
 ;
 
 
@@ -876,12 +878,12 @@ INSERT INTO "concatenated_operation"  VALUES (
 );
 
 INSERT INTO "concatenated_operation_step" (
-    operation_auth_name, operation_code, step_number, step_auth_name, step_code
+    operation_auth_name, operation_code, step_number, step_auth_name, step_code, step_direction
 ) VALUES
-    ('NKG', 'ITRF2000_TO_DK', 1, 'EPSG', '7941'), -- ITRF2000 -> ETRF2000
-    ('NKG', 'ITRF2000_TO_DK', 2, 'NKG', 'NKG_ETRF00_TO_ETRF2000'),
-    ('NKG', 'ITRF2000_TO_DK', 3, 'NKG', 'P1_2008_DK'),
-    ('NKG', 'ITRF2000_TO_DK', 4, 'NKG', 'ETRF92_2000_TO_ETRF92_1994')
+    ('NKG', 'ITRF2000_TO_DK', 1, 'EPSG', '7941', 'forward'), -- ITRF2000 -> ETRF2000
+    ('NKG', 'ITRF2000_TO_DK', 2, 'NKG', 'NKG_ETRF00_TO_ETRF2000', 'reverse'),
+    ('NKG', 'ITRF2000_TO_DK', 3, 'NKG', 'P1_2008_DK', 'forward'),
+    ('NKG', 'ITRF2000_TO_DK', 4, 'NKG', 'ETRF92_2000_TO_ETRF92_1994', 'forward')
 ;
 
 
@@ -915,7 +917,7 @@ INSERT INTO "other_transformation" (
 )
 VALUES(
     'NKG', 'ETRF96_2000_TO_ETRF96_1997_56',-- object auth+code
-    'ETRF96@2000.0 to ETRF96@1997.56', -- name
+    'ETRF96@2000.0 to ETRF96@1997.56 using nkgrf03vel_realigned', -- name
     NULL, -- description
     'PROJ', 'PROJString',               -- method auth+cod
     '+proj=deformation +dt=-2.44 +grids=eur_nkg_nkgrf03vel_realigned.tif',
@@ -947,10 +949,10 @@ INSERT INTO "concatenated_operation" VALUES(
 
 
 INSERT INTO "concatenated_operation_step" (
-    operation_auth_name, operation_code, step_number, step_auth_name, step_code
+    operation_auth_name, operation_code, step_number, step_auth_name, step_code, step_direction
 ) VALUES
-    ('NKG', 'ETRF00_TO_EE', 1, 'NKG', 'P1_2008_EE'),
-    ('NKG', 'ETRF00_TO_EE', 2, 'NKG', 'ETRF96_2000_TO_ETRF96_1997_56')
+    ('NKG', 'ETRF00_TO_EE', 1, 'NKG', 'P1_2008_EE', 'forward'),
+    ('NKG', 'ETRF00_TO_EE', 2, 'NKG', 'ETRF96_2000_TO_ETRF96_1997_56', 'forward')
 ;
 
 
@@ -981,12 +983,12 @@ INSERT INTO "concatenated_operation"  VALUES (
 );
 
 INSERT INTO "concatenated_operation_step" (
-    operation_auth_name, operation_code, step_number, step_auth_name, step_code
+    operation_auth_name, operation_code, step_number, step_auth_name, step_code, step_direction
 ) VALUES
-    ('NKG', 'ITRF2000_TO_EE', 1, 'EPSG', '7941'), -- ITRF2000 -> ETRF2000
-    ('NKG', 'ITRF2000_TO_EE', 2, 'NKG', 'NKG_ETRF00_TO_ETRF2000'),
-    ('NKG', 'ITRF2000_TO_EE', 3, 'NKG', 'P1_2008_EE'),
-    ('NKG', 'ITRF2000_TO_EE', 4, 'NKG', 'ETRF96_2000_TO_ETRF96_1997_56')
+    ('NKG', 'ITRF2000_TO_EE', 1, 'EPSG', '7941', 'forward'), -- ITRF2000 -> ETRF2000
+    ('NKG', 'ITRF2000_TO_EE', 2, 'NKG', 'NKG_ETRF00_TO_ETRF2000', 'reverse'),
+    ('NKG', 'ITRF2000_TO_EE', 3, 'NKG', 'P1_2008_EE', 'forward'),
+    ('NKG', 'ITRF2000_TO_EE', 4, 'NKG', 'ETRF96_2000_TO_ETRF96_1997_56', 'forward')
 ;
 
 
@@ -1021,9 +1023,10 @@ INSERT INTO "other_transformation" (
     operation_version,
     deprecated
 )
-VALUES(
+VALUES
+(
     'NKG', 'ETRF96_2000_TO_ETRF96_1997',-- object auth+code
-    'ETRF96@2000.0 to ETRF96@1997.0',     -- name
+    'ETRF96@2000.0 to ETRF96@1997.0 using nkgrf03vel_realigned',     -- name
     NULL,                               -- description
     'PROJ', 'PROJString',               -- method auth+cod
     '+proj=deformation +dt=-3.0 +grids=eur_nkg_nkgrf03vel_realigned.tif',
@@ -1032,40 +1035,85 @@ VALUES(
     0.005,          -- accuracy
     'NKG 2008',     -- operation_version
     0               -- deprecated
+),
+(
+    'NKG', 'ETRF96_2000_TO_ETRF96_1997_EUREF-FIN',-- object auth+code
+    'ETRF96@2000.0 to ETRF96@1997.0 (EUREF-FIN) using nkgrf03vel_realigned',     -- name
+    NULL,                               -- description
+    'PROJ', 'PROJString',               -- method auth+cod
+    '+proj=deformation +dt=-3.0 +grids=eur_nkg_nkgrf03vel_realigned.tif',
+    'EPSG','7926',  -- source_crs:  ETRF96@2000.0
+    'EPSG','10688', -- target_crs:  EUREF-FIN
+    0.005,          -- accuracy
+    'NKG 2008',     -- operation_version
+    0               -- deprecated
 );
 
-INSERT INTO "usage" VALUES (
+INSERT INTO "usage"
+VALUES
+(
     'NKG', '5018',          -- usage auth+code
     'other_transformation', -- object_table_name
     'NKG', 'ETRF96_2000_TO_ETRF96_1997', -- object auth+code
     'EPSG', '1095',         -- extent: Finland - onshore and offshore
     'NKG',  'SCOPE_GENERIC' -- scope
+),
+(
+    'NKG', '50181',          -- usage auth+code
+    'other_transformation', -- object_table_name
+    'NKG', 'ETRF96_2000_TO_ETRF96_1997_EUREF-FIN', -- object auth+code
+    'EPSG', '1095',         -- extent: Finland - onshore and offshore
+    'NKG',  'SCOPE_GENERIC' -- scope
 );
 
-INSERT INTO "concatenated_operation" VALUES(
+INSERT INTO "concatenated_operation"
+VALUES
+(
     'NKG', 'ETRF00_TO_FI', -- operation auth+code
-    'NKG_ETRF00 to ETRS89 (EUREF-FIN)', -- name
+    'NKG_ETRF00 to ETRS89 (FI)', -- name
     'Transformation from NKG_ETRF00@2000.0 to ETRF96@1997.0', -- description
     'NKG', 'ETRF00',-- source_crs:  NKG_ETRF00
     'EPSG','4936',  -- target_crs:  ETRS89 (FI)
     0.01,           -- accuracy
     'NKG 2008',     -- operation_version
     0               -- deprecated
-);
-
-
-INSERT INTO "concatenated_operation_step" (
-    operation_auth_name, operation_code, step_number, step_auth_name, step_code
-) VALUES
-    ('NKG', 'ETRF00_TO_FI', 1, 'NKG', 'P1_2008_FI'),
-    ('NKG', 'ETRF00_TO_FI', 2, 'NKG', 'ETRF96_2000_TO_ETRF96_1997')
+),
+(
+    'NKG', 'ETRF00_TO_EUREF-FIN', -- operation auth+code
+    'NKG_ETRF00 to ETRS89 (EUREF-FIN)', -- name
+    'Transformation from NKG_ETRF00@2000.0 to ETRF96@1997.0 (EUREF-FIN)', -- description
+    'NKG', 'ETRF00',-- source_crs:  NKG_ETRF00
+    'EPSG','10688', -- target_crs:  EUREF-FIN
+    0.01,           -- accuracy
+    'NKG 2008',     -- operation_version
+    0               -- deprecated
+)
 ;
 
 
-INSERT INTO "usage" VALUES (
+INSERT INTO "concatenated_operation_step" (
+    operation_auth_name, operation_code, step_number, step_auth_name, step_code, step_direction
+) VALUES
+    ('NKG', 'ETRF00_TO_FI', 1, 'NKG', 'P1_2008_FI', 'forward'),
+    ('NKG', 'ETRF00_TO_FI', 2, 'NKG', 'ETRF96_2000_TO_ETRF96_1997', 'forward'),
+    ('NKG', 'ETRF00_TO_EUREF-FIN', 1, 'NKG', 'P1_2008_FI', 'forward'),
+    ('NKG', 'ETRF00_TO_EUREF-FIN', 2, 'NKG', 'ETRF96_2000_TO_ETRF96_1997_EUREF-FIN', 'forward')
+;
+
+
+INSERT INTO "usage"
+VALUES
+(
     'NKG', '5019',              -- usage auth+code
     'concatenated_operation',   -- object_table_name
     'NKG', 'ETRF00_TO_FI',      -- object auth+code
+    'EPSG', '1095',             -- extent: Finland - onshore and offshore
+    'NKG', 'SCOPE_GENERIC'      -- scope auth+code
+),
+(
+    'NKG', '50191',              -- usage auth+code
+    'concatenated_operation',   -- object_table_name
+    'NKG', 'ETRF00_TO_EUREF-FIN',      -- object auth+code
     'EPSG', '1095',             -- extent: Finland - onshore and offshore
     'NKG', 'SCOPE_GENERIC'      -- scope auth+code
 );
@@ -1076,7 +1124,8 @@ INSERT INTO "usage" VALUES (
 -- Transformation: ITRF2000 -> ETRF96@1997.0 (FI)
 -------------------------------------------------------
 
-INSERT INTO "concatenated_operation"  VALUES (
+INSERT INTO "concatenated_operation" VALUES
+(
     'NKG', 'ITRF2000_TO_FI',  -- operation auth+code
     'ITRF2000 to ETRS89 (EUREF-FIN)', -- name
     'Time-dependent transformation from ITRF2014 to ETRS89 (EUREF-FIN)', -- description
@@ -1085,26 +1134,48 @@ INSERT INTO "concatenated_operation"  VALUES (
     0.01,           -- accuracy
     'NKG 2008',     -- operation_version
     0               -- deprecated
-
+),
+(
+    'NKG', 'ITRF2000_TO_FI_EUREF-FIN',  -- operation auth+code
+    'ITRF2000 to EUREF-FIN (ETRS89)', -- name
+    'Time-dependent transformation from ITRF2014 to EUREF-FIN (ETRS89)', -- description
+    'EPSG', '4919', -- source_crs:  ITRF2000
+    'EPSG', '10688',-- target_crs:  EUREF-FIN
+    0.01,           -- accuracy
+    'NKG 2008',     -- operation_version
+    0               -- deprecated
 );
 
 INSERT INTO "concatenated_operation_step" (
-    operation_auth_name, operation_code, step_number, step_auth_name, step_code
+    operation_auth_name, operation_code, step_number, step_auth_name, step_code, step_direction
 ) VALUES
-    ('NKG', 'ITRF2000_TO_FI', 1, 'EPSG', '7941'), -- ITRF2000 -> ETRF2000
-    ('NKG', 'ITRF2000_TO_FI', 2, 'NKG', 'NKG_ETRF00_TO_ETRF2000'),
-    ('NKG', 'ITRF2000_TO_FI', 3, 'NKG', 'P1_2008_FI'),
-    ('NKG', 'ITRF2000_TO_FI', 4, 'NKG', 'ETRF96_2000_TO_ETRF96_1997')
+    ('NKG', 'ITRF2000_TO_FI', 1, 'EPSG', '7941', 'forward'), -- ITRF2000 -> ETRF2000
+    ('NKG', 'ITRF2000_TO_FI', 2, 'NKG', 'NKG_ETRF00_TO_ETRF2000', 'reverse'),
+    ('NKG', 'ITRF2000_TO_FI', 3, 'NKG', 'P1_2008_FI', 'forward'),
+    ('NKG', 'ITRF2000_TO_FI', 4, 'NKG', 'ETRF96_2000_TO_ETRF96_1997', 'forward'),
+    ('NKG', 'ITRF2000_TO_FI_EUREF-FIN', 1, 'EPSG', '7941', 'forward'), -- ITRF2000 -> ETRF2000
+    ('NKG', 'ITRF2000_TO_FI_EUREF-FIN', 2, 'NKG', 'NKG_ETRF00_TO_ETRF2000', 'reverse'),
+    ('NKG', 'ITRF2000_TO_FI_EUREF-FIN', 3, 'NKG', 'P1_2008_FI', 'forward'),
+    ('NKG', 'ITRF2000_TO_FI_EUREF-FIN', 4, 'NKG', 'ETRF96_2000_TO_ETRF96_1997_EUREF-FIN', 'forward')
 ;
 
 
-INSERT INTO "usage" VALUES (
+INSERT INTO "usage" VALUES
+(
     'NKG', '5020',              -- usage auth+code
     'concatenated_operation',   -- object_table_name
     'NKG', 'ITRF2000_TO_FI',    -- object auth+code
     'EPSG', '1095',             -- extent: Finland - onshore and offshore
     'NKG', 'SCOPE_GENERIC'      -- scope auth+code
+),
+(
+    'NKG', '50201',              -- usage auth+code
+    'concatenated_operation',   -- object_table_name
+    'NKG', 'ITRF2000_TO_FI_EUREF-FIN',    -- object auth+code
+    'EPSG', '1095',             -- extent: Finland - onshore and offshore
+    'NKG', 'SCOPE_GENERIC'      -- scope auth+code
 );
+
 
 
 
@@ -1131,7 +1202,7 @@ INSERT INTO "other_transformation" (
 )
 VALUES(
     'NKG', 'ETRF89_2000_TO_ETRF89_1992',-- object auth+code
-    'ETRF89@2000.0 to ETRF89@1992.75',  -- name
+    'ETRF89@2000.0 to ETRF89@1992.75 using nkgrf03vel_realigned',  -- name
     NULL,                               -- description
     'PROJ', 'PROJString',               -- method auth+cod
     '+proj=deformation +dt=-7.25 +grids=eur_nkg_nkgrf03vel_realigned.tif',
@@ -1163,10 +1234,10 @@ INSERT INTO "concatenated_operation" VALUES(
 
 
 INSERT INTO "concatenated_operation_step" (
-    operation_auth_name, operation_code, step_number, step_auth_name, step_code
+    operation_auth_name, operation_code, step_number, step_auth_name, step_code, step_direction
 ) VALUES
-    ('NKG', 'ETRF00_TO_LV', 1, 'NKG', 'P1_2008_LV'),
-    ('NKG', 'ETRF00_TO_LV', 2, 'NKG', 'ETRF89_2000_TO_ETRF89_1992')
+    ('NKG', 'ETRF00_TO_LV', 1, 'NKG', 'P1_2008_LV', 'forward'),
+    ('NKG', 'ETRF00_TO_LV', 2, 'NKG', 'ETRF89_2000_TO_ETRF89_1992', 'forward')
 ;
 
 
@@ -1197,12 +1268,12 @@ INSERT INTO "concatenated_operation"  VALUES (
 );
 
 INSERT INTO "concatenated_operation_step" (
-    operation_auth_name, operation_code, step_number, step_auth_name, step_code
+    operation_auth_name, operation_code, step_number, step_auth_name, step_code, step_direction
 ) VALUES
-    ('NKG', 'ITRF2000_TO_LV', 1, 'EPSG', '7941'), -- ITRF2000 -> ETRF2000
-    ('NKG', 'ITRF2000_TO_LV', 2, 'NKG', 'NKG_ETRF00_TO_ETRF2000'),
-    ('NKG', 'ITRF2000_TO_LV', 3, 'NKG', 'P1_2008_LV'),
-    ('NKG', 'ITRF2000_TO_LV', 4, 'NKG', 'ETRF89_2000_TO_ETRF89_1992')
+    ('NKG', 'ITRF2000_TO_LV', 1, 'EPSG', '7941', 'forward'), -- ITRF2000 -> ETRF2000
+    ('NKG', 'ITRF2000_TO_LV', 2, 'NKG', 'NKG_ETRF00_TO_ETRF2000', 'reverse'),
+    ('NKG', 'ITRF2000_TO_LV', 3, 'NKG', 'P1_2008_LV', 'forward'),
+    ('NKG', 'ITRF2000_TO_LV', 4, 'NKG', 'ETRF89_2000_TO_ETRF89_1992', 'forward')
 ;
 
 
@@ -1238,7 +1309,7 @@ INSERT INTO "other_transformation" (
 )
 VALUES(
     'NKG', 'ETRF2000_2000_TO_ETRF_2000_2003',-- object auth+code
-    'ETRF2000@2000.0 to ETRF2000@2003.75',  -- name
+    'ETRF2000@2000.0 to ETRF2000@2003.75 using nkgrf03vel_realigned',  -- name
     NULL,                                   -- description
     'PROJ', 'PROJString',               -- method auth+cod
     '+proj=deformation +dt=3.75 +grids=eur_nkg_nkgrf03vel_realigned.tif',
@@ -1270,10 +1341,10 @@ INSERT INTO "concatenated_operation" VALUES(
 
 
 INSERT INTO "concatenated_operation_step" (
-    operation_auth_name, operation_code, step_number, step_auth_name, step_code
+    operation_auth_name, operation_code, step_number, step_auth_name, step_code, step_direction
 ) VALUES
-    ('NKG', 'ETRF00_TO_LT', 1, 'NKG', 'P1_2008_LT'),
-    ('NKG', 'ETRF00_TO_LT', 2, 'NKG', 'ETRF2000_2000_TO_ETRF_2000_2003')
+    ('NKG', 'ETRF00_TO_LT', 1, 'NKG', 'P1_2008_LT', 'forward'),
+    ('NKG', 'ETRF00_TO_LT', 2, 'NKG', 'ETRF2000_2000_TO_ETRF_2000_2003', 'forward')
 ;
 
 
@@ -1304,12 +1375,12 @@ INSERT INTO "concatenated_operation"  VALUES (
 );
 
 INSERT INTO "concatenated_operation_step" (
-    operation_auth_name, operation_code, step_number, step_auth_name, step_code
+    operation_auth_name, operation_code, step_number, step_auth_name, step_code, step_direction
 ) VALUES
-    ('NKG', 'ITRF2000_TO_LT', 1, 'EPSG', '7941'), -- ITRF2000 -> ETRF2000
-    ('NKG', 'ITRF2000_TO_LT', 2, 'NKG', 'NKG_ETRF00_TO_ETRF2000'),
-    ('NKG', 'ITRF2000_TO_LT', 3, 'NKG', 'P1_2008_LT'),
-    ('NKG', 'ITRF2000_TO_LT', 4, 'NKG', 'ETRF2000_2000_TO_ETRF_2000_2003')
+    ('NKG', 'ITRF2000_TO_LT', 1, 'EPSG', '7941', 'forward'), -- ITRF2000 -> ETRF2000
+    ('NKG', 'ITRF2000_TO_LT', 2, 'NKG', 'NKG_ETRF00_TO_ETRF2000', 'reverse'),
+    ('NKG', 'ITRF2000_TO_LT', 3, 'NKG', 'P1_2008_LT', 'forward'),
+    ('NKG', 'ITRF2000_TO_LT', 4, 'NKG', 'ETRF2000_2000_TO_ETRF_2000_2003', 'forward')
 ;
 
 
@@ -1345,7 +1416,7 @@ INSERT INTO "other_transformation" (
 )
 VALUES(
     'NKG', 'ETRF93_2000_TO_ETRF93_1995',-- object auth+code
-    'ETRF93@2000.0 to ETRF93@1995.0',   -- name
+    'ETRF93@2000.0 to ETRF93@1995.0 using nkgrf03vel_realigned',   -- name
     NULL,                               -- description
     'PROJ', 'PROJString',               -- method auth+cod
     '+proj=deformation +dt=-5 +grids=eur_nkg_nkgrf03vel_realigned.tif',
@@ -1377,10 +1448,10 @@ INSERT INTO "concatenated_operation" VALUES(
 
 
 INSERT INTO "concatenated_operation_step" (
-    operation_auth_name, operation_code, step_number, step_auth_name, step_code
+    operation_auth_name, operation_code, step_number, step_auth_name, step_code, step_direction
 ) VALUES
-    ('NKG', 'ETRF00_TO_NO', 1, 'NKG', 'P1_2008_NO'),
-    ('NKG', 'ETRF00_TO_NO', 2, 'NKG', 'ETRF93_2000_TO_ETRF93_1995')
+    ('NKG', 'ETRF00_TO_NO', 1, 'NKG', 'P1_2008_NO', 'forward'),
+    ('NKG', 'ETRF00_TO_NO', 2, 'NKG', 'ETRF93_2000_TO_ETRF93_1995', 'forward')
 ;
 
 
@@ -1411,12 +1482,12 @@ INSERT INTO "concatenated_operation"  VALUES (
 );
 
 INSERT INTO "concatenated_operation_step" (
-    operation_auth_name, operation_code, step_number, step_auth_name, step_code
+    operation_auth_name, operation_code, step_number, step_auth_name, step_code, step_direction
 ) VALUES
-    ('NKG', 'ITRF2000_TO_NO', 1, 'EPSG', '7941'), -- ITRF2000 -> ETRF2000
-    ('NKG', 'ITRF2000_TO_NO', 2, 'NKG', 'NKG_ETRF00_TO_ETRF2000'),
-    ('NKG', 'ITRF2000_TO_NO', 3, 'NKG', 'P1_2008_NO'),
-    ('NKG', 'ITRF2000_TO_NO', 4, 'NKG', 'ETRF93_2000_TO_ETRF93_1995')
+    ('NKG', 'ITRF2000_TO_NO', 1, 'EPSG', '7941', 'forward'), -- ITRF2000 -> ETRF2000
+    ('NKG', 'ITRF2000_TO_NO', 2, 'NKG', 'NKG_ETRF00_TO_ETRF2000', 'reverse'),
+    ('NKG', 'ITRF2000_TO_NO', 3, 'NKG', 'P1_2008_NO', 'forward'),
+    ('NKG', 'ITRF2000_TO_NO', 4, 'NKG', 'ETRF93_2000_TO_ETRF93_1995', 'forward')
 ;
 
 
@@ -1452,7 +1523,7 @@ INSERT INTO "other_transformation" (
 )
 VALUES(
     'NKG', 'ETRF97_2000_TO_ETRF97_1999',-- object auth+code
-    'ETRF97@2000.0 to ETRF97@1999.5',   -- name
+    'ETRF97@2000.0 to ETRF97@1999.5 using nkgrf03vel_realigned',   -- name
     NULL,                               -- description
     'PROJ', 'PROJString',               -- method auth+cod
     '+proj=deformation +dt=-0.5 +grids=eur_nkg_nkgrf03vel_realigned.tif',
@@ -1484,10 +1555,10 @@ INSERT INTO "concatenated_operation" VALUES(
 
 
 INSERT INTO "concatenated_operation_step" (
-    operation_auth_name, operation_code, step_number, step_auth_name, step_code
+    operation_auth_name, operation_code, step_number, step_auth_name, step_code, step_direction
 ) VALUES
-    ('NKG', 'ETRF00_TO_SE', 1, 'NKG', 'P1_2008_SE'),
-    ('NKG', 'ETRF00_TO_SE', 2, 'NKG', 'ETRF97_2000_TO_ETRF97_1999')
+    ('NKG', 'ETRF00_TO_SE', 1, 'NKG', 'P1_2008_SE', 'forward'),
+    ('NKG', 'ETRF00_TO_SE', 2, 'NKG', 'ETRF97_2000_TO_ETRF97_1999', 'forward')
 ;
 
 
@@ -1518,12 +1589,12 @@ INSERT INTO "concatenated_operation"  VALUES (
 );
 
 INSERT INTO "concatenated_operation_step" (
-    operation_auth_name, operation_code, step_number, step_auth_name, step_code
+    operation_auth_name, operation_code, step_number, step_auth_name, step_code, step_direction
 ) VALUES
-    ('NKG', 'ITRF2000_TO_SE', 1, 'EPSG', '7941'), -- ITRF2000 -> ETRF2000
-    ('NKG', 'ITRF2000_TO_SE', 2, 'NKG', 'NKG_ETRF00_TO_ETRF2000'),
-    ('NKG', 'ITRF2000_TO_SE', 3, 'NKG', 'P1_2008_SE'),
-    ('NKG', 'ITRF2000_TO_SE', 4, 'NKG', 'ETRF97_2000_TO_ETRF97_1999')
+    ('NKG', 'ITRF2000_TO_SE', 1, 'EPSG', '7941', 'forward'), -- ITRF2000 -> ETRF2000
+    ('NKG', 'ITRF2000_TO_SE', 2, 'NKG', 'NKG_ETRF00_TO_ETRF2000', 'reverse'),
+    ('NKG', 'ITRF2000_TO_SE', 3, 'NKG', 'P1_2008_SE', 'forward'),
+    ('NKG', 'ITRF2000_TO_SE', 4, 'NKG', 'ETRF97_2000_TO_ETRF97_1999', 'forward')
 ;
 
 
@@ -1557,7 +1628,7 @@ INSERT INTO "other_transformation" (
 )
 VALUES(
     'NKG', 'DK_2020_INTRAPLATE',        -- object auth+code
-    'ETRF92@2000.0 to ETRF92@1994.704', -- name
+    'ETRF92@2000.0 to ETRF92@1994.704 using nkgrf17vel', -- name
     NULL,                               -- description
     'PROJ', 'PROJString',               -- method auth+cod
     '+proj=deformation +dt=15.829 +grids=eur_nkg_nkgrf17vel.tif',
@@ -1589,10 +1660,10 @@ INSERT INTO "concatenated_operation" VALUES(
 
 
 INSERT INTO "concatenated_operation_step" (
-    operation_auth_name, operation_code, step_number, step_auth_name, step_code
+    operation_auth_name, operation_code, step_number, step_auth_name, step_code, step_direction
 ) VALUES
-    ('NKG', 'ETRF14_TO_DK', 1, 'NKG', 'PAR_2020_DK'),
-    ('NKG', 'ETRF14_TO_DK', 2, 'NKG', 'DK_2020_INTRAPLATE')
+    ('NKG', 'ETRF14_TO_DK', 1, 'NKG', 'PAR_2020_DK', 'forward'),
+    ('NKG', 'ETRF14_TO_DK', 2, 'NKG', 'DK_2020_INTRAPLATE', 'forward')
 ;
 
 
@@ -1623,12 +1694,12 @@ INSERT INTO "concatenated_operation"  VALUES (
 );
 
 INSERT INTO "concatenated_operation_step" (
-    operation_auth_name, operation_code, step_number, step_auth_name, step_code
+    operation_auth_name, operation_code, step_number, step_auth_name, step_code, step_direction
 ) VALUES
-    ('NKG', 'ITRF2014_TO_DK', 1, 'EPSG', '8366'), -- ITRF2014 -> ETRF2014
-    ('NKG', 'ITRF2014_TO_DK', 2, 'NKG', 'NKG_ETRF14_TO_ETRF2014'),
-    ('NKG', 'ITRF2014_TO_DK', 3, 'NKG', 'PAR_2020_DK'),
-    ('NKG', 'ITRF2014_TO_DK', 4, 'NKG', 'DK_2020_INTRAPLATE')
+    ('NKG', 'ITRF2014_TO_DK', 1, 'EPSG', '8366', 'forward'), -- ITRF2014 -> ETRF2014
+    ('NKG', 'ITRF2014_TO_DK', 2, 'NKG', 'NKG_ETRF14_TO_ETRF2014', 'reverse'),
+    ('NKG', 'ITRF2014_TO_DK', 3, 'NKG', 'PAR_2020_DK', 'forward'),
+    ('NKG', 'ITRF2014_TO_DK', 4, 'NKG', 'DK_2020_INTRAPLATE', 'forward')
 ;
 
 
@@ -1671,7 +1742,7 @@ INSERT INTO "other_transformation" (
 )
 VALUES(
     'NKG', 'EE_2020_INTRAPLATE',-- object auth+code
-    'ETRF96@2000.0 to ETRF96@1997.56', -- name
+    'ETRF96@2000.0 to ETRF96@1997.56 using nkgrf17vel', -- name
     NULL, -- description
     'PROJ', 'PROJString',               -- method auth+cod
     '+proj=deformation +dt=-2.44 +grids=eur_nkg_nkgrf17vel.tif',
@@ -1703,10 +1774,10 @@ INSERT INTO "concatenated_operation" VALUES(
 
 
 INSERT INTO "concatenated_operation_step" (
-    operation_auth_name, operation_code, step_number, step_auth_name, step_code
+    operation_auth_name, operation_code, step_number, step_auth_name, step_code, step_direction
 ) VALUES
-    ('NKG', 'ETRF14_TO_EE', 1, 'NKG', 'PAR_2020_EE'),
-    ('NKG', 'ETRF14_TO_EE', 2, 'NKG', 'EE_2020_INTRAPLATE')
+    ('NKG', 'ETRF14_TO_EE', 1, 'NKG', 'PAR_2020_EE', 'forward'),
+    ('NKG', 'ETRF14_TO_EE', 2, 'NKG', 'EE_2020_INTRAPLATE', 'forward')
 ;
 
 
@@ -1737,12 +1808,12 @@ INSERT INTO "concatenated_operation"  VALUES (
 );
 
 INSERT INTO "concatenated_operation_step" (
-    operation_auth_name, operation_code, step_number, step_auth_name, step_code
+    operation_auth_name, operation_code, step_number, step_auth_name, step_code, step_direction
 ) VALUES
-    ('NKG', 'ITRF2014_TO_EE', 1, 'EPSG', '8366'), -- ITRF2014 -> ETRF2014
-    ('NKG', 'ITRF2014_TO_EE', 2, 'NKG', 'NKG_ETRF14_TO_ETRF2014'),
-    ('NKG', 'ITRF2014_TO_EE', 3, 'NKG', 'PAR_2020_EE'),
-    ('NKG', 'ITRF2014_TO_EE', 4, 'NKG', 'EE_2020_INTRAPLATE')
+    ('NKG', 'ITRF2014_TO_EE', 1, 'EPSG', '8366', 'forward'), -- ITRF2014 -> ETRF2014
+    ('NKG', 'ITRF2014_TO_EE', 2, 'NKG', 'NKG_ETRF14_TO_ETRF2014', 'reverse'),
+    ('NKG', 'ITRF2014_TO_EE', 3, 'NKG', 'PAR_2020_EE', 'forward'),
+    ('NKG', 'ITRF2014_TO_EE', 4, 'NKG', 'EE_2020_INTRAPLATE', 'forward')
 ;
 
 
@@ -1787,12 +1858,24 @@ INSERT INTO "other_transformation" (
 )
 VALUES(
     'NKG', 'FI_2020_INTRAPLATE',-- object auth+code
-    'ETRF96@2000.0 to ETRF96@1997.0', -- name
+    'ETRF96@2000.0 to ETRF96@1997.0 using nkgrf17vel', -- name
     NULL, -- description
     'PROJ', 'PROJString',               -- method auth+cod
     '+proj=deformation +dt=-3 +grids=eur_nkg_nkgrf17vel.tif',
     'EPSG','7926',  -- source_crs:  ETRF96@2000.0
     'EPSG','4936',  -- target_crs:  ETRS89 (FI)
+    0.005,          -- accuracy
+    'NKG 2020',     -- operation_version
+    0               -- deprecated
+),
+(
+    'NKG', 'FI_2020_INTRAPLATE_EUREF-FIN',-- object auth+code
+    'ETRF96@2000.0 to ETRF96@1997.0 using nkgrf17vel (EUREF-FIN)', -- name
+    NULL, -- description
+    'PROJ', 'PROJString',               -- method auth+cod
+    '+proj=deformation +dt=-3 +grids=eur_nkg_nkgrf17vel.tif',
+    'EPSG','7926',  -- source_crs:  ETRF96@2000.0
+    'EPSG','10688', -- target_crs:  EUREF-FIN
     0.005,          -- accuracy
     'NKG 2020',     -- operation_version
     0               -- deprecated
@@ -1804,14 +1887,31 @@ INSERT INTO "usage" VALUES (
     'NKG', 'FI_2020_INTRAPLATE', -- object auth+code
     'EPSG', '1095',         -- extent: Finland - onshore and offshore
     'NKG',  'SCOPE_GENERIC' -- scope
+),
+(
+    'NKG', '50491',          -- usage auth+code
+    'other_transformation', -- object_table_name
+    'NKG', 'FI_2020_INTRAPLATE_EUREF-FIN', -- object auth+code
+    'EPSG', '1095',         -- extent: Finland - onshore and offshore
+    'NKG',  'SCOPE_GENERIC' -- scope
 );
 
 INSERT INTO "concatenated_operation" VALUES(
     'NKG', 'ETRF14_TO_FI', -- operation auth+code
-    'NKG_ETRF14 to ETRS89 (EUREF-FIN)', -- name
+    'NKG_ETRF14 to ETRS89 (FI)', -- name
     'Transformation from NKG_ETRF14@2000.0 to ETRF96@1997.0', -- description
     'NKG', 'ETRF14',-- source_crs:  NKG_ETRF00
     'EPSG','4936',  -- target_crs:  ETRS89 (FI)
+    0.01,           -- accuracy
+    'NKG 2020',     -- operation_version
+    0               -- deprecated
+),
+(
+    'NKG', 'ETRF14_TO_FI_EUREF-FIN', -- operation auth+code
+    'NKG_ETRF14 to ETRS89 (EUREF-FIN)', -- name
+    'Transformation from NKG_ETRF14@2000.0 to ETRF96@1997.0 (EUREF-FIN)', -- description
+    'NKG', 'ETRF14',-- source_crs:  NKG_ETRF00
+    'EPSG','10688', -- target_crs:  EUREF-FIN
     0.01,           -- accuracy
     'NKG 2020',     -- operation_version
     0               -- deprecated
@@ -1819,10 +1919,12 @@ INSERT INTO "concatenated_operation" VALUES(
 
 
 INSERT INTO "concatenated_operation_step" (
-    operation_auth_name, operation_code, step_number, step_auth_name, step_code
+    operation_auth_name, operation_code, step_number, step_auth_name, step_code, step_direction
 ) VALUES
-    ('NKG', 'ETRF14_TO_FI', 1, 'NKG', 'PAR_2020_FI'),
-    ('NKG', 'ETRF14_TO_FI', 2, 'NKG', 'FI_2020_INTRAPLATE')
+    ('NKG', 'ETRF14_TO_FI', 1, 'NKG', 'PAR_2020_FI', 'forward'),
+    ('NKG', 'ETRF14_TO_FI', 2, 'NKG', 'FI_2020_INTRAPLATE', 'forward'),
+    ('NKG', 'ETRF14_TO_FI_EUREF-FIN', 1, 'NKG', 'PAR_2020_FI', 'forward'),
+    ('NKG', 'ETRF14_TO_FI_EUREF-FIN', 2, 'NKG', 'FI_2020_INTRAPLATE_EUREF-FIN', 'forward')
 ;
 
 
@@ -1830,6 +1932,13 @@ INSERT INTO "usage" VALUES (
     'NKG', '5050',              -- usage auth+code
     'concatenated_operation',   -- object_table_name
     'NKG', 'ETRF14_TO_FI',      -- object auth+code
+    'EPSG', '1095',             -- extent: Finland - onshore and offshore
+    'NKG', 'SCOPE_GENERIC'      -- scope auth+code
+),
+(
+    'NKG', '50501',              -- usage auth+code
+    'concatenated_operation',   -- object_table_name
+    'NKG', 'ETRF14_TO_FI_EUREF-FIN',      -- object auth+code
     'EPSG', '1095',             -- extent: Finland - onshore and offshore
     'NKG', 'SCOPE_GENERIC'      -- scope auth+code
 );
@@ -1842,30 +1951,51 @@ INSERT INTO "usage" VALUES (
 
 INSERT INTO "concatenated_operation"  VALUES (
     'NKG', 'ITRF2014_TO_FI',  -- operation auth+code
+    'ITRF2014 to ETRS89(FI))', -- name
+    'Time-dependent transformation from ITRF2014 to ETRS89', -- description
+    'EPSG', '7789', -- source_crs:  ITRF2014
+    'EPSG', '4936', -- target_crs:  ETRS89(FI)
+    0.01,           -- accuracy
+    'NKG 2020',     -- operation_version
+    0               -- deprecated
+),
+(
+    'NKG', 'ITRF2014_TO_FI_EUREF-FIN',  -- operation auth+code
     'ITRF2014 to ETRS89 (EUREF-FIN)', -- name
     'Time-dependent transformation from ITRF2014 to ETRS89 (EUREF-FIN)', -- description
     'EPSG', '7789', -- source_crs:  ITRF2014
-    'EPSG', '4936', -- target_crs:  ETRS89(FI)
+    'EPSG', '10688',-- target_crs:  EUREF-FIN
     0.01,           -- accuracy
     'NKG 2020',     -- operation_version
     0               -- deprecated
 
 );
 
-INSERT INTO "concatenated_operation_step" (
-    operation_auth_name, operation_code, step_number, step_auth_name, step_code
-) VALUES
-    ('NKG', 'ITRF2014_TO_FI', 1, 'EPSG', '8366'), -- ITRF2014 -> ETRF2014
-    ('NKG', 'ITRF2014_TO_FI', 2, 'NKG', 'NKG_ETRF14_TO_ETRF2014'),
-    ('NKG', 'ITRF2014_TO_FI', 3, 'NKG', 'PAR_2020_FI'),
-    ('NKG', 'ITRF2014_TO_FI', 4, 'NKG', 'FI_2020_INTRAPLATE')
-;
 
+INSERT INTO "concatenated_operation_step" (
+    operation_auth_name, operation_code, step_number, step_auth_name, step_code, step_direction
+) VALUES
+    ('NKG', 'ITRF2014_TO_FI', 1, 'EPSG', '8366', 'forward'), -- ITRF2014 -> ETRF2014
+    ('NKG', 'ITRF2014_TO_FI', 2, 'NKG', 'NKG_ETRF14_TO_ETRF2014', 'reverse'),
+    ('NKG', 'ITRF2014_TO_FI', 3, 'NKG', 'PAR_2020_FI', 'forward'),
+    ('NKG', 'ITRF2014_TO_FI', 4, 'NKG', 'FI_2020_INTRAPLATE', 'forward'),
+    ('NKG', 'ITRF2014_TO_FI_EUREF-FIN', 1, 'EPSG', '8366', 'forward'), -- ITRF2014 -> ETRF2014
+    ('NKG', 'ITRF2014_TO_FI_EUREF-FIN', 2, 'NKG', 'NKG_ETRF14_TO_ETRF2014', 'reverse'),
+    ('NKG', 'ITRF2014_TO_FI_EUREF-FIN', 3, 'NKG', 'PAR_2020_FI', 'forward'),
+    ('NKG', 'ITRF2014_TO_FI_EUREF-FIN', 4, 'NKG', 'FI_2020_INTRAPLATE_EUREF-FIN', 'forward')
+;
 
 INSERT INTO "usage" VALUES (
     'NKG', '5051',              -- usage auth+code
     'concatenated_operation',   -- object_table_name
     'NKG', 'ITRF2014_TO_FI',    -- object auth+code
+    'EPSG', '1095',             -- extent: Finland - onshore and offshore
+    'NKG', 'SCOPE_GENERIC'      -- scope auth+code
+),
+(
+    'NKG', '50511',             -- usage auth+code
+    'concatenated_operation',   -- object_table_name
+    'NKG', 'ITRF2014_TO_FI_EUREF-FIN',    -- object auth+code
     'EPSG', '1095',             -- extent: Finland - onshore and offshore
     'NKG', 'SCOPE_GENERIC'      -- scope auth+code
 );
@@ -1878,8 +2008,15 @@ INSERT INTO "supersession" VALUES (
     'NKG', 'ITRF2014_TO_FI',
     'NKG',
     0
+),
+(
+    'concatenated_operation',
+    'NKG', 'ITRF2000_TO_FI_EUREF-FIN',
+    'concatenated_operation',
+    'NKG', 'ITRF2014_TO_FI_EUREF-FIN',
+    'NKG',
+    0
 );
-
 
 -------------------------------------------------------
 -- Transformation: NKG_ETRF14 -> ETRF89@1992.75 (LV)
@@ -1903,7 +2040,7 @@ INSERT INTO "other_transformation" (
 )
 VALUES(
     'NKG', 'LV_2020_INTRAPLATE',        -- object auth+code
-    'ETRF89@2000.0 to ETRF89@1992.75 (LKS-92)',  -- name
+    'ETRF89@2000.0 to ETRF89@1992.75 (LKS-92) using nkgrf17vel',  -- name
     NULL,                               -- description
     'PROJ', 'PROJString',               -- method auth+cod
     '+proj=deformation +dt=-7.25 +grids=eur_nkg_nkgrf17vel.tif',
@@ -1935,10 +2072,10 @@ INSERT INTO "concatenated_operation" VALUES(
 
 
 INSERT INTO "concatenated_operation_step" (
-    operation_auth_name, operation_code, step_number, step_auth_name, step_code
+    operation_auth_name, operation_code, step_number, step_auth_name, step_code, step_direction
 ) VALUES
-    ('NKG', 'ETRF14_TO_LV', 1, 'NKG', 'PAR_2020_LV'),
-    ('NKG', 'ETRF14_TO_LV', 2, 'NKG', 'LV_2020_INTRAPLATE')
+    ('NKG', 'ETRF14_TO_LV', 1, 'NKG', 'PAR_2020_LV', 'forward'),
+    ('NKG', 'ETRF14_TO_LV', 2, 'NKG', 'LV_2020_INTRAPLATE', 'forward')
 ;
 
 
@@ -1969,12 +2106,12 @@ INSERT INTO "concatenated_operation"  VALUES (
 );
 
 INSERT INTO "concatenated_operation_step" (
-    operation_auth_name, operation_code, step_number, step_auth_name, step_code
+    operation_auth_name, operation_code, step_number, step_auth_name, step_code, step_direction
 ) VALUES
-    ('NKG', 'ITRF2014_TO_LV', 1, 'EPSG', '8366'), -- ITRF2014 -> ETRF2014
-    ('NKG', 'ITRF2014_TO_LV', 2, 'NKG', 'NKG_ETRF14_TO_ETRF2014'),
-    ('NKG', 'ITRF2014_TO_LV', 3, 'NKG', 'PAR_2020_LV'),
-    ('NKG', 'ITRF2014_TO_LV', 4, 'NKG', 'LV_2020_INTRAPLATE')
+    ('NKG', 'ITRF2014_TO_LV', 1, 'EPSG', '8366', 'forward'), -- ITRF2014 -> ETRF2014
+    ('NKG', 'ITRF2014_TO_LV', 2, 'NKG', 'NKG_ETRF14_TO_ETRF2014', 'reverse'),
+    ('NKG', 'ITRF2014_TO_LV', 3, 'NKG', 'PAR_2020_LV', 'forward'),
+    ('NKG', 'ITRF2014_TO_LV', 4, 'NKG', 'LV_2020_INTRAPLATE', 'forward')
 ;
 
 
@@ -2019,7 +2156,7 @@ INSERT INTO "other_transformation" (
 )
 VALUES(
     'NKG', 'LT_2020_INTRAPLATE',            -- object auth+code
-    'ETRF2000@2000.0 to ETRF2000@2003.75 (LKS94)',  -- name
+    'ETRF2000@2000.0 to ETRF2000@2003.75 (LKS94) using nkgrf17vel',  -- name
     NULL,                                   -- description
     'PROJ', 'PROJString',               -- method auth+cod
     '+proj=deformation +dt=3.75 +grids=eur_nkg_nkgrf17vel.tif',
@@ -2051,10 +2188,10 @@ INSERT INTO "concatenated_operation" VALUES(
 
 
 INSERT INTO "concatenated_operation_step" (
-    operation_auth_name, operation_code, step_number, step_auth_name, step_code
+    operation_auth_name, operation_code, step_number, step_auth_name, step_code, step_direction
 ) VALUES
-    ('NKG', 'ETRF14_TO_LT', 1, 'NKG', 'PAR_2020_LT'),
-    ('NKG', 'ETRF14_TO_LT', 2, 'NKG', 'LT_2020_INTRAPLATE')
+    ('NKG', 'ETRF14_TO_LT', 1, 'NKG', 'PAR_2020_LT', 'forward'),
+    ('NKG', 'ETRF14_TO_LT', 2, 'NKG', 'LT_2020_INTRAPLATE', 'forward')
 ;
 
 
@@ -2085,12 +2222,12 @@ INSERT INTO "concatenated_operation"  VALUES (
 );
 
 INSERT INTO "concatenated_operation_step" (
-    operation_auth_name, operation_code, step_number, step_auth_name, step_code
+    operation_auth_name, operation_code, step_number, step_auth_name, step_code, step_direction
 ) VALUES
-    ('NKG', 'ITRF2014_TO_LT', 1, 'EPSG', '8366'), -- ITRF2014 -> ETRF2014
-    ('NKG', 'ITRF2014_TO_LT', 2, 'NKG', 'NKG_ETRF14_TO_ETRF2014'),
-    ('NKG', 'ITRF2014_TO_LT', 3, 'NKG', 'PAR_2020_LT'),
-    ('NKG', 'ITRF2014_TO_LT', 4, 'NKG', 'LT_2020_INTRAPLATE')
+    ('NKG', 'ITRF2014_TO_LT', 1, 'EPSG', '8366', 'forward'), -- ITRF2014 -> ETRF2014
+    ('NKG', 'ITRF2014_TO_LT', 2, 'NKG', 'NKG_ETRF14_TO_ETRF2014', 'reverse'),
+    ('NKG', 'ITRF2014_TO_LT', 3, 'NKG', 'PAR_2020_LT', 'forward'),
+    ('NKG', 'ITRF2014_TO_LT', 4, 'NKG', 'LT_2020_INTRAPLATE', 'forward')
 ;
 
 
@@ -2135,7 +2272,7 @@ INSERT INTO "other_transformation" (
 )
 VALUES(
     'NKG', 'NO_2020_INTRAPLATE',        -- object auth+code
-    'ETRF93@2000.0 to ETRF93@1995.0',   -- name
+    'ETRF93@2000.0 to ETRF93@1995.0 using nkgrf17vel',   -- name
     NULL,                               -- description
     'PROJ', 'PROJString',               -- method auth+cod
     '+proj=deformation +dt=-5 +grids=eur_nkg_nkgrf17vel.tif',
@@ -2166,10 +2303,10 @@ INSERT INTO "concatenated_operation" VALUES(
 );
 
 INSERT INTO "concatenated_operation_step" (
-    operation_auth_name, operation_code, step_number, step_auth_name, step_code
+    operation_auth_name, operation_code, step_number, step_auth_name, step_code, step_direction
 ) VALUES
-    ('NKG', 'ETRF14_TO_NO', 1, 'NKG', 'PAR_2020_NO'),
-    ('NKG', 'ETRF14_TO_NO', 2, 'NKG', 'NO_2020_INTRAPLATE')
+    ('NKG', 'ETRF14_TO_NO', 1, 'NKG', 'PAR_2020_NO', 'forward'),
+    ('NKG', 'ETRF14_TO_NO', 2, 'NKG', 'NO_2020_INTRAPLATE', 'forward')
 ;
 
 INSERT INTO "usage" VALUES (
@@ -2197,12 +2334,12 @@ INSERT INTO "concatenated_operation"  VALUES (
 );
 
 INSERT INTO "concatenated_operation_step" (
-    operation_auth_name, operation_code, step_number, step_auth_name, step_code
+    operation_auth_name, operation_code, step_number, step_auth_name, step_code, step_direction
 ) VALUES
-    ('NKG', 'ITRF2014_TO_NO', 1, 'EPSG', '8366'), -- ITRF2014 -> ETRF2014
-    ('NKG', 'ITRF2014_TO_NO', 2, 'NKG', 'NKG_ETRF14_TO_ETRF2014'), 
-    ('NKG', 'ITRF2014_TO_NO', 3, 'NKG', 'NKG_ETRF14_ETRF93_2000'),
-    ('NKG', 'ITRF2014_TO_NO', 4, 'NKG', 'NO_2020_INTRAPLATE')
+    ('NKG', 'ITRF2014_TO_NO', 1, 'EPSG', '8366', 'forward'), -- ITRF2014 -> ETRF2014
+    ('NKG', 'ITRF2014_TO_NO', 2, 'NKG', 'NKG_ETRF14_TO_ETRF2014', 'reverse'),
+    ('NKG', 'ITRF2014_TO_NO', 3, 'NKG', 'NKG_ETRF14_ETRF93_2000', 'forward'),
+    ('NKG', 'ITRF2014_TO_NO', 4, 'NKG', 'NO_2020_INTRAPLATE', 'forward')
 ;
 
 INSERT INTO "usage" VALUES (
@@ -2245,7 +2382,7 @@ INSERT INTO "other_transformation" (
 )
 VALUES(
     'NKG', 'SE_2020_INTRAPLATE',-- object auth+code
-    'ETRF97@2000.0 to ETRF97@1999.5', -- name
+    'ETRF97@2000.0 to ETRF97@1999.5 using nkgrf17vel', -- name
     NULL, -- description
     'PROJ', 'PROJString',               -- method auth+cod
     '+proj=deformation +dt=-0.5 +grids=eur_nkg_nkgrf17vel.tif',
@@ -2277,10 +2414,10 @@ INSERT INTO "concatenated_operation" VALUES(
 
 
 INSERT INTO "concatenated_operation_step" (
-    operation_auth_name, operation_code, step_number, step_auth_name, step_code
+    operation_auth_name, operation_code, step_number, step_auth_name, step_code, step_direction
 ) VALUES
-    ('NKG', 'ETRF14_TO_SE', 1, 'NKG', 'PAR_2020_SE'),
-    ('NKG', 'ETRF14_TO_SE', 2, 'NKG', 'SE_2020_INTRAPLATE')
+    ('NKG', 'ETRF14_TO_SE', 1, 'NKG', 'PAR_2020_SE', 'forward'),
+    ('NKG', 'ETRF14_TO_SE', 2, 'NKG', 'SE_2020_INTRAPLATE', 'forward')
 ;
 
 
@@ -2311,12 +2448,12 @@ INSERT INTO "concatenated_operation"  VALUES (
 );
 
 INSERT INTO "concatenated_operation_step" (
-    operation_auth_name, operation_code, step_number, step_auth_name, step_code
+    operation_auth_name, operation_code, step_number, step_auth_name, step_code, step_direction
 ) VALUES
-    ('NKG', 'ITRF2014_TO_SE', 1, 'EPSG', '8366'), -- ITRF2014 -> ETRF2014
-    ('NKG', 'ITRF2014_TO_SE', 2, 'NKG', 'NKG_ETRF14_TO_ETRF2014'),
-    ('NKG', 'ITRF2014_TO_SE', 3, 'NKG', 'PAR_2020_SE'),
-    ('NKG', 'ITRF2014_TO_SE', 4, 'NKG', 'SE_2020_INTRAPLATE')
+    ('NKG', 'ITRF2014_TO_SE', 1, 'EPSG', '8366', 'forward'), -- ITRF2014 -> ETRF2014
+    ('NKG', 'ITRF2014_TO_SE', 2, 'NKG', 'NKG_ETRF14_TO_ETRF2014', 'reverse'),
+    ('NKG', 'ITRF2014_TO_SE', 3, 'NKG', 'PAR_2020_SE', 'forward'),
+    ('NKG', 'ITRF2014_TO_SE', 4, 'NKG', 'SE_2020_INTRAPLATE', 'forward')
 ;
 
 
@@ -2337,5 +2474,3 @@ INSERT INTO "supersession" VALUES (
     'NKG',
     0
 );
-
-
