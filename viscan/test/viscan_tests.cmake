@@ -9,6 +9,8 @@ file(WRITE "${_defs}/epsg"
 file(WRITE "${_defs}/mydefs"
   "<utm32> +proj=utm +zone=32 +ellps=GRS80 <>\n")
 configure_file(${PROJ_SOURCE_DIR}/data/ITRF2014 ${_defs}/ITRF2014 COPYONLY)
+# Must be ignored: tmerc/utm always use Poder/Engsager.
+file(WRITE "${_defs}/proj.ini" "tmerc_default_algo = evenden_snyder\n")
 
 add_executable(viscan_math_only_test
   ${CMAKE_CURRENT_LIST_DIR}/viscan_math_only_test.cpp)

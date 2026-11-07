@@ -49,6 +49,21 @@ if(NOT DEFINED CMAKE_MSVC_RUNTIME_LIBRARY)
   set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded")
 endif()
 
+# Fast number formatting (viscan_printf.cpp) needs std::to_chars for double.
+# Apple's libc++ only provides it from macOS 13.3 / iOS 16.3 on, so this is
+# checked with the actual deployment target. Without it the C library's
+# printf is used, which is slower (about 0.3 us per number on macOS).
+include(CheckCXXSourceCompiles)
+set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY) # no linking (iOS signing)
+check_cxx_source_compiles([[
+  #include <charconv>
+  int main() {
+    char b[32];
+    auto r = std::to_chars(b, b + 32, 0.5, std::chars_format::general, 15);
+    return r.ec == std::errc() ? 0 : 1;
+  }]] VISCAN_HAVE_TO_CHARS_DOUBLE)
+unset(CMAKE_TRY_COMPILE_TARGET_TYPE)
+
 # The library itself does not use SQLite. Some upstream unit tests create
 # SQLite databases themselves, so the test build needs it.
 if(BUILD_TESTING)
@@ -56,6 +71,8 @@ if(BUILD_TESTING)
   if(NOT TARGET SQLite3::SQLite3) # CMake < 4.3
     add_library(SQLite3::SQLite3 ALIAS SQLite::SQLite3)
   endif()
+  # Runs gie files without excluded operations (viscan/tools/gie_filter.py).
+  find_package(Python3 REQUIRED COMPONENTS Interpreter)
 endif()
 
 # Swap sources, drop the SQLite link and set up tests once all targets exist.

@@ -5,8 +5,6 @@
 # hand; review the diff after regenerating.
 
 set(VISCAN_DISABLED_TESTS
-  4D-API-cs2cs-style
-  Builtins2
   GIGS-5101.1-jhs
   GIGS-5101.2-jhs
   GIGS-5101.3-jhs
@@ -27,9 +25,7 @@ set(VISCAN_DISABLED_TESTS
   GIGS-5113
   GIGS-5201
   GIGS-5208
-  defmodel
   epsg_no_grid
-  tinshift_gpkg
 )
 
 set(VISCAN_GTEST_FILTERED_TESTS
@@ -38,6 +34,63 @@ set(VISCAN_GTEST_FILTERED_TESTS
   proj_test_cpp_api
   test_network
   test_tmerczoned
+)
+
+set(VISCAN_GIE_FILTERED_TESTS
+  4D-API-cs2cs-style
+  Builtins
+  Builtins2
+  defmodel
+  tinshift_gpkg
+)
+
+# 4D-API-cs2cs-style: 2 of 54 operations excluded
+set(VISCAN_GIE_FILE_4D-API-cs2cs-style gie/4D-API_cs2cs-style.gie)
+set(VISCAN_GIE_EXCLUDES_4D-API-cs2cs-style
+  [=[operation proj=pipeline step init=epsg:26915 inv step init=epsg:3857]=]
+  [=[operation proj=pipeline step init=epsg:26915 inv step proj=webmerc datum=WGS84]=]
+)
+
+# Builtins: 5 of 380 operations excluded
+set(VISCAN_GIE_FILE_Builtins gie/builtins.gie)
+set(VISCAN_GIE_EXCLUDES_Builtins
+  [=[operation +proj=tmerc +a=6400000 +rf=1e12 +k=0.9 +lat_0=-40 +approx]=]
+  [=[operation +proj=tmerc +a=6400000 +rf=1e12 +k=0.9 +lat_0=40 +approx]=]
+  [=[operation +proj=tmerc +ellps=GRS80 +algo=auto]=]
+  [=[operation +proj=tmerc +ellps=GRS80 +algo=evenden_snyder]=]
+  [=[operation +proj=utm +zone=32 +approx]=]
+)
+
+# Builtins2: 2 of 75 operations excluded
+set(VISCAN_GIE_FILE_Builtins2 gie/more_builtins.gie)
+set(VISCAN_GIE_EXCLUDES_Builtins2
+  [=[operation +proj=pipeline +step +proj=latlong +datum=NAD27 +inv +step +units=us-ft +init=nad27:3901]=]
+  [=[operation proj=pipeline step init=epsg:25832 inv step init=epsg:25833 step init=epsg:25833 inv step init=epsg:25832]=]
+)
+
+# defmodel: 10 of 16 operations excluded
+set(VISCAN_GIE_FILE_defmodel gie/defmodel.gie)
+set(VISCAN_GIE_EXCLUDES_defmodel
+  [=[operation +proj=defmodel +model=tests/simple_model_degree_3d.json]=]
+  [=[operation +proj=defmodel +model=tests/simple_model_degree_horizontal.json]=]
+  [=[operation +proj=defmodel +model=tests/simple_model_metre_vertical.json]=]
+  [=[operation +proj=defmodel +model=tests/simple_model_polar.json]=]
+  [=[operation +proj=defmodel +model=tests/simple_model_wrap_east.json]=]
+  [=[operation +proj=defmodel +model=tests/simple_model_wrap_west.json]=]
+  [=[operation +proj=pipeline +step +inv +proj=merc +step +proj=defmodel +model=tests/simple_model_metre_3d.json +step +proj=merc]=]
+  [=[operation +proj=pipeline +step +inv +proj=merc +step +proj=defmodel +model=tests/simple_model_metre_3d_geocentric.json +step +proj=merc]=]
+  [=[operation +proj=pipeline +step +inv +proj=merc +step +proj=defmodel +model=tests/simple_model_metre_horizontal.json +step +proj=merc]=]
+  [=[operation +proj=pipeline +step +proj=defmodel +model=tests/simple_model_projected.json]=]
+)
+
+# tinshift_gpkg: 5 of 7 operations excluded
+set(VISCAN_GIE_FILE_tinshift_gpkg gie/tinshift_gpkg.gie)
+set(VISCAN_GIE_EXCLUDES_tinshift_gpkg
+  [=[operation +proj=tinshift +file=tests/tinshift_crs_implicit.gpkg]=]
+  [=[operation +proj=tinshift +file=tests/tinshift_fallback_nearest_centroid.gpkg]=]
+  [=[operation +proj=tinshift +file=tests/tinshift_fallback_nearest_side.gpkg]=]
+  [=[operation +proj=tinshift +file=tests/tinshift_simplified_kkj_etrs.gpkg]=]
+  [=[operation +proj=tinshift +file=tests/tinshift_simplified_n60_n2000.gpkg]=]
 )
 
 # gie_self_tests: 11 of 20 test cases excluded
@@ -60,7 +113,7 @@ set(VISCAN_GTEST_EXCLUDES_proj_context_test
   proj_context.read_grid_from_user_writable_directory
 )
 
-# proj_test_cpp_api: 553 of 1416 test cases excluded
+# proj_test_cpp_api: 554 of 1416 test cases excluded
 set(VISCAN_GTEST_EXCLUDES_proj_test_cpp_api
   CApi.concurrent_context
   CApi.conversion
@@ -338,6 +391,7 @@ set(VISCAN_GTEST_EXCLUDES_proj_test_cpp_api
   io.projcs_TOWGS84_7terms_autocorrect
   io.projparse_init
   io.projparse_longlat_towgs84_7_terms_autocorrect
+  io.projparse_tmerc_approx
   json_export.*
   json_import.derived_vertical_crs_EPSG_code_for_horizontal_CRS
   json_import.ensemble_without_members

@@ -17,6 +17,11 @@ which guarantees:
 - **No network access.** Grids are never downloaded; `PROJ_NETWORK=ON` and
   `network = on` in `proj.ini` have no effect.
 - **No SQLite.** The library neither contains nor needs SQLite.
+- **Transverse Mercator always uses Poder/Engsager.** This applies to `tmerc`,
+  `utm` and `tmerczoned`. `+approx`, `+algo=evenden_snyder` and `+algo=auto`
+  are rejected, and `tmerc_default_algo` in `proj.ini` is ignored. Results
+  cannot change because of a setting outside the definition. On a sphere
+  (no flattening) PROJ uses the exact spherical formulas, as upstream does.
 
 PROJ still reads grid files (`.gsb`, `.tif`, `.gtx`, …), TIN and deformation
 JSON files, and `proj.ini` from the search paths set by our library.
@@ -43,9 +48,9 @@ releases merge with few or no conflicts. Everything viscan-specific lives in
 | `viscan/src/viscan_network_stubs.cpp` | Replaces `src/networkfilemanager.cpp`. The network C API reports "disabled" and never throws. |
 | `viscan/src/viscan_tinshift_gpkg_stubs.cpp` | Replaces `src/transformations/tinshift_gpkg.cpp` and `src/sqlite3_utils.cpp`. GeoPackage TIN files are rejected. |
 | `viscan/src/sqlite3_stub/sqlite3.h` | Stand-in for `<sqlite3.h>` so that upstream sources compile without SQLite. It maps `sqlite3_snprintf` to `viscan_printf.cpp`. |
-| `viscan/src/viscan_printf.cpp` | Locale-independent `snprintf` (always `.` as decimal separator). |
+| `viscan/src/viscan_printf.cpp` | Locale-independent `snprintf` (always `.` as decimal separator). PROJ's formats are handled with `std::to_chars` (about 50 ns per number); other formats and unsupported platforms use the C library (see "Number formatting speed"). |
 | `viscan/test/` | viscan test, list of excluded upstream tests. |
-| `viscan/tools/` | `merge_upstream.sh`, `update_test_exclusions.py`. |
+| `viscan/tools/` | `merge_upstream.sh`, `update_test_exclusions.py`, `gie_filter.py`. |
 | `viscan/examples/gk3_to_utm32.cpp` | Example: GK3 → BWTA2017 → WGS84 → UTM32 pipeline. |
 
 ### Changes to upstream files
@@ -56,6 +61,7 @@ All of them are small additions:
 |---|---|
 | `CMakeLists.txt` | `include(viscan/cmake/ViscanMathOnly.cmake)`; SQLite check and `add_subdirectory(data)` (builds `proj.db`, installs init files) wrapped in `if(NOT VISCAN_MATH_ONLY)`. |
 | `src/init.cpp` | `get_init()` returns an error under `#ifdef VISCAN_MATH_ONLY`, which disables `+init=`. |
+| `src/projections/tmerc.cpp` | `getAlgoFromParams()` always returns Poder/Engsager under `#ifdef VISCAN_MATH_ONLY` and rejects other algorithms. |
 | `src/proj.h` | `PROJ_STATICALLY_LINKED` defines an empty `PROJ_DLL`. Users of the static library define it (needed with MSVC). |
 
 Fork-only files outside `viscan/`: `build-posix.sh`, `build-windows.sh`,
@@ -95,9 +101,8 @@ the command line and won, which caused warning D9025.
   grids. Otherwise PROJ also searches the user-writable directory,
   `PROJ_DATA`/`PROJ_LIB`, `../share/proj`, the compiled-in install directory and
   the current directory.
-- Write `+algo=poder_engsager` on `tmerc`/`utm` steps. Without `+algo`, the
-  algorithm comes from `tmerc_default_algo` in a `proj.ini` found on the search
-  path (default `poder_engsager`).
+- `tmerc`/`utm` need no `+algo`: Poder/Engsager is always used. Explicitly
+  writing `+algo=poder_engsager` is still accepted.
 - Use one `PJ_CONTEXT` per thread and reuse `PJ` objects; creating them per
   coordinate reloads grids every time.
 
@@ -110,10 +115,27 @@ the command line and won, which caused warning D9025.
 | `+init=…` | Definitions from files |
 | `+proj=defmodel` | The model JSON names its CRS by EPSG code, which needs `proj.db` |
 | `+proj=tinshift +file=*.gpkg` | Needs SQLite (JSON TIN files work) |
+| `tmerc`/`utm` with `+approx`, `+algo=evenden_snyder`, `+algo=auto` | Always Poder/Engsager |
 | Grids via CDN (`https://…`, `PROJ_NETWORK`) | Network |
 
 These calls fail cleanly through the C API (NULL / error code). In the C++ API
 they throw `osgeo::proj::io::FactoryException`.
+
+### Number formatting speed
+
+SQLite used to format numbers as text for PROJ, in WKT, PROJJSON and PROJ
+strings. `proj_create()` uses this too, about 16 numbers for a typical
+pipeline. `proj_trans()` and all projection math never format numbers.
+
+| Path | Per number | Where |
+|---|---|---|
+| `std::to_chars` | ~50 ns | Linux (GCC ≥ 11), Windows (MSVC), Android, Apple with deployment target ≥ macOS 13.3 / iOS 16.3 |
+| C library printf, "C" locale | ~280 ns on macOS | Apple with older deployment targets (the release currently uses macOS 13.0 and iOS 13.0) |
+
+CMake detects which one is available with the actual compiler and deployment
+target (`VISCAN_HAVE_TO_CHARS_DOUBLE`). With the slow path, a typical
+`proj_create()` takes about 4 µs longer, roughly 5 %. `proj_trans()` is not
+affected.
 
 ## Tests
 
@@ -126,15 +148,24 @@ ctest --test-dir build-tests
 - `viscan_math_only` (viscan test) checks:
   - EPSG codes, `+init=` (also with `PROJ_USE_PROJ4_INIT_RULES`), the network
     and GeoPackage TIN files are rejected
+  - `tmerc`/`utm` use Poder/Engsager even when `proj.ini` asks for another
+    algorithm, and other algorithms are rejected
   - `proj_cleanup()` works
-  - WKT/PROJJSON use `.` under a German locale
+  - number formatting equals printf in the C locale (200,000 random values),
+    and WKT/PROJJSON use `.` under a German locale
   - UTM and the GK3→UTM32 pipeline compute correctly, and local grids work
   - The test links the whole static library, so a missing stub fails the
     build.
 - All upstream tests are built **unchanged**. Tests that need the removed
   functionality are listed in `viscan/test/excluded_tests.cmake`:
-  - whole ctest tests are marked `DISABLED`; ctest shows them as "Not Run"
   - individual gtest cases are excluded through `GTEST_FILTER`
+  - individual gie operations are excluded: the original test is disabled
+    and `<name>.filtered` runs the gie file without them
+    (`viscan/tools/gie_filter.py`). An entry that no longer matches an
+    operation fails the test.
+  - tests where everything fails are marked `DISABLED`; ctest shows them as
+    "Not Run"
+- Python 3 is needed for the test build (gie filtering).
 - Upstream unit tests create SQLite databases themselves, so the *test* build
   needs SQLite3; the library does not.
 - Applying the exclusions needs CMake ≥ 3.28.
@@ -143,13 +174,14 @@ Status with PROJ 9.9.0:
 
 | Category | Result |
 |---|---|
-| Running tests (viscan test included) | 32 pass |
-| Disabled whole tests | 25: GIGS suites (`+init=epsg:`), `defmodel`, `tinshift_gpkg`, `epsg_no_grid`, `Builtins2`, `4D-API-cs2cs-style` |
-| Excluded gtest cases | 580 cases (C++ API: 553 of 1416), all of them traced to database, init-file or network use |
+| Running tests (viscan test included) | 36 pass |
+| gie files run with operations excluded | `Builtins` 375 of 380 (the non-Poder/Engsager tmerc cases), `Builtins2` 73 of 75, `4D-API-cs2cs-style` 52 of 54 (`+init=`), `defmodel` 6 of 16, `tinshift_gpkg` 2 of 7 |
+| Disabled whole tests | 20 GIGS suites (every definition is `+init=epsg:`), `epsg_no_grid` |
+| Excluded gtest cases | 581 cases (C++ API: 554 of 1416). All are traced to database, init-file or network use, or to the Poder/Engsager rule (`io.projparse_tmerc_approx`). |
 
-Still running: `Builtins`, `Ellipsoid`, `Axisswap`, `Unitconvert`, `GDA`,
-`DHDN_ETRS89`, `Deformation`, `geotiff_grids`, `gridshift`, `tinshift`
-(JSON), the geodesic tests, and 863 C++ API cases.
+Also running: `Ellipsoid`, `Axisswap`, `Unitconvert`, `GDA`, `DHDN_ETRS89`,
+`Deformation`, `geotiff_grids`, `gridshift`, `tinshift` (JSON), the geodesic
+tests, and 862 C++ API cases.
 
 ## Merging a new PROJ release
 
@@ -159,8 +191,8 @@ viscan/tools/merge_upstream.sh <version>
 ```
 
 The script merges the tag and drops upstream's CI workflows. Expected
-conflicts are limited to the hooks in `CMakeLists.txt`, `src/init.cpp` and
-`src/proj.h`. Then:
+conflicts are limited to the hooks in `CMakeLists.txt`, `src/init.cpp`,
+`src/projections/tmerc.cpp` and `src/proj.h`. Then:
 
 1. Build with tests, **ignoring** the exclusions:
    ```sh
@@ -192,6 +224,10 @@ conflicts are limited to the hooks in `CMakeLists.txt`, `src/init.cpp` and
 - The `GTEST_FILTER` for the C++ API tests is about 28,000 characters long.
   That is fine on Linux and macOS, but close to the Windows limit of 32,767
   characters per environment variable.
+- Apple's `printf` writes `%g` exact ties with a trailing zero
+  (`3.84160e+06` instead of `3.8416e+06`), which only matters on the slow
+  path. The value is the same. The viscan test compares digits and values,
+  not that zero.
 
 ## History
 
@@ -208,5 +244,7 @@ these problems, all fixed now:
 - SQLite was still needed (`sqlite3_snprintf`) on non-Windows platforms.
 - `/MT` had no effect on Windows (warning D9025).
 - PROJJSON numbers followed the process locale (`,` with a German locale).
+- The Transverse Mercator algorithm could be switched by `+approx`/`+algo` or
+  by a `proj.ini`.
 - Large `#ifdef` hunks in upstream files made merging new releases
   impractical; tests were disabled entirely.

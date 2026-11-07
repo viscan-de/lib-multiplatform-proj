@@ -15,12 +15,18 @@
 
 #include "proj.h"
 
+#include <climits>
 #include <clocale>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <random>
 #include <string>
+
+// Replacement of sqlite3_snprintf, see viscan/src/viscan_printf.cpp.
+extern "C" char *viscan_proj_snprintf(int n, char *buf, const char *fmt, ...);
 
 namespace {
 
@@ -110,6 +116,53 @@ void testGeoPackageTinRejected(const std::string &projTestsDir) {
     proj_context_destroy(ctx);
 }
 
+PJ_COORD forward(PJ_CONTEXT *ctx, const char *definition, double lonDeg,
+                 double latDeg) {
+    PJ *P = proj_create(ctx, definition);
+    PJ_COORD res = proj_coord(HUGE_VAL, HUGE_VAL, 0, 0);
+    if (P) {
+        res = proj_trans(
+            P, PJ_FWD, proj_coord(proj_torad(lonDeg), proj_torad(latDeg), 0, 0));
+    }
+    proj_destroy(P);
+    return res;
+}
+
+bool same(const PJ_COORD &a, const PJ_COORD &b) {
+    return a.xy.x != HUGE_VAL && a.xy.x == b.xy.x && a.xy.y == b.xy.y;
+}
+
+// tmerc, utm and tmerczoned always use Poder/Engsager.
+// dataDir contains a proj.ini with "tmerc_default_algo = evenden_snyder".
+void testTmercAlwaysPoderEngsager(const std::string &dataDir) {
+    PJ_CONTEXT *ctx = newContext(dataDir);
+
+    // 20 degrees from the central meridian, where Evenden/Snyder is off by
+    // far more than the floating point noise.
+    const PJ_COORD exact = forward(
+        ctx, "+proj=tmerc +lon_0=9 +ellps=GRS80 +algo=poder_engsager", 29, 50);
+    check(same(forward(ctx, "+proj=tmerc +lon_0=9 +ellps=GRS80", 29, 50), exact),
+          "tmerc without +algo uses Poder/Engsager despite proj.ini");
+
+    const PJ_COORD utmExact =
+        forward(ctx,
+                "+proj=tmerc +lon_0=9 +k_0=0.9996 +x_0=500000 +ellps=GRS80 "
+                "+algo=poder_engsager",
+                29, 50);
+    check(same(forward(ctx, "+proj=utm +zone=32 +ellps=GRS80", 29, 50),
+               utmExact),
+          "utm without +algo uses Poder/Engsager despite proj.ini");
+
+    checkRejected(ctx, "+proj=tmerc +ellps=GRS80 +approx");
+    checkRejected(ctx, "+proj=tmerc +ellps=GRS80 +algo=evenden_snyder");
+    checkRejected(ctx, "+proj=tmerc +ellps=GRS80 +algo=auto");
+    checkRejected(ctx, "+proj=utm +zone=32 +ellps=GRS80 +approx");
+    // tmerczoned has no +algo/+approx; its internal tmerc goes through the
+    // same selection and therefore always uses Poder/Engsager.
+
+    proj_context_destroy(ctx);
+}
+
 double transformRoundTrip(PJ *P, PJ_COORD c, PJ_COORD &projected) {
     projected = proj_trans(P, PJ_FWD, c);
     const PJ_COORD back = proj_trans(P, PJ_INV, projected);
@@ -157,6 +210,86 @@ void testMath(const std::string &dataDir) {
     proj_destroy(P);
 
     proj_context_destroy(ctx);
+}
+
+// %g output without trailing zeros in the mantissa ("3.84160e+06" ->
+// "3.8416e+06"). Apple's printf keeps one in some exact-tie cases, contrary
+// to the C standard; std::to_chars (the fast path) does not.
+std::string stripTrailingZeros(const char *s) {
+    std::string str(s);
+    const auto dot = str.find('.');
+    if (dot == std::string::npos)
+        return str;
+    auto end = str.find('e');
+    if (end == std::string::npos)
+        end = str.size();
+    auto last = end;
+    while (last > dot + 1 && str[last - 1] == '0')
+        --last;
+    if (last == dot + 1)
+        last = dot;
+    return str.substr(0, last) + str.substr(end);
+}
+
+// viscan_proj_snprintf (replacement of sqlite3_snprintf) must give what
+// printf gives in the "C" locale. Run while the process locale is "C".
+void testNumberFormatting() {
+    std::mt19937_64 rng(42);
+    char got[64];
+    char want[64];
+    int mismatches = 0;
+    std::string firstMismatch;
+    auto compare = [&](const std::string &what) {
+        if (std::strcmp(got, want) != 0 && mismatches++ == 0)
+            firstMismatch = what + ": " + got + " != " + want;
+    };
+    // Same digits and rounding, and the same value when read back.
+    auto compareG = [&](const std::string &what) {
+        const bool sameText = stripTrailingZeros(got) == stripTrailingZeros(want);
+        const double a = std::strtod(got, nullptr);
+        const double b = std::strtod(want, nullptr);
+        const bool sameValue = (a == b) || (std::isnan(a) && std::isnan(b));
+        if ((!sameText || !sameValue) && mismatches++ == 0)
+            firstMismatch = what + ": " + got + " != " + want;
+    };
+    auto describe = [](const char *fmt, int prec, double v) {
+        char d[96];
+        std::snprintf(d, sizeof(d), "%s prec=%d v=%a", fmt, prec, v);
+        return std::string(d);
+    };
+    for (int i = 0; i < 200000; ++i) {
+        double v;
+        const uint64_t bits = rng();
+        std::memcpy(&v, &bits, sizeof(v)); // any double, incl. inf/nan
+        if (i % 2)
+            v = static_cast<double>(static_cast<int64_t>(rng() % 20000000) -
+                                    10000000) /
+                std::pow(10.0, static_cast<double>(rng() % 12));
+        const int prec = 1 + static_cast<int>(rng() % 17);
+        viscan_proj_snprintf(sizeof(got), got, "%.*g", prec, v);
+        std::snprintf(want, sizeof(want), "%.*g", prec, v);
+        compareG(describe("%.*g", prec, v));
+        viscan_proj_snprintf(sizeof(got), got, "%.15g", v);
+        std::snprintf(want, sizeof(want), "%.15g", v);
+        compareG(describe("%.15g", 15, v));
+    }
+    const long long ll[] = {0, -1, LLONG_MIN, LLONG_MAX, 1234567890123LL};
+    for (long long x : ll) {
+        viscan_proj_snprintf(sizeof(got), got, "%lld|%d|%llu", x,
+                             static_cast<int>(x), static_cast<unsigned long long>(x));
+        std::snprintf(want, sizeof(want), "%lld|%d|%llu", x, static_cast<int>(x),
+                      static_cast<unsigned long long>(x));
+        compare("integers");
+    }
+    viscan_proj_snprintf(sizeof(got), got, "\\u%04X %s 100%%", 0x1F, "ab");
+    std::snprintf(want, sizeof(want), "\\u%04X %s 100%%", 0x1F, "ab");
+    compare("mixed");
+    viscan_proj_snprintf(8, got, "%.15g", 3.14159265358979);
+    check(std::strcmp(got, "3.14159") == 0, "truncates like snprintf");
+    check(mismatches == 0,
+          "number formatting equals printf in the C locale" +
+              (firstMismatch.empty() ? std::string()
+                                     : " (first: " + firstMismatch + ")"));
 }
 
 void testLocaleIndependentNumbers(const std::string &dataDir) {
@@ -208,7 +341,9 @@ int main(int argc, char **argv) {
     testNoDefinitionsFromDatabaseOrFiles(dataDir);
     testNoNetwork(dataDir);
     testGeoPackageTinRejected(projTestsDir);
+    testTmercAlwaysPoderEngsager(dataDir);
     testMath(projTestsDir);
+    testNumberFormatting();
     testLocaleIndependentNumbers(dataDir);
 
     proj_cleanup(); // used to abort the process in the old fork

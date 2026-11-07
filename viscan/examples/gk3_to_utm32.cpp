@@ -8,7 +8,7 @@
  *
  * Moved here from the former examples/EPSG_4326_to_32631.cpp. Fixed:
  * one context and one PJ for all coordinates (not one per coordinate),
- * error checks, PJ destroyed before its context, explicit +algo.
+ * error checks, PJ destroyed before its context.
  */
 
 #include "proj.h"
@@ -27,7 +27,7 @@ int main(int argc, char **argv) {
     const char *searchPaths[] = {argv[1]};
     proj_context_set_search_paths(ctx, 1, searchPaths);
 
-    // +algo=poder_engsager: the result does not depend on a proj.ini.
+    // tmerc/utm always use Poder/Engsager in this build; +algo is optional.
     const char *pipeline =
         "+proj=pipeline "
         // GK zone 3 -> geographic (DHDN, Bessel)

@@ -31,6 +31,10 @@ target_sources(proj PRIVATE
 # Stand-in for <sqlite3.h>: lets upstream sources compile without SQLite.
 target_include_directories(proj BEFORE PRIVATE ${VISCAN_DIR}/src/sqlite3_stub)
 target_compile_definitions(proj PRIVATE VISCAN_MATH_ONLY)
+if(VISCAN_HAVE_TO_CHARS_DOUBLE)
+  set_property(SOURCE ${VISCAN_DIR}/src/viscan_printf.cpp TARGET_DIRECTORY proj
+    APPEND PROPERTY COMPILE_DEFINITIONS VISCAN_HAVE_TO_CHARS_DOUBLE)
+endif()
 
 # ---------------------------------------------------------------------------
 # 2. Do not link SQLite.
@@ -121,4 +125,26 @@ foreach(_t IN LISTS VISCAN_GTEST_FILTERED_TESTS)
   list(JOIN VISCAN_GTEST_EXCLUDES_${_t} ":" _filter)
   set_property(TEST ${_t} DIRECTORY ${_dir} APPEND PROPERTY ENVIRONMENT
                "GTEST_FILTER=-${_filter}")
+endforeach()
+
+# gie files with excluded operations: the original test is disabled, and
+# "<name>.filtered" runs the file without those operations.
+foreach(_t IN LISTS VISCAN_GIE_FILTERED_TESTS)
+  get_property(_dir GLOBAL PROPERTY _VISCAN_TEST_DIR_${_t})
+  if(NOT _dir)
+    message(WARNING "viscan: filtered test '${_t}' does not exist (stale "
+                    "entry in viscan/test/excluded_tests.cmake)")
+    continue()
+  endif()
+  set_property(TEST ${_t} DIRECTORY ${_dir} PROPERTY DISABLED TRUE)
+  get_property(_env TEST ${_t} DIRECTORY ${_dir} PROPERTY ENVIRONMENT)
+  set(_excludes "${PROJ_BINARY_DIR}/viscan/gie_excludes/${_t}.txt")
+  list(JOIN VISCAN_GIE_EXCLUDES_${_t} "\n" _content)
+  file(WRITE "${_excludes}" "${_content}\n")
+  add_test(NAME ${_t}.filtered
+    WORKING_DIRECTORY ${PROJ_SOURCE_DIR}/test
+    COMMAND ${Python3_EXECUTABLE} ${VISCAN_DIR}/tools/gie_filter.py run
+      $<TARGET_FILE:gie> ${PROJ_SOURCE_DIR}/test/${VISCAN_GIE_FILE_${_t}}
+      ${_excludes})
+  set_property(TEST ${_t}.filtered PROPERTY ENVIRONMENT ${_env})
 endforeach()

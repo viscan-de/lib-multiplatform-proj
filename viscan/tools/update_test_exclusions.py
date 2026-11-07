@@ -7,7 +7,10 @@ fail, so that they are not run in normal builds:
 - gtest executables: the failing (or crashing) test cases, as a
   GTEST_FILTER exclusion. A suite where every case fails is written as
   "Suite.*".
-- other tests (gie files, scripts): the whole ctest test is disabled.
+- gie files: the failing operations. The original test is disabled and
+  "<name>.filtered" runs the file without them (gie_filter.py). If every
+  operation fails, the test is just disabled.
+- other tests (scripts, ...): the whole ctest test is disabled.
 
 Usage (after merging a new upstream release):
 
@@ -30,7 +33,11 @@ import tempfile
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
+sys.path.insert(0, str(SCRIPT_DIR))
+import gie_filter  # noqa: E402
+
 OUTPUT = SCRIPT_DIR.parent / "test" / "excluded_tests.cmake"
+PROJ_TEST_DIR = SCRIPT_DIR.parent.parent / "test"
 TIMEOUT = 1800
 
 
@@ -126,6 +133,32 @@ def gtest_exclusions(test, cases):
         return excluded if rc == 0 else None
 
 
+def is_gie_test(test):
+    cmd = test["command"]
+    return (len(cmd) == 2 and Path(cmd[0]).name.startswith("gie")
+            and cmd[1].endswith(".gie"))
+
+
+def gie_exclusions(test):
+    """Failing operations of a gie test; None if the whole test must go."""
+    gie, gie_file = test["command"]
+    lines = Path(gie_file).read_text(errors="replace").splitlines(True)
+    all_keys = {k for _, _, k in gie_filter.blocks(lines)}
+    excluded = set()
+    for _ in range(20):
+        code, output = gie_filter.run(gie, gie_file, excluded,
+                                      cwd=test["cwd"], env=test["env"])
+        if code == 0:
+            return excluded
+        new = gie_filter.failing_keys(gie_file, output) - excluded
+        if not new:
+            return None  # fails without a failing operation: disable
+        excluded |= new
+        if excluded >= all_keys:
+            return None
+    return None
+
+
 def collapse(excluded, cases):
     by_suite = {}
     for c in cases:
@@ -147,10 +180,30 @@ def main():
     if "VISCAN_IGNORE_TEST_EXCLUSIONS:BOOL=ON" not in cache:
         sys.exit("configure the build with -DVISCAN_IGNORE_TEST_EXCLUSIONS=ON")
 
-    disabled, filtered = [], {}
+    disabled, filtered, gie_filtered = [], {}, {}
     for test in ctest_tests(build_dir):
         name = test["name"]
         if name.startswith("viscan_"):
+            continue
+        if is_gie_test(test):
+            res = subprocess.run(test["command"], cwd=test["cwd"],
+                                 env=test["env"], capture_output=True,
+                                 timeout=TIMEOUT)
+            if res.returncode == 0:
+                print(f"pass  {name}")
+                continue
+            gie_file = Path(test["command"][1])
+            n_ops = len(gie_filter.blocks(
+                gie_file.read_text(errors="replace").splitlines(True)))
+            excluded = gie_exclusions(test)
+            if excluded is None:
+                print(f"FAIL  {name}")
+                disabled.append(name)
+            else:
+                print(f"      {name}: {len(excluded)} of {n_ops} operations "
+                      "excluded")
+                rel = gie_file.resolve().relative_to(PROJ_TEST_DIR.resolve())
+                gie_filtered[name] = (rel.as_posix(), sorted(excluded), n_ops)
             continue
         cases = gtest_cases(test)
         if cases is None:
@@ -186,6 +239,16 @@ def main():
     lines += [")", "", "set(VISCAN_GTEST_FILTERED_TESTS"]
     lines += [f"  {n}" for n in sorted(filtered)]
     lines.append(")")
+    lines += ["", "set(VISCAN_GIE_FILTERED_TESTS"]
+    lines += [f"  {n}" for n in sorted(gie_filtered)]
+    lines.append(")")
+    for name in sorted(gie_filtered):
+        rel, keys, n_ops = gie_filtered[name]
+        lines += ["", f"# {name}: {len(keys)} of {n_ops} operations excluded",
+                  f"set(VISCAN_GIE_FILE_{name} {rel})",
+                  f"set(VISCAN_GIE_EXCLUDES_{name}"]
+        lines += [f"  [=[{k}]=]" for k in keys]
+        lines.append(")")
     for name in sorted(filtered):
         patterns, n_excl, n_all = filtered[name]
         lines += ["", f"# {name}: {n_excl} of {n_all} test cases excluded",

@@ -555,6 +555,21 @@ static PJ *setup(PJ *P, TMercAlgo eAlg) {
 }
 
 static bool getAlgoFromParams(PJ *P, TMercAlgo &algo) {
+#ifdef VISCAN_MATH_ONLY
+    /* viscan fork: always Poder/Engsager. Requests for another algorithm are
+     * rejected, tmerc_default_algo in proj.ini is ignored. */
+    {
+        const char *algStr = pj_param(P->ctx, P->params, "salgo").s;
+        if (pj_param(P->ctx, P->params, "bapprox").i ||
+            (algStr && strcmp(algStr, "poder_engsager") != 0)) {
+            proj_log_error(P, _("only the Poder/Engsager algorithm is "
+                                "available in this build"));
+            return false;
+        }
+        algo = TMercAlgo::PODER_ENGSAGER;
+        return true;
+    }
+#endif
     if (pj_param(P->ctx, P->params, "bapprox").i) {
         algo = TMercAlgo::EVENDEN_SNYDER;
         return true;
