@@ -6,12 +6,16 @@ on:
   push:
     tags:
       - 'v[0-9]+.*'
+  # Dry run: builds and packages everything like a release, but publishes
+  # nothing. The zips are kept as workflow artifacts.
+  workflow_dispatch:
 
 jobs:
   create_release:
     permissions:
       contents: write
     name: Create release
+    if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     # Note this. We are going to use that in further jobs.
     outputs:
@@ -42,6 +46,8 @@ jobs:
     permissions:
       contents: write
     needs: create_release # we need to know the upload URL
+    # Also runs when create_release was skipped (dry run, no tag).
+    if: ${{ !cancelled() && needs.create_release.result != 'failure' }}
     runs-on: ${{ matrix.os }}
 
     strategy:
@@ -176,7 +182,8 @@ jobs:
         #echo "build-output-dir=${{ github.workspace }}/build" >> "$GITHUB_OUTPUT"
         echo "build-output-dir=$(echo "${{ github.workspace }}/build" | sed -e 's/\\/\//g')" >> "$GITHUB_OUTPUT"
         echo "workspace-dir=$(echo "${{ github.workspace }}" | sed -e 's/\\/\//g')" >> "$GITHUB_OUTPUT"
-        echo "tag=${GITHUB_REF#refs/*/}" >> $GITHUB_OUTPUT
+        # Tag name, or the branch name with '/' replaced on a dry run.
+        echo "tag=$(echo "${GITHUB_REF#refs/*/}" | tr '/' '-')" >> $GITHUB_OUTPUT
         mkdir "${{ github.workspace }}/build"
         
     - name: Build libraries with -fPIC for static linking (Linux)
@@ -467,6 +474,13 @@ jobs:
       with:
         files: |
           ${{ steps.strings.outputs.build-output-dir }}/*.zip
+
+    - name: Keep packages (dry run)
+      if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ matrix.platform }}.${{ matrix.arch }}-${{ matrix.c_compiler }}.libproj
+        path: ${{ steps.strings.outputs.build-output-dir }}/*.zip
 
 #  trigger_update:
 #    name: Trigger framework update
