@@ -404,7 +404,7 @@ jobs:
         # Policy: the whole viscan Windows stack uses the static runtime (/MT).
         # Fail if any object in the package asks for the DLL runtime (/MD).
         dumpbin="$(dirname "$libexe")/dumpbin.exe"
-        "$dumpbin" /nologo /directives libproj.lib > directives.txt
+        "$dumpbin" -nologo -directives libproj.lib > directives.txt
         grep -ioE 'DEFAULTLIB:"?[a-z]+' directives.txt | sort | uniq -c
         if grep -iqE 'DEFAULTLIB:"?(msvcrt|msvcprt|msvcrtd|msvcprtd)\b' directives.txt; then
           echo "::error::libproj.lib contains /MD objects; everything must be built with /MT"
