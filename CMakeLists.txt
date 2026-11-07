@@ -11,6 +11,9 @@
 ################################################################################
 cmake_minimum_required(VERSION 3.22.1)
 
+# viscan fork: minimum macOS/iOS versions (must come before project())
+include(${CMAKE_CURRENT_SOURCE_DIR}/viscan/cmake/ViscanPlatform.cmake)
+
 project(PROJ
   DESCRIPTION "PROJ coordinate transformation software library"
   LANGUAGES C CXX

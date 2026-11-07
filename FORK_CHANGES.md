@@ -59,7 +59,7 @@ All of them are small additions:
 
 | File | Change |
 |---|---|
-| `CMakeLists.txt` | `include(viscan/cmake/ViscanMathOnly.cmake)`; SQLite check and `add_subdirectory(data)` (builds `proj.db`, installs init files) wrapped in `if(NOT VISCAN_MATH_ONLY)`. |
+| `CMakeLists.txt` | `include(viscan/cmake/ViscanPlatform.cmake)` before `project()` (Apple minimum versions); `include(viscan/cmake/ViscanMathOnly.cmake)`; SQLite check and `add_subdirectory(data)` (builds `proj.db`, installs init files) wrapped in `if(NOT VISCAN_MATH_ONLY)`. |
 | `src/init.cpp` | `get_init()` returns an error under `#ifdef VISCAN_MATH_ONLY`, which disables `+init=`. |
 | `src/projections/tmerc.cpp` | `getAlgoFromParams()` always returns Poder/Engsager under `#ifdef VISCAN_MATH_ONLY` and rejects other algorithms. |
 | `src/proj.h` | `PROJ_STATICALLY_LINKED` defines an empty `PROJ_DLL`. Users of the static library define it (needed with MSVC). |
@@ -85,6 +85,8 @@ cmake --build build -t proj
 | `BUILD_TESTING` | `OFF` |
 | `CMAKE_POSITION_INDEPENDENT_CODE` | `ON` |
 | `CMAKE_MSVC_RUNTIME_LIBRARY` | `MultiThreaded` (`/MT`, also for Debug) |
+| `CMAKE_OSX_DEPLOYMENT_TARGET` (macOS) | `15.0`, from `viscan/cmake/ViscanPlatform.cmake`; an explicit value or `MACOSX_DEPLOYMENT_TARGET` wins |
+| `IOS_DEPLOYMENT_TARGET` (iOS, `iOS.cmake`) | `18.0` |
 | `ENABLE_CURL`, `EMBED_RESOURCE_FILES`, `USE_ONLY_EMBEDDED_RESOURCE_FILES` | forced `OFF`; turning one on is a configure error |
 
 libtiff stays enabled (`ENABLE_TIFF`), for GeoTIFF grids such as `GCG2016.tif`.
@@ -129,13 +131,47 @@ pipeline. `proj_trans()` and all projection math never format numbers.
 
 | Path | Per number | Where |
 |---|---|---|
-| `std::to_chars` | ~50 ns | Linux (GCC ≥ 11), Windows (MSVC), Android, Apple with deployment target ≥ macOS 13.3 / iOS 16.3 |
-| C library printf, "C" locale | ~280 ns on macOS | Apple with older deployment targets (the release currently uses macOS 13.0 and iOS 13.0) |
+| `std::to_chars` | ~50 ns | Linux (GCC ≥ 11), Windows (MSVC), Android, Apple with deployment target ≥ macOS 13.3 / iOS 16.3. This includes the pinned macOS 15 / iOS 18. |
+| C library printf, "C" locale | ~280 ns on macOS | Only toolchains without `std::to_chars(double)` |
 
 CMake detects which one is available with the actual compiler and deployment
 target (`VISCAN_HAVE_TO_CHARS_DOUBLE`). With the slow path, a typical
 `proj_create()` takes about 4 µs longer, roughly 5 %. `proj_trans()` is not
 affected.
+
+## Compatibility with the previous fork (`main`, PROJ ~9.3)
+
+Checked by reading the code of both versions (2026-11). Every operation and
+parameter that the previous fork accepted is still supported, with these
+exceptions:
+
+| Not supported anymore | Why |
+|---|---|
+| `tmerc`/`utm` with `+approx`, `+algo=evenden_snyder`, `+algo=auto` | Deliberate: always Poder/Engsager (`main` used Poder/Engsager by default too) |
+| `+init=<file>:<key>` | Deliberate: no definitions from files (`main` read init files from the search path) |
+| `+proj=isea` with `+mode`, `+aperture`, `+resolution`, `+rescale` | Removed upstream (isea rewritten, 9.8/9.9). These parameters are now silently ignored, so `+mode=di/dd/hex` gives plane coordinates. |
+| `+step +inv +proj=affine` with a non-invertible matrix | `proj_create()` now fails. On `main` the pipeline was created but failed on every coordinate. |
+
+Details:
+
+- Operations: `main` had 183 and the branch has 192. None was removed. New:
+  `airocean`, `dsea`, `hourglass`, `interrupted`, `ivea`, `mod_krovak`,
+  `spilhaus`, `tmerczoned`, `tsea`.
+- Pipeline syntax: `+proj=pipeline`, `+step`, `+inv`, `+omit_fwd`,
+  `+omit_inv`, `push`/`pop` with `+v_1`…`+v_4`: unchanged.
+  `+omit_fwd` steps no longer need a forward function.
+- Parameters: every parameter read on `main` is still read, apart from the
+  `isea` ones above. `+t_final` (including `now`) moved to common code.
+- Parameter values: all compared keywords are unchanged (e.g.
+  `+convention=`, `+order=`), apart from the `isea` modes. The predefined
+  `+ellps=` (23), `+datum=` (15), `+units=` (11) and `+pm=` tables are
+  identical.
+- Stricter checks (new errors) only concern new features (`+coord_type` and
+  offset grids in `gridshift`, new projections). `axisswap` errors are only
+  reworded.
+- Not covered here: numerical changes. Upstream made some projections more
+  exact: `aea`, `cea`, `laea`, `eqearth`, `healpix` and `rhealpix` (9.7),
+  spherical `tmerc` (9.8) and inverse `cass` (9.6).
 
 ## Tests
 

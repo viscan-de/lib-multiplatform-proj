@@ -245,7 +245,7 @@ jobs:
         
       if: ${{ matrix.os == 'macos-latest' && matrix.env == 'macos' }}
       env:
-        MACOSX_DEPLOYMENT_TARGET: "13.0"   
+        MACOSX_DEPLOYMENT_TARGET: "15.0"
       run: >
         CMAKE_BUILD_PARALLEL_LEVEL=4 && cmake -GXcode -B ${{ steps.strings.outputs.build-output-dir }} 
         -DIOS_PLATFORM=${{ matrix.ios_platform }}
@@ -265,7 +265,7 @@ jobs:
       # See https://cmake.org/cmake/help/latest/variable/CMAKE_BUILD_TYPE.html?highlight=cmake_build_type
       if: ${{ matrix.os == 'macos-latest' && matrix.env != 'macos' }}
       env:
-        IOS_DEPLOYMENT_TARGET: "13.0" 
+        IOS_DEPLOYMENT_TARGET: "18.0"
       run: >
         CMAKE_BUILD_PARALLEL_LEVEL=4 && cmake -GXcode -B ${{ steps.strings.outputs.build-output-dir }} 
         -DCMAKE_TOOLCHAIN_FILE=./ios.cmake 

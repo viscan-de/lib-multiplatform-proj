@@ -5,9 +5,10 @@ set (UNIX True)
 set (APPLE True)
 set (IOS True)
 
-# Set iOS deployment target - defaults to 13.0 if not specified via -DIOS_DEPLOYMENT_TARGET
+# Set iOS deployment target - defaults to 18.0 if not specified via -DIOS_DEPLOYMENT_TARGET
+# (viscan minimum, see viscan/cmake/ViscanPlatform.cmake)
 if (NOT IOS_DEPLOYMENT_TARGET)
-    set (IOS_DEPLOYMENT_TARGET "13.0")
+    set (IOS_DEPLOYMENT_TARGET "18.0")
 endif ()
 # CMAKE_OSX_DEPLOYMENT_TARGET maps to IPHONEOS_DEPLOYMENT_TARGET in the Xcode generator
 set (CMAKE_OSX_DEPLOYMENT_TARGET "${IOS_DEPLOYMENT_TARGET}" CACHE STRING "Minimum iOS deployment version" FORCE)
