@@ -172,7 +172,7 @@ jobs:
       if: ${{ matrix.os == 'windows-latest' }}
       run: |
         cd .vcpkg && bootstrap-vcpkg.bat
-        vcpkg install tiff:x64-windows-static
+        vcpkg install tiff:x64-windows-static-md
 
     - name: Set reusable strings
       # Turn repeated input strings (such as the build output directory) into step outputs. These step outputs can be used throughout the workflow file.
@@ -301,8 +301,8 @@ jobs:
         -DBUILD_APPS=OFF 
         -DBUILD_PROJSYNC=OFF 
         -DBUILD_SHARED_LIBS=OFF
-        -DTIFF_LIBRARY="./.vcpkg/installed/x64-windows-static/lib"
-        -DTIFF_INCLUDE_DIR="./.vcpkg/installed/x64-windows-static/include"
+        -DTIFF_LIBRARY="./.vcpkg/installed/x64-windows-static-md/lib"
+        -DTIFF_INCLUDE_DIR="./.vcpkg/installed/x64-windows-static-md/include"
         -S ${{ steps.strings.outputs.workspace-dir }}
 
     - name: Build
@@ -388,7 +388,7 @@ jobs:
       if: ${{ matrix.os == 'windows-latest' }}
       shell: bash
       run: |
-        cp ./.vcpkg/installed/x64-windows-static/lib/*.lib ${{ steps.strings.outputs.build-output-dir }}/lib/
+        cp ./.vcpkg/installed/x64-windows-static-md/lib/*.lib ${{ steps.strings.outputs.build-output-dir }}/lib/
         # The librarian of the toolchain CMake configured with (lib.exe for MSVC), so the step
         # follows the runner image's Visual Studio version instead of hardcoding its install path.
         libexe="$(grep -E '^CMAKE_AR:FILEPATH=' ${{ steps.strings.outputs.build-output-dir }}/CMakeCache.txt | cut -d= -f2-)"

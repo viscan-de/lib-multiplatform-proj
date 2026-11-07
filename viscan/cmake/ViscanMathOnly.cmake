@@ -42,12 +42,13 @@ option(VISCAN_IGNORE_TEST_EXCLUSIONS
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# MSVC: static runtime (/MT), also for Debug builds. Uses the CMake runtime
-# selection (policy CMP0091) instead of appending /MT to CMAKE_<LANG>_FLAGS,
-# which CMake's default /MD overrode (warning D9025).
-if(NOT DEFINED CMAKE_MSVC_RUNTIME_LIBRARY)
-  set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded")
-endif()
+# MSVC runtime: CMake's default, the DLL runtime (/MD, /MDd for Debug).
+# Our users (lib-multiplatform-coordinate-transformation, the Python binding)
+# build with /MD and refuse to link /MT objects (LNK2038). The fork used to
+# append /MT to CMAKE_<LANG>_FLAGS, but CMake's /MD came later and won
+# (warning D9025), so releases up to v0.2.x were effectively /MD as well.
+# v0.3.0 made /MT effective and broke those users; v0.3.1 returns to /MD.
+# Override with -DCMAKE_MSVC_RUNTIME_LIBRARY=... if really needed.
 
 # Fast number formatting (viscan_printf.cpp) needs std::to_chars for double.
 # Apple's libc++ only provides it from macOS 13.3 / iOS 16.3 on, so this is

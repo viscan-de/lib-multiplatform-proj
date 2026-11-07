@@ -84,16 +84,25 @@ cmake --build build -t proj
 | `BUILD_APPS` | `OFF` |
 | `BUILD_TESTING` | `OFF` |
 | `CMAKE_POSITION_INDEPENDENT_CODE` | `ON` |
-| `CMAKE_MSVC_RUNTIME_LIBRARY` | `MultiThreaded` (`/MT`, also for Debug) |
+| `CMAKE_MSVC_RUNTIME_LIBRARY` | not set: CMake's default, the DLL runtime (`/MD`, `/MDd` for Debug) |
 | `CMAKE_OSX_DEPLOYMENT_TARGET` (macOS) | `15.0`, from `viscan/cmake/ViscanPlatform.cmake`; an explicit value or `MACOSX_DEPLOYMENT_TARGET` wins |
 | `IOS_DEPLOYMENT_TARGET` (iOS, `iOS.cmake`) | `18.0` |
 | `ENABLE_CURL`, `EMBED_RESOURCE_FILES`, `USE_ONLY_EMBEDDED_RESOURCE_FILES` | forced `OFF`; turning one on is a configure error |
 
 libtiff stays enabled (`ENABLE_TIFF`), for GeoTIFF grids such as `GCG2016.tif`.
 
-The static runtime is selected through `CMAKE_MSVC_RUNTIME_LIBRARY`. The old
-fork appended `/MT` to `CMAKE_C(XX)_FLAGS`; CMake's default `/MD` came later on
-the command line and won, which caused warning D9025.
+**MSVC runtime: `/MD`.** It's a static library, but it uses the DLL runtime,
+because its users (`lib-multiplatform-coordinate-transformation`, the Python
+binding) build with `/MD`. The linker refuses `/MT` objects there (LNK2038
+"mismatch detected for 'RuntimeLibrary'").
+- **History:** the old fork appended `/MT` to `CMAKE_C(XX)_FLAGS`. CMake's
+  default `/MD` came later on the command line and won (warning D9025), so
+  releases up to v0.2.x were effectively `/MD`. v0.3.0 made `/MT` effective,
+  which broke the Windows build of the coordinate transformation library;
+  v0.3.1 returns to `/MD`.
+- **Bundled libraries:** the release workflow installs libtiff and its
+  dependencies with the vcpkg triplet `x64-windows-static-md` (static
+  libraries, DLL runtime), so the whole package uses one runtime.
 
 ## Using the library
 
@@ -278,7 +287,8 @@ these problems, all fixed now:
   C++ exceptions through the C API.
 - `+init=<file>:<key>` still read definitions from init files.
 - SQLite was still needed (`sqlite3_snprintf`) on non-Windows platforms.
-- `/MT` had no effect on Windows (warning D9025).
+- `/MT` had no effect on Windows (warning D9025). The runtime is now `/MD`
+  without that warning, see "Building".
 - PROJJSON numbers followed the process locale (`,` with a German locale).
 - The Transverse Mercator algorithm could be switched by `+approx`/`+algo` or
   by a `proj.ini`.
